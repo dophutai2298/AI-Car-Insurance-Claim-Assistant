@@ -14,7 +14,12 @@ class Settings(BaseSettings):
         default="postgresql+psycopg://claim_user:claim_password@localhost:5432/claim_assistant",
         validation_alias="DATABASE_URL",
     )
-    jwt_secret: str = Field(default="change-me-in-local-dev", validation_alias="JWT_SECRET")
+    jwt_secret: str = Field(min_length=16, validation_alias="JWT_SECRET")
+    jwt_access_token_minutes: int = Field(default=480, validation_alias="JWT_ACCESS_TOKEN_MINUTES")
+    admin_email: str = Field(default="admin@example.com", validation_alias="ADMIN_EMAIL")
+    admin_password: str = Field(default="Admin123!", validation_alias="ADMIN_PASSWORD")
+    adjuster_email: str = Field(default="adjuster@example.com", validation_alias="ADJUSTER_EMAIL")
+    adjuster_password: str = Field(default="Adjuster123!", validation_alias="ADJUSTER_PASSWORD")
     upload_root: str = Field(default="uploads", validation_alias="UPLOAD_ROOT")
     damage_model_mode: Literal["mock", "http"] = Field(default="mock", validation_alias="DAMAGE_MODEL_MODE")
     damage_model_url: str | None = Field(default=None, validation_alias="DAMAGE_MODEL_URL")

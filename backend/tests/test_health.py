@@ -1,4 +1,6 @@
 from fastapi.routing import APIRoute
+from pydantic import ValidationError
+import pytest
 
 from app.core.config import get_settings
 from app.main import create_app
@@ -13,6 +15,7 @@ def call_registered_route(path: str):
 
 
 def test_health_endpoint_reports_service_and_runtime_config(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET", "test-secret-that-is-long-enough-for-health-tests")
     monkeypatch.setenv("CHECK_DATABASE_ON_HEALTH", "false")
     get_settings.cache_clear()
 
@@ -32,7 +35,7 @@ def test_health_endpoint_reports_service_and_runtime_config(monkeypatch):
 
 
 def test_runtime_config_does_not_expose_secrets(monkeypatch):
-    monkeypatch.setenv("JWT_SECRET", "super-secret")
+    monkeypatch.setenv("JWT_SECRET", "super-secret-value-that-is-long-enough")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-secret")
     get_settings.cache_clear()
 
@@ -40,3 +43,11 @@ def test_runtime_config_does_not_expose_secrets(monkeypatch):
 
     assert "jwt_secret" not in response
     assert "openai_api_key" not in response
+
+
+def test_short_jwt_secret_is_rejected(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET", "too-short")
+    get_settings.cache_clear()
+
+    with pytest.raises(ValidationError):
+        get_settings()
