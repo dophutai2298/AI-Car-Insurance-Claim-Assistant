@@ -49,4 +49,18 @@ next-env.d.ts
 # InsForge & AI agent skills
 /.agent
 /.agents
-/.insforge
+/docs
+/.scratch
+
+# local runtime artifacts
+/uploads
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# frontend
+/frontend/node_modules/
+/frontend/dist/
