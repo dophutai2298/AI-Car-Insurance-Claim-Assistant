@@ -6,7 +6,7 @@
 ### Prerequisites
 
 - Python 3.10+
-- Node.js 24+
+- Node.js 20.19+ or 22.12+
 - Docker Desktop or another Docker-compatible runtime
 
 ### 1. Configure environment
@@ -53,6 +53,7 @@ The frontend runs at `http://localhost:5173`.
 cd backend
 pytest
 python scripts/check_health.py
+python scripts/check_database.py
 
 cd ../frontend
 npm run build

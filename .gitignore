@@ -49,7 +49,6 @@ next-env.d.ts
 # InsForge & AI agent skills
 /.agent
 /.agents
-/.insforge
 /docs
 /.scratch
 
