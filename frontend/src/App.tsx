@@ -34,9 +34,9 @@ function App() {
   const { data, error, isPending } = useDashboardOverview()
 
   return (
-    <main className="min-h-[100dvh] bg-slate-100 text-slate-950">
-      <div className="grid min-h-[100dvh] grid-cols-1 lg:grid-cols-[272px_minmax(0,1fr)]">
-        <aside className="border-b border-slate-200 bg-slate-950 px-5 py-5 text-white lg:border-b-0 lg:border-r lg:border-slate-800">
+    <main className="h-full overflow-hidden bg-slate-100 text-slate-950">
+      <div className="grid h-full grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden lg:grid-cols-[272px_minmax(0,1fr)] lg:grid-rows-1">
+        <aside className="shrink-0 overflow-hidden border-b border-slate-200 bg-slate-950 px-5 py-5 text-white lg:h-full lg:border-b-0 lg:border-r lg:border-slate-800">
           <div className="flex h-full flex-col gap-6">
             <div className="flex items-center gap-3">
               <div className="flex size-10 items-center justify-center rounded-lg bg-blue-500 text-white">
@@ -87,7 +87,7 @@ function App() {
           </div>
         </aside>
 
-        <section className="min-w-0 px-4 py-4 sm:px-6 lg:px-8">
+        <section className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6 lg:px-8">
           <div className="mx-auto grid max-w-[1440px] gap-6">
             <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 xl:flex-row xl:items-end xl:justify-between">
               <div>
