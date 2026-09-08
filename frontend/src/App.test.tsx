@@ -1,12 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { expect, test, vi } from 'vitest'
 
 import { AppRoutes } from './App'
 import { AuthProvider } from './features/auth/AuthProvider'
-import type { EvidenceCategory, EvidenceItem } from './features/claims/types'
+import type { ClaimDetail, EvidenceCategory, EvidenceItem } from './features/claims/types'
 
 const adminSession = {
   access_token: 'admin-token',
@@ -156,7 +156,7 @@ test('adjuster can create a claim and open its detail', async () => {
   renderRoute('/claims/new')
 
   expect(await screen.findByRole('navigation', { name: /primary navigation/i })).toBeVisible()
-  expect(screen.getByRole('link', { name: /claims/i })).toBeVisible()
+  expect(within(screen.getByRole('navigation', { name: /primary navigation/i })).getByRole('link', { name: /^claims$/i })).toBeVisible()
   await user.type(await screen.findByLabelText(/claimant name/i), 'Mai Nguyen')
   await user.type(screen.getByLabelText(/make/i), 'Toyota')
   await user.type(screen.getByLabelText(/model/i), 'Camry')
@@ -234,4 +234,50 @@ test('adjuster uploads evidence with a selected category from claim detail', asy
 
   expect(await screen.findByText('Insurance policies')).toBeVisible()
   expect(uploadedCategory).toBe('INSURANCE_POLICY')
+})
+
+test('adjuster can run damage analysis and review the no-damage warning', async () => {
+  const damageImage: EvidenceItem = {
+    id: 1,
+    category: 'VEHICLE_DAMAGE_IMAGE',
+    original_filename: 'no-damage.jpg',
+    content_type: 'image/jpeg',
+    file_size: 20,
+    uploaded_at: '2026-09-08T00:00:00Z',
+    content_url: '/api/claims/CLM-000071/evidence/1/content',
+  }
+  let currentClaim: ClaimDetail = {
+    id: 'CLM-000071',
+    claimant_name: 'Mai Nguyen',
+    vehicle: { make: 'Toyota', model: 'Camry', year: 2022, license_plate: null, vin: null },
+    status: 'ANALYZING',
+    created_at: '2026-09-08T00:00:00Z',
+    updated_at: '2026-09-08T00:00:00Z',
+    evidence: [damageImage],
+    latest_damage_analysis: null,
+  }
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).endsWith('/api/auth/me')) return new Response(JSON.stringify(adjusterSession.user))
+    if (String(input).endsWith('/damage-analysis') && init?.method === 'POST') {
+      currentClaim = {
+        ...currentClaim,
+        status: 'REVIEW_REQUIRED',
+        latest_damage_analysis: {
+          id: 'DA-000001', assessment: 'NO_DAMAGE', detections: [],
+          warning: 'No significant vehicle damage was detected. This does not guarantee the vehicle is undamaged.',
+          created_at: '2026-09-08T00:01:00Z',
+        },
+      }
+      return new Response(JSON.stringify(currentClaim.latest_damage_analysis))
+    }
+    return new Response(JSON.stringify(currentClaim))
+  })
+  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adjusterSession))
+  const user = userEvent.setup()
+  renderRoute('/claims/CLM-000071')
+
+  await user.click(await screen.findByRole('button', { name: /run analysis/i }))
+
+  expect((await screen.findAllByText('No significant damage')).length).toBeGreaterThan(0)
+  expect(await screen.findByText(/does not guarantee/i)).toBeVisible()
 })

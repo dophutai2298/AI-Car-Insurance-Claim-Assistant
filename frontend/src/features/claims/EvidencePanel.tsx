@@ -114,10 +114,10 @@ function EvidenceGroups({ evidence }: { evidence: EvidenceItem[] }) {
 
 function EvidenceItemCard({ item }: { item: EvidenceItem }) {
   const isDamageImage = item.category === 'VEHICLE_DAMAGE_IMAGE' && item.content_type?.startsWith('image/')
-  return <article className="overflow-hidden border border-slate-200 bg-slate-50"><div className="flex min-h-28 items-center justify-center bg-slate-100">{isDamageImage ? <EvidencePreview item={item} /> : <Document className="text-slate-500" size={28} />}</div><div className="p-3"><p className="truncate text-sm font-medium text-slate-950">{item.original_filename}</p><p className="mt-1 text-xs text-slate-500">{formatFileSize(item.file_size)}</p></div></article>
+  return <article className="overflow-hidden border border-slate-200 bg-slate-50"><div className="flex min-h-28 items-center justify-center bg-slate-100">{isDamageImage ? <EvidenceImagePreview item={item} /> : <Document className="text-slate-500" size={28} />}</div><div className="p-3"><p className="truncate text-sm font-medium text-slate-950">{item.original_filename}</p><p className="mt-1 text-xs text-slate-500">{formatFileSize(item.file_size)}</p></div></article>
 }
 
-function EvidencePreview({ item }: { item: EvidenceItem }) {
+export function EvidenceImagePreview({ item }: { item: EvidenceItem }) {
   const { session } = useAuth()
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 

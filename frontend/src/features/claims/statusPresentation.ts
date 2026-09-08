@@ -20,6 +20,5 @@ export const statusLabel: Record<ClaimStatus, string> = {
 
 export const lifecycleAction: Partial<Record<ClaimStatus, { nextStatus: ClaimStatus; label: string }>> = {
   DRAFT: { nextStatus: 'ANALYZING', label: 'Begin AI analysis' },
-  ANALYZING: { nextStatus: 'REVIEW_REQUIRED', label: 'Mark ready for AI review' },
   FAILED: { nextStatus: 'ANALYZING', label: 'Retry AI analysis' },
 }

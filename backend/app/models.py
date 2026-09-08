@@ -2,7 +2,7 @@ from enum import Enum
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -42,6 +42,18 @@ class EvidenceCategory(str, Enum):
     OTHER_DOCUMENT = "OTHER_DOCUMENT"
 
 
+class DamageAssessment(str, Enum):
+    NO_DAMAGE = "NO_DAMAGE"
+    REPAIR_LIKELY = "REPAIR_LIKELY"
+    REPLACEMENT_LIKELY = "REPLACEMENT_LIKELY"
+    MANUAL_INSPECTION_REQUIRED = "MANUAL_INSPECTION_REQUIRED"
+
+
+class DamageDetectionStatus(str, Enum):
+    DETECTED = "DETECTED"
+    NO_SIGNIFICANT_DAMAGE = "NO_SIGNIFICANT_DAMAGE"
+
+
 class Claim(Base):
     __tablename__ = "claims"
 
@@ -79,4 +91,33 @@ class Evidence(Base):
     file_size: Mapped[int] = mapped_column(Integer)
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class DamageAnalysis(Base):
+    __tablename__ = "damage_analyses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    analysis_number: Mapped[str | None] = mapped_column(String(24), unique=True, index=True, nullable=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id"), index=True)
+    assessment: Mapped[DamageAssessment] = mapped_column(SqlEnum(DamageAssessment, native_enum=False))
+    warning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class DamageDetection(Base):
+    __tablename__ = "damage_detections"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    analysis_id: Mapped[int] = mapped_column(ForeignKey("damage_analyses.id"), index=True)
+    source_evidence_id: Mapped[int] = mapped_column(ForeignKey("evidence.id"))
+    annotated_evidence_id: Mapped[int] = mapped_column(ForeignKey("evidence.id"))
+    vehicle_part: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    damage_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    damage_percentage: Mapped[float] = mapped_column(Float)
+    confidence: Mapped[float] = mapped_column(Float)
+    status: Mapped[DamageDetectionStatus] = mapped_column(
+        SqlEnum(DamageDetectionStatus, native_enum=False)
     )

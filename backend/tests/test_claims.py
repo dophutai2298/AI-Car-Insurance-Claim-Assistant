@@ -200,3 +200,84 @@ def test_storage_failure_cleans_up_previously_written_files_and_metadata(client:
     assert response.json() == {"detail": "Unable to store uploaded evidence"}
     assert client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()["evidence"] == []
     assert list((tmp_path / "uploads" / claim["id"]).glob("*")) == []
+
+
+def upload_damage_images(client: TestClient, claim_id: str, filenames: list[str]) -> None:
+    response = client.post(
+        f"/api/claims/{claim_id}/evidence",
+        headers=adjuster_headers(client),
+        data={"categories": ["VEHICLE_DAMAGE_IMAGE"] * len(filenames)},
+        files=[("files", (filename, b"damage-image-content", "image/jpeg")) for filename in filenames],
+    )
+    assert response.status_code == 200
+
+
+def test_damage_analysis_returns_normalized_repair_fixture_and_persists_it(client: TestClient):
+    claim = create_claim(client)
+    upload_damage_images(client, claim["id"], ["repair.jpg"])
+
+    response = client.post(f"/api/claims/{claim['id']}/damage-analysis", headers=adjuster_headers(client))
+
+    assert response.status_code == 200
+    analysis = response.json()
+    assert analysis["assessment"] == "REPAIR_LIKELY"
+    assert analysis["detections"] == [{
+        "vehicle_part": "rear_bumper",
+        "damage_type": "dent",
+        "damage_percentage": 32.5,
+        "confidence": 0.91,
+        "status": "DETECTED",
+        "annotated_evidence": {
+            "id": 1,
+            "category": "VEHICLE_DAMAGE_IMAGE",
+            "original_filename": "repair.jpg",
+            "content_type": "image/jpeg",
+            "file_size": 20,
+            "uploaded_at": analysis["detections"][0]["annotated_evidence"]["uploaded_at"],
+            "content_url": "/api/claims/CLM-000001/evidence/1/content",
+        },
+    }]
+    detail = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()
+    assert detail["status"] == "REVIEW_REQUIRED"
+    assert detail["latest_damage_analysis"]["id"] == analysis["id"]
+
+
+@pytest.mark.parametrize(
+    ("filename", "assessment", "warning"),
+    [
+        ("replacement.jpg", "REPLACEMENT_LIKELY", None),
+        ("low-confidence.jpg", "MANUAL_INSPECTION_REQUIRED", "confidence threshold"),
+        ("no-damage.jpg", "NO_DAMAGE", "does not guarantee"),
+    ],
+)
+def test_damage_analysis_returns_stable_fixture_assessments(client: TestClient, filename, assessment, warning):
+    claim = create_claim(client)
+    upload_damage_images(client, claim["id"], [filename])
+
+    response = client.post(f"/api/claims/{claim['id']}/damage-analysis", headers=adjuster_headers(client))
+
+    assert response.status_code == 200
+    assert response.json()["assessment"] == assessment
+    if warning is None:
+        assert response.json()["warning"] is None
+    else:
+        assert warning in response.json()["warning"]
+
+
+def test_damage_analysis_supports_multiple_images_and_detections(client: TestClient):
+    claim = create_claim(client)
+    upload_damage_images(client, claim["id"], ["multiple.jpg", "repair.jpg"])
+
+    response = client.post(f"/api/claims/{claim['id']}/damage-analysis", headers=adjuster_headers(client))
+
+    assert response.status_code == 200
+    assert len(response.json()["detections"]) == 3
+
+
+def test_damage_analysis_requires_vehicle_damage_images(client: TestClient):
+    claim = create_claim(client)
+
+    response = client.post(f"/api/claims/{claim['id']}/damage-analysis", headers=adjuster_headers(client))
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Upload at least one vehicle damage image before running analysis"}

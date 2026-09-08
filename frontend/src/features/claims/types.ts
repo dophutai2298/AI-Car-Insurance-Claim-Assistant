@@ -30,6 +30,7 @@ export type ClaimDetail = {
   created_at: string
   updated_at: string
   evidence: EvidenceItem[]
+  latest_damage_analysis: DamageAnalysis | null
 }
 
 export type EvidenceItem = {
@@ -45,6 +46,29 @@ export type EvidenceItem = {
 export type EvidenceUploadItem = {
   file: File
   category: EvidenceCategory
+}
+
+export type DamageAssessment =
+  | 'NO_DAMAGE'
+  | 'REPAIR_LIKELY'
+  | 'REPLACEMENT_LIKELY'
+  | 'MANUAL_INSPECTION_REQUIRED'
+
+export type DamageDetection = {
+  vehicle_part: string | null
+  damage_type: string | null
+  damage_percentage: number
+  confidence: number
+  status: 'DETECTED' | 'NO_SIGNIFICANT_DAMAGE'
+  annotated_evidence: EvidenceItem
+}
+
+export type DamageAnalysis = {
+  id: string
+  assessment: DamageAssessment
+  warning: string | null
+  detections: DamageDetection[]
+  created_at: string
 }
 
 export type ClaimListItem = {

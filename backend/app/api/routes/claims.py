@@ -8,8 +8,16 @@ from app.api.dependencies import CurrentUser
 from app.core.config import Settings, get_settings
 from app.db import get_db
 from app.models import EvidenceCategory
-from app.schemas.claims import ClaimCreateRequest, ClaimListItem, ClaimResponse, ClaimStatusUpdateRequest
+from app.schemas.claims import (
+    ClaimCreateRequest,
+    ClaimListItem,
+    ClaimResponse,
+    ClaimStatusUpdateRequest,
+    DamageAnalysisResponse,
+)
 from app.services.claims import ClaimService, EvidencePersistenceError
+from app.services.damage_assessment import DamageAssessmentService
+from app.services.damage_model import DamageModelUnavailableError, get_damage_model_adapter
 from app.services.evidence_storage import EvidenceStorageError, LocalEvidenceStorage
 
 router = APIRouter(prefix="/api/claims", tags=["claims"])
@@ -19,7 +27,12 @@ def get_claim_service(
     session: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> ClaimService:
-    return ClaimService(session, LocalEvidenceStorage(settings))
+    return ClaimService(
+        session,
+        LocalEvidenceStorage(settings),
+        get_damage_model_adapter(settings),
+        DamageAssessmentService(settings),
+    )
 
 
 ClaimServiceDependency = Annotated[ClaimService, Depends(get_claim_service)]
@@ -104,3 +117,20 @@ def get_evidence_content(
 
     evidence, path = evidence_with_path
     return FileResponse(path, media_type=evidence.content_type, filename=evidence.original_filename)
+
+
+@router.post("/{claim_number}/damage-analysis", response_model=DamageAnalysisResponse)
+def run_damage_analysis(
+    claim_number: str,
+    _current_user: CurrentUser,
+    service: ClaimServiceDependency,
+) -> DamageAnalysisResponse:
+    try:
+        analysis = service.run_damage_analysis(claim_number)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
+    except DamageModelUnavailableError as error:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
+    if analysis is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
+    return analysis

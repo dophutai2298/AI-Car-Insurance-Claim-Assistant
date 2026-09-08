@@ -26,8 +26,9 @@ def test_health_endpoint_reports_service_and_runtime_config(monkeypatch):
         "service": "ai-car-claim-assistant-api",
         "database": {"status": "not_checked"},
         "runtime": {
-            "damage_model_mode": "mock",
-            "part_search_mode": "mock",
+                "damage_model_mode": "mock",
+                "damage_confidence_threshold": "0.7",
+                "part_search_mode": "mock",
             "llm_mode": "mock",
             "upload_root": "uploads",
         },

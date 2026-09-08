@@ -4,17 +4,22 @@ from fastapi import UploadFile
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.models import Claim, ClaimStatus, Evidence, EvidenceCategory, User
+from app.models import Claim, ClaimStatus, DamageAnalysis, Evidence, EvidenceCategory, User
 from app.repositories.claims import ClaimRepository
+from app.repositories.damage_analyses import DamageAnalysisRepository
 from app.repositories.evidence import EvidenceRepository
 from app.schemas.claims import (
     ClaimCreateRequest,
+    DamageAnalysisResponse,
+    DamageDetectionResponse,
     ClaimListItem,
     ClaimResponse,
     EvidenceResponse,
     VehicleMetadata,
 )
 from app.services.evidence_storage import EvidenceStorage, EvidenceStorageError, StoredEvidence
+from app.services.damage_assessment import DamageAssessmentService
+from app.services.damage_model import DamageModelAdapter
 
 ALLOWED_LIFECYCLE_TRANSITIONS: dict[ClaimStatus, set[ClaimStatus]] = {
     ClaimStatus.DRAFT: {ClaimStatus.ANALYZING},
@@ -28,10 +33,13 @@ class EvidencePersistenceError(Exception):
 
 
 class ClaimService:
-    def __init__(self, session: Session, storage: EvidenceStorage):
+    def __init__(self, session: Session, storage: EvidenceStorage, damage_model: DamageModelAdapter, assessment: DamageAssessmentService):
         self.claims = ClaimRepository(session)
         self.evidence = EvidenceRepository(session)
+        self.damage_analyses = DamageAnalysisRepository(session)
         self.storage = storage
+        self.damage_model = damage_model
+        self.assessment = assessment
 
     def create_claim(self, data: ClaimCreateRequest, created_by: User) -> ClaimResponse:
         return self._to_response(self.claims.create(data, created_by.id))
@@ -94,6 +102,21 @@ class ClaimService:
         path = self.storage.resolve_path(evidence.stored_path)
         return (evidence, path) if path.is_file() else None
 
+    def run_damage_analysis(self, claim_number: str) -> DamageAnalysisResponse | None:
+        claim = self.claims.find_by_claim_number(claim_number)
+        if claim is None:
+            return None
+        images = [
+            item
+            for item in self.evidence.list_for_claim(claim.id)
+            if item.category is EvidenceCategory.VEHICLE_DAMAGE_IMAGE
+        ]
+        if not images:
+            raise ValueError("Upload at least one vehicle damage image before running analysis")
+        detections = self.damage_model.analyze(images)
+        analysis = self.damage_analyses.create(claim, self.assessment.assess(detections), detections)
+        return self._to_damage_analysis_response(claim.claim_number, analysis)
+
     def _to_response(self, claim: Claim) -> ClaimResponse:
         if claim.claim_number is None:
             raise ValueError("Claim number must be assigned before serialization")
@@ -115,6 +138,38 @@ class ClaimService:
                 self._to_evidence_response(claim.claim_number, item)
                 for item in self.evidence.list_for_claim(claim.id)
             ],
+            latest_damage_analysis=self._latest_damage_analysis_response(claim.claim_number, claim.id),
+        )
+
+    def _latest_damage_analysis_response(self, claim_number: str, claim_id: int) -> DamageAnalysisResponse | None:
+        analysis = self.damage_analyses.latest_for_claim(claim_id)
+        return self._to_damage_analysis_response(claim_number, analysis) if analysis else None
+
+    def _to_damage_analysis_response(self, claim_number: str, analysis: DamageAnalysis) -> DamageAnalysisResponse:
+        if analysis.analysis_number is None:
+            raise ValueError("Damage analysis number must be assigned before serialization")
+        evidence_by_id = {item.id: item for item in self.evidence.list_for_claim(analysis.claim_id)}
+        detections = []
+        for detection in self.damage_analyses.list_detections(analysis.id):
+            annotated_evidence = evidence_by_id.get(detection.annotated_evidence_id)
+            if annotated_evidence is None:
+                raise ValueError("Annotated evidence must be available before serialization")
+            detections.append(
+                DamageDetectionResponse(
+                    vehicle_part=detection.vehicle_part,
+                    damage_type=detection.damage_type,
+                    damage_percentage=detection.damage_percentage,
+                    confidence=detection.confidence,
+                    status=detection.status,
+                    annotated_evidence=self._to_evidence_response(claim_number, annotated_evidence),
+                )
+            )
+        return DamageAnalysisResponse(
+            id=analysis.analysis_number,
+            assessment=analysis.assessment,
+            warning=analysis.warning,
+            detections=detections,
+            created_at=analysis.created_at,
         )
 
     @staticmethod

@@ -27,6 +27,15 @@ class Settings(BaseSettings):
     )
     damage_model_mode: Literal["mock", "http"] = Field(default="mock", validation_alias="DAMAGE_MODEL_MODE")
     damage_model_url: str | None = Field(default=None, validation_alias="DAMAGE_MODEL_URL")
+    damage_confidence_threshold: float = Field(
+        default=0.70, ge=0, le=1, validation_alias="DAMAGE_CONFIDENCE_THRESHOLD"
+    )
+    damage_repair_max_percentage: float = Field(
+        default=40, ge=0, le=100, validation_alias="DAMAGE_REPAIR_MAX_PERCENTAGE"
+    )
+    damage_replacement_min_percentage: float = Field(
+        default=60, ge=0, le=100, validation_alias="DAMAGE_REPLACEMENT_MIN_PERCENTAGE"
+    )
     part_search_mode: Literal["mock"] = Field(default="mock", validation_alias="PART_SEARCH_MODE")
     llm_mode: Literal["mock", "openai"] = Field(default="mock", validation_alias="LLM_MODE")
     frontend_origin: str = Field(default="http://localhost:5173", validation_alias="FRONTEND_ORIGIN")
@@ -37,6 +46,7 @@ class Settings(BaseSettings):
     def public_runtime(self) -> dict[str, str]:
         return {
             "damage_model_mode": self.damage_model_mode,
+            "damage_confidence_threshold": str(self.damage_confidence_threshold),
             "part_search_mode": self.part_search_mode,
             "llm_mode": self.llm_mode,
             "upload_root": self.upload_root,

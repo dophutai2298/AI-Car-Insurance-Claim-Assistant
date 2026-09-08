@@ -1,5 +1,6 @@
 import type {
   ClaimCreateInput,
+  DamageAnalysis,
   ClaimDetail,
   ClaimListItem,
   ClaimStatus,
@@ -48,6 +49,10 @@ export function transitionClaimStatus(claimId: string, status: ClaimStatus, acce
     method: 'PATCH',
     body: JSON.stringify({ status }),
   })
+}
+
+export function runDamageAnalysis(claimId: string, accessToken: string) {
+  return request<DamageAnalysis>(`/api/claims/${claimId}/damage-analysis`, accessToken, { method: 'POST' })
 }
 
 export async function uploadEvidence(

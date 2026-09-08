@@ -3,6 +3,7 @@ import { Alert, Button, Card, Chip, Skeleton } from '@heroui/react'
 import { Link, useParams } from 'react-router'
 
 import { lifecycleAction, statusLabel, statusTone } from './statusPresentation'
+import { DamageAnalysisPanel } from './DamageAnalysisPanel'
 import { EvidencePanel } from './EvidencePanel'
 import { useClaim, useTransitionClaim } from './useClaims'
 
@@ -23,14 +24,14 @@ export function ClaimDetailPage() {
     return (
       <div className="mx-auto max-w-[1440px] py-2">
           <Alert status="danger"><Alert.Title>Claim unavailable</Alert.Title><Alert.Description>The claim could not be loaded.</Alert.Description></Alert>
-          <Link className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-blue-700" to="/dashboard"><ArrowLeft size={18} />Back to dashboard</Link>
+          <Link className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-blue-700" to="/claims"><ArrowLeft size={18} />Back to claims</Link>
       </div>
     )
   }
 
   return (
     <div className="mx-auto grid max-w-[1440px] gap-6 py-2">
-        <Link className="flex w-fit items-center gap-2 text-sm font-semibold text-blue-700" to="/dashboard"><ArrowLeft size={18} />Back to dashboard</Link>
+        <Link className="flex w-fit items-center gap-2 text-sm font-semibold text-blue-700" to="/claims"><ArrowLeft size={18} />Back to claims</Link>
         <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-semibold text-slate-500">Claim case</p>
@@ -54,6 +55,8 @@ export function ClaimDetailPage() {
         </Card>
 
         <EvidencePanel claimId={claim.id} evidence={claim.evidence ?? []} />
+
+        <DamageAnalysisPanel claim={claim} />
 
         {lifecycleAction[claim.status] ? (
           <section className="flex flex-col gap-4 border-y border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">

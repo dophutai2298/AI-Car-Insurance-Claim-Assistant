@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models import ClaimStatus, EvidenceCategory
+from app.models import ClaimStatus, DamageAssessment, DamageDetectionStatus, EvidenceCategory
 
 
 class VehicleMetadata(BaseModel):
@@ -28,6 +28,7 @@ class ClaimResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     evidence: list["EvidenceResponse"] = Field(default_factory=list)
+    latest_damage_analysis: "DamageAnalysisResponse | None" = None
 
 
 class ClaimListItem(BaseModel):
@@ -50,3 +51,20 @@ class EvidenceResponse(BaseModel):
     file_size: int
     uploaded_at: datetime
     content_url: str
+
+
+class DamageDetectionResponse(BaseModel):
+    vehicle_part: str | None
+    damage_type: str | None
+    damage_percentage: float
+    confidence: float
+    status: DamageDetectionStatus
+    annotated_evidence: EvidenceResponse
+
+
+class DamageAnalysisResponse(BaseModel):
+    id: str
+    assessment: DamageAssessment
+    warning: str | None
+    detections: list[DamageDetectionResponse]
+    created_at: datetime
