@@ -38,7 +38,7 @@ export function ClaimCreatePage() {
   }
 
   return (
-    <div className="mx-auto grid max-w-3xl gap-6 py-2">
+    <div className="mx-auto grid max-w-[1440px] gap-6 py-2">
         <Link className="flex w-fit items-center gap-2 text-sm font-semibold text-blue-700" to="/dashboard">
           <ArrowLeft size={18} />
           Back to dashboard

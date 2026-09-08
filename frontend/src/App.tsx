@@ -273,6 +273,45 @@ function DashboardPage() {
   )
 }
 
+function ClaimsPage() {
+  const { data, error, isPending } = useDashboardOverview()
+  const navigate = useNavigate()
+
+  return (
+    <div className="mx-auto grid max-w-[1440px] gap-6">
+      <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-slate-500">Claims</p>
+          <h1 className="mt-2 text-3xl font-semibold text-slate-950">Claim cases</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-600">Review active intake cases and open their evidence records.</p>
+        </div>
+        <Button className="w-full sm:w-auto" onPress={() => navigate('/claims/new')} variant="primary">
+          <CloudUpload size={18} />
+          New claim
+        </Button>
+      </header>
+
+      <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
+        <Card.Header className="border-b border-slate-100 px-5 py-4">
+          <Card.Title className="text-lg text-slate-950">All claims</Card.Title>
+          <Card.Description className="text-sm text-slate-500">Current cases ordered by their latest update.</Card.Description>
+        </Card.Header>
+        <Card.Content className="p-5">
+          {isPending ? <QueueSkeleton /> : null}
+          {error ? <InlineError message="Claim cases could not be loaded." /> : null}
+          {data && data.claims.length > 0 ? <ClaimQueueTable claims={data.claims} /> : null}
+          {data && data.claims.length === 0 ? (
+            <EmptyState>
+              <div className="text-sm font-semibold text-slate-950">No claims yet</div>
+              <p className="mt-1 text-sm text-slate-500">Create a claim to begin evidence intake.</p>
+            </EmptyState>
+          ) : null}
+        </Card.Content>
+      </Card>
+    </div>
+  )
+}
+
 function AccessRestricted() {
   const navigate = useNavigate()
 
@@ -311,7 +350,7 @@ export function AppRoutes() {
       <Route element={<LoginPage />} path="/login" />
       <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
         <Route element={<DashboardPage />} path="/dashboard" />
-        <Route element={<DashboardPage />} path="/claims" />
+        <Route element={<ClaimsPage />} path="/claims" />
         <Route element={<ClaimCreatePage />} path="/claims/new" />
         <Route element={<ClaimDetailPage />} path="/claims/:claimId" />
         <Route

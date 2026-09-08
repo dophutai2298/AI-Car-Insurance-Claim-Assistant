@@ -105,6 +105,25 @@ test('invalid credentials display the safe API error', async () => {
   expect(await screen.findByText('Invalid email or password')).toBeVisible()
 })
 
+test('claims route renders the dedicated claim table', async () => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    if (String(input).endsWith('/api/auth/me')) return new Response(JSON.stringify(adjusterSession.user))
+    return new Response(JSON.stringify([{
+      id: 'CLM-000071',
+      claimant_name: 'Mai Nguyen',
+      vehicle_summary: '2022 Toyota Camry',
+      status: 'DRAFT',
+      updated_at: '2026-09-08T00:00:00Z',
+    }]))
+  })
+  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adjusterSession))
+  renderRoute('/claims')
+
+  expect(await screen.findByRole('heading', { name: /claim cases/i })).toBeVisible()
+  expect(await screen.findByRole('table')).toBeVisible()
+  expect(screen.getByRole('link', { name: /clm-000071/i })).toBeVisible()
+})
+
 test('adjuster can create a claim and open its detail', async () => {
   const createdClaim = {
     id: 'CLM-000042',
