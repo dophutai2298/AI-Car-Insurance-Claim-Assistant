@@ -136,6 +136,8 @@ test('adjuster can create a claim and open its detail', async () => {
   const user = userEvent.setup()
   renderRoute('/claims/new')
 
+  expect(await screen.findByRole('navigation', { name: /primary navigation/i })).toBeVisible()
+  expect(screen.getByRole('link', { name: /claims/i })).toBeVisible()
   await user.type(await screen.findByLabelText(/claimant name/i), 'Mai Nguyen')
   await user.type(screen.getByLabelText(/make/i), 'Toyota')
   await user.type(screen.getByLabelText(/model/i), 'Camry')
@@ -144,6 +146,7 @@ test('adjuster can create a claim and open its detail', async () => {
 
   expect(await screen.findByRole('heading', { name: /claim clm-000042/i })).toBeVisible()
   expect(screen.getByText('Toyota Camry')).toBeVisible()
+  expect(screen.getByRole('navigation', { name: /primary navigation/i })).toBeVisible()
 })
 
 test('adjuster can start the safe AI review lifecycle from claim detail', async () => {

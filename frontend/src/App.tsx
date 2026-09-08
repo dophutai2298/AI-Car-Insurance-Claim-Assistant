@@ -7,14 +7,13 @@ import {
   CloudUpload,
   Document,
   ErrorOutline,
-  Login,
   Logout,
   SettingsAdjust,
   WarningAlt,
 } from '@carbon/icons-react'
 import { Alert, Button, Card, Chip, EmptyState, Skeleton } from '@heroui/react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router'
+import { Navigate, NavLink, Outlet, Route, Routes, useNavigate } from 'react-router'
 
 import { ClaimQueueTable } from './features/dashboard/ClaimQueueTable'
 import type { CapabilityState } from './features/dashboard/types'
@@ -37,16 +36,14 @@ const capabilityTone: Record<CapabilityState, 'success' | 'warning' | 'default'>
   warning: 'warning',
 }
 
-function DashboardPage() {
-  const { data, error, isPending } = useDashboardOverview()
+function AppShell() {
   const { logout, session } = useAuth()
-  const navigate = useNavigate()
   const visibleNavigation = navigation.filter(
     (item) => !item.adminOnly || session?.user.role === 'ADMIN',
   )
 
   return (
-    <main className="h-full overflow-hidden bg-slate-100 text-slate-950">
+    <main className="h-dvh overflow-hidden bg-slate-100 text-slate-950">
       <div className="grid h-full grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden lg:grid-cols-[272px_minmax(0,1fr)] lg:grid-rows-1">
         <aside className="shrink-0 overflow-hidden border-b border-slate-200 bg-slate-950 px-5 py-5 text-white lg:h-full lg:border-b-0 lg:border-r lg:border-slate-800">
           <div className="flex h-full flex-col gap-6">
@@ -94,25 +91,23 @@ function DashboardPage() {
                 Sign out
               </Button>
             </div>
-
-            {/* <div className="mt-auto hidden rounded-lg border border-slate-800 bg-slate-900 p-4 lg:block">
-              <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-100">
-                <CheckmarkOutline size={18} />
-                Task 01 boundary
-              </div>
-              <p className="mb-4 text-sm leading-6 text-slate-400">
-                Frontend shell only. Backend, Postgres and runtime configuration remain unchanged.
-              </p>
-              <Button className="w-full justify-between" size="sm" variant="primary">
-                Login shell
-                <Login size={16} />
-              </Button>
-            </div> */}
           </div>
         </aside>
 
         <section className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6 lg:px-8">
-          <div className="mx-auto grid max-w-[1440px] gap-6">
+          <Outlet />
+        </section>
+      </div>
+    </main>
+  )
+}
+
+function DashboardPage() {
+  const { data, error, isPending } = useDashboardOverview()
+  const navigate = useNavigate()
+
+  return (
+    <div className="mx-auto grid max-w-[1440px] gap-6">
             <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 xl:flex-row xl:items-end xl:justify-between">
               <div>
                 <p className="mb-2 text-sm font-semibold text-slate-500">PoC application shell</p>
@@ -274,10 +269,7 @@ function DashboardPage() {
                 </Alert>
               </aside>
             </div>
-          </div>
-        </section>
-      </div>
-    </main>
+    </div>
   )
 }
 
@@ -285,7 +277,7 @@ function AccessRestricted() {
   const navigate = useNavigate()
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-slate-100 px-5">
+    <div className="flex min-h-full items-center justify-center px-5">
       <Card className="w-full max-w-lg rounded-lg border border-slate-200 bg-white shadow-sm">
         <Card.Content className="p-8">
           <h1 className="text-2xl font-semibold text-slate-950">Access restricted</h1>
@@ -297,46 +289,40 @@ function AccessRestricted() {
           </Button>
         </Card.Content>
       </Card>
-    </main>
+    </div>
   )
 }
 
 function AdminPage() {
   return (
-    <main className="min-h-dvh bg-slate-100 p-8">
+    <div className="mx-auto max-w-[1440px] py-4">
       <h1 className="text-3xl font-semibold text-slate-950">Admin configuration</h1>
       <p className="mt-3 text-sm text-slate-600">Configuration controls arrive in task 08.</p>
       <NavLink className="mt-6 inline-block text-sm font-semibold text-blue-700" to="/dashboard">
         Return to dashboard
       </NavLink>
-    </main>
+    </div>
   )
 }
 
 export function AppRoutes() {
-  const protectedDashboard = (
-    <ProtectedRoute>
-      <DashboardPage />
-    </ProtectedRoute>
-  )
-
   return (
     <Routes>
       <Route element={<LoginPage />} path="/login" />
-      <Route element={protectedDashboard} path="/dashboard" />
-      <Route element={protectedDashboard} path="/claims" />
-      <Route element={<ProtectedRoute><ClaimCreatePage /></ProtectedRoute>} path="/claims/new" />
-      <Route element={<ProtectedRoute><ClaimDetailPage /></ProtectedRoute>} path="/claims/:claimId" />
-      <Route
-        element={
-          <ProtectedRoute>
+      <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
+        <Route element={<DashboardPage />} path="/dashboard" />
+        <Route element={<DashboardPage />} path="/claims" />
+        <Route element={<ClaimCreatePage />} path="/claims/new" />
+        <Route element={<ClaimDetailPage />} path="/claims/:claimId" />
+        <Route
+          element={
             <RoleRoute fallback={<AccessRestricted />} role="ADMIN">
               <AdminPage />
             </RoleRoute>
-          </ProtectedRoute>
-        }
-        path="/admin"
-      />
+          }
+          path="/admin"
+        />
+      </Route>
       <Route element={<Navigate replace to="/dashboard" />} path="*" />
     </Routes>
   )

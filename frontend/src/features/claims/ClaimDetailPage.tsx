@@ -13,26 +13,23 @@ export function ClaimDetailPage() {
 
   if (isPending) {
     return (
-      <main className="min-h-dvh bg-slate-100 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto grid max-w-3xl gap-6 py-2">
         <div className="mx-auto grid max-w-3xl gap-6"><Skeleton className="h-10 w-40 rounded-lg" /><Skeleton className="h-72 rounded-lg" /></div>
-      </main>
+      </div>
     )
   }
 
   if (error || !claim) {
     return (
-      <main className="min-h-dvh bg-slate-100 px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-3xl">
+      <div className="mx-auto max-w-3xl py-2">
           <Alert status="danger"><Alert.Title>Claim unavailable</Alert.Title><Alert.Description>The claim could not be loaded.</Alert.Description></Alert>
           <Link className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-blue-700" to="/dashboard"><ArrowLeft size={18} />Back to dashboard</Link>
-        </div>
-      </main>
+      </div>
     )
   }
 
   return (
-    <main className="min-h-dvh bg-slate-100 px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-3xl gap-6">
+    <div className="mx-auto grid max-w-3xl gap-6 py-2">
         <Link className="flex w-fit items-center gap-2 text-sm font-semibold text-blue-700" to="/dashboard"><ArrowLeft size={18} />Back to dashboard</Link>
         <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -79,8 +76,7 @@ export function ClaimDetailPage() {
           <Alert.Title>AI review lifecycle</Alert.Title>
           <Alert.Description>Case status tracks the AI conclusion review only. It never represents final insurance claim approval or rejection.</Alert.Description>
         </Alert>
-      </div>
-    </main>
+    </div>
   )
 }
 
