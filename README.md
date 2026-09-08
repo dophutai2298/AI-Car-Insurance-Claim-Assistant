@@ -37,6 +37,17 @@ uvicorn app.main:app --reload
 
 The health endpoint is available at `http://localhost:8000/api/health`.
 
+The backend creates the required tables and seeds these local demo accounts on startup:
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Admin | `admin@example.com` | `Admin123!` |
+| Adjuster | `adjuster@example.com` | `Adjuster123!` |
+
+Set the demo credentials before the first database startup through the corresponding values in `.env`.
+To reseed changed credentials locally, recreate the development Postgres volume.
+Authentication endpoints are available at `POST /api/auth/login` and `GET /api/auth/me`.
+
 ### 4. Start the frontend
 
 ```bash
@@ -56,5 +67,6 @@ python scripts/check_health.py
 python scripts/check_database.py
 
 cd ../frontend
+npm test
 npm run build
 ```

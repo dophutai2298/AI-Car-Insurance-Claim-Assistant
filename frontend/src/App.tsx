@@ -1,6 +1,6 @@
 import {
   Activity,
-  Ai,
+  CarFront,
   ChartColumn,
   CheckmarkOutline,
   ChevronRight,
@@ -8,20 +8,25 @@ import {
   Document,
   ErrorOutline,
   Login,
+  Logout,
   SettingsAdjust,
   WarningAlt,
 } from '@carbon/icons-react'
 import { Alert, Button, Card, Chip, EmptyState, Skeleton } from '@heroui/react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router'
 
 import { ClaimQueueTable } from './features/dashboard/ClaimQueueTable'
 import type { CapabilityState } from './features/dashboard/types'
 import { useDashboardOverview } from './features/dashboard/useDashboardOverview'
+import { LoginPage } from './features/auth/LoginPage'
+import { useAuth } from './features/auth/AuthProvider'
+import { ProtectedRoute, RoleRoute } from './features/auth/ProtectedRoute'
 
 const navigation = [
-  { label: 'Dashboard', icon: Activity, active: true },
-  { label: 'Claims', icon: Document, active: false },
-  { label: 'Admin Config', icon: SettingsAdjust, active: false },
+  { label: 'Dashboard', icon: Activity, path: '/dashboard' },
+  { label: 'Claims', icon: Document, path: '/claims' },
+  { label: 'Admin Config', icon: SettingsAdjust, path: '/admin', adminOnly: true },
 ]
 
 const capabilityTone: Record<CapabilityState, 'success' | 'warning' | 'default'> = {
@@ -30,8 +35,12 @@ const capabilityTone: Record<CapabilityState, 'success' | 'warning' | 'default'>
   warning: 'warning',
 }
 
-function App() {
+function DashboardPage() {
   const { data, error, isPending } = useDashboardOverview()
+  const { logout, session } = useAuth()
+  const visibleNavigation = navigation.filter(
+    (item) => !item.adminOnly || session?.user.role === 'ADMIN',
+  )
 
   return (
     <main className="h-full overflow-hidden bg-slate-100 text-slate-950">
@@ -40,7 +49,7 @@ function App() {
           <div className="flex h-full flex-col gap-6">
             <div className="flex items-center gap-3">
               <div className="flex size-10 items-center justify-center rounded-lg bg-blue-500 text-white">
-                <Ai size={22} />
+                <CarFront size={22} />
               </div>
               <div>
                 <div className="text-sm font-semibold">Claim Assistant</div>
@@ -49,27 +58,39 @@ function App() {
             </div>
 
             <nav className="grid grid-cols-3 gap-2 lg:grid-cols-1" aria-label="Primary navigation">
-              {navigation.map((item) => {
+              {visibleNavigation.map((item) => {
                 const Icon = item.icon
 
                 return (
-                  <a
-                    aria-current={item.active ? 'page' : undefined}
-                    className={[
-                      'flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors lg:justify-start',
-                      item.active
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'text-slate-300 hover:bg-slate-900 hover:text-white',
-                    ].join(' ')}
-                    href="#"
+                  <NavLink
+                    className={({ isActive }) =>
+                      [
+                        'flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors lg:justify-start',
+                        isActive
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-300 hover:bg-slate-900 hover:text-white',
+                      ].join(' ')
+                    }
                     key={item.label}
+                    to={item.path}
                   >
                     <Icon size={18} />
                     <span>{item.label}</span>
-                  </a>
+                  </NavLink>
                 )
               })}
             </nav>
+
+            <div className="mt-auto hidden border-t border-slate-800 pt-4 lg:block">
+              <div className="mb-3 min-w-0">
+                <div className="truncate text-sm font-semibold text-white">{session?.user.full_name}</div>
+                <div className="truncate text-xs text-slate-400">{session?.user.email}</div>
+              </div>
+              <Button className="w-full justify-start" onPress={logout} size="sm" variant="ghost">
+                <Logout size={17} />
+                Sign out
+              </Button>
+            </div>
 
             {/* <div className="mt-auto hidden rounded-lg border border-slate-800 bg-slate-900 p-4 lg:block">
               <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-100">
@@ -255,6 +276,69 @@ function App() {
       </div>
     </main>
   )
+}
+
+function AccessRestricted() {
+  const navigate = useNavigate()
+
+  return (
+    <main className="flex min-h-dvh items-center justify-center bg-slate-100 px-5">
+      <Card className="w-full max-w-lg rounded-lg border border-slate-200 bg-white shadow-sm">
+        <Card.Content className="p-8">
+          <h1 className="text-2xl font-semibold text-slate-950">Access restricted</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            Admin configuration is available only to users with the Admin role.
+          </p>
+          <Button className="mt-6" onPress={() => navigate('/dashboard')} variant="primary">
+            Return to dashboard
+          </Button>
+        </Card.Content>
+      </Card>
+    </main>
+  )
+}
+
+function AdminPage() {
+  return (
+    <main className="min-h-dvh bg-slate-100 p-8">
+      <h1 className="text-3xl font-semibold text-slate-950">Admin configuration</h1>
+      <p className="mt-3 text-sm text-slate-600">Configuration controls arrive in task 08.</p>
+      <NavLink className="mt-6 inline-block text-sm font-semibold text-blue-700" to="/dashboard">
+        Return to dashboard
+      </NavLink>
+    </main>
+  )
+}
+
+export function AppRoutes() {
+  const protectedDashboard = (
+    <ProtectedRoute>
+      <DashboardPage />
+    </ProtectedRoute>
+  )
+
+  return (
+    <Routes>
+      <Route element={<LoginPage />} path="/login" />
+      <Route element={protectedDashboard} path="/dashboard" />
+      <Route element={protectedDashboard} path="/claims" />
+      <Route
+        element={
+          <ProtectedRoute>
+            <RoleRoute fallback={<AccessRestricted />} role="ADMIN">
+              <AdminPage />
+            </RoleRoute>
+          </ProtectedRoute>
+        }
+        path="/admin"
+      />
+      <Route element={<Navigate replace to="/dashboard" />} path="*" />
+    </Routes>
+  )
+}
+
+function App() {
+  return <AppRoutes />
 }
 
 type MetricCardProps = {
