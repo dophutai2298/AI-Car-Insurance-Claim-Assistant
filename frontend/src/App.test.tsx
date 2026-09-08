@@ -103,3 +103,70 @@ test('invalid credentials display the safe API error', async () => {
 
   expect(await screen.findByText('Invalid email or password')).toBeVisible()
 })
+
+test('adjuster can create a claim and open its detail', async () => {
+  const createdClaim = {
+    id: 'CLM-000042',
+    claimant_name: 'Mai Nguyen',
+    vehicle: {
+      make: 'Toyota',
+      model: 'Camry',
+      year: 2022,
+      license_plate: '51H-123.45',
+      vin: '4T1G11AKXNU123456',
+    },
+    status: 'DRAFT',
+    created_at: '2026-09-08T00:00:00Z',
+    updated_at: '2026-09-08T00:00:00Z',
+  }
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).endsWith('/api/auth/me')) {
+      return new Response(JSON.stringify(adjusterSession.user), { status: 200 })
+    }
+    if (String(input).endsWith('/api/claims') && init?.method === 'POST') {
+      return new Response(JSON.stringify(createdClaim), { status: 201 })
+    }
+    if (String(input).endsWith('/api/claims/CLM-000042')) {
+      return new Response(JSON.stringify(createdClaim), { status: 200 })
+    }
+    return new Response(JSON.stringify([]), { status: 200 })
+  })
+  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adjusterSession))
+  const user = userEvent.setup()
+  renderRoute('/claims/new')
+
+  await user.type(await screen.findByLabelText(/claimant name/i), 'Mai Nguyen')
+  await user.type(screen.getByLabelText(/make/i), 'Toyota')
+  await user.type(screen.getByLabelText(/model/i), 'Camry')
+  await user.type(screen.getByLabelText(/year/i), '2022')
+  await user.click(screen.getByRole('button', { name: /create claim/i }))
+
+  expect(await screen.findByRole('heading', { name: /claim clm-000042/i })).toBeVisible()
+  expect(screen.getByText('Toyota Camry')).toBeVisible()
+})
+
+test('adjuster can start the safe AI review lifecycle from claim detail', async () => {
+  const draftClaim = {
+    id: 'CLM-000051',
+    claimant_name: 'Mai Nguyen',
+    vehicle: { make: 'Toyota', model: 'Camry', year: 2022, license_plate: null, vin: null },
+    status: 'DRAFT',
+    created_at: '2026-09-08T00:00:00Z',
+    updated_at: '2026-09-08T00:00:00Z',
+  }
+  let currentClaim = draftClaim
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).endsWith('/api/auth/me')) return new Response(JSON.stringify(adjusterSession.user))
+    if (String(input).endsWith('/status') && init?.method === 'PATCH') {
+      currentClaim = { ...draftClaim, status: 'ANALYZING' }
+    }
+    return new Response(JSON.stringify(currentClaim))
+  })
+  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adjusterSession))
+  const user = userEvent.setup()
+  renderRoute('/claims/CLM-000051')
+
+  await user.click(await screen.findByRole('button', { name: /begin ai analysis/i }))
+
+  expect(await screen.findByText('Analyzing')).toBeVisible()
+})

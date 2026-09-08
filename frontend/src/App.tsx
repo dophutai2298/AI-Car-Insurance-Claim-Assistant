@@ -22,6 +22,8 @@ import { useDashboardOverview } from './features/dashboard/useDashboardOverview'
 import { LoginPage } from './features/auth/LoginPage'
 import { useAuth } from './features/auth/AuthProvider'
 import { ProtectedRoute, RoleRoute } from './features/auth/ProtectedRoute'
+import { ClaimCreatePage } from './features/claims/ClaimCreatePage'
+import { ClaimDetailPage } from './features/claims/ClaimDetailPage'
 
 const navigation = [
   { label: 'Dashboard', icon: Activity, path: '/dashboard' },
@@ -38,6 +40,7 @@ const capabilityTone: Record<CapabilityState, 'success' | 'warning' | 'default'>
 function DashboardPage() {
   const { data, error, isPending } = useDashboardOverview()
   const { logout, session } = useAuth()
+  const navigate = useNavigate()
   const visibleNavigation = navigation.filter(
     (item) => !item.adminOnly || session?.user.role === 'ADMIN',
   )
@@ -171,7 +174,7 @@ function DashboardPage() {
                         Prioritized claim files ready for intake, AI review and adjuster action.
                       </Card.Description>
                     </div>
-                    <Button className="w-full sm:w-auto" size="sm" variant="primary">
+                    <Button className="w-full sm:w-auto" onPress={() => navigate('/claims/new')} size="sm" variant="primary">
                       <CloudUpload size={17} />
                       New claim
                     </Button>
@@ -322,6 +325,8 @@ export function AppRoutes() {
       <Route element={<LoginPage />} path="/login" />
       <Route element={protectedDashboard} path="/dashboard" />
       <Route element={protectedDashboard} path="/claims" />
+      <Route element={<ProtectedRoute><ClaimCreatePage /></ProtectedRoute>} path="/claims/new" />
+      <Route element={<ProtectedRoute><ClaimDetailPage /></ProtectedRoute>} path="/claims/:claimId" />
       <Route
         element={
           <ProtectedRoute>

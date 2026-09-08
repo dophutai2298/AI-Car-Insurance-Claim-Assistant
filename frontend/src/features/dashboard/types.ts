@@ -1,10 +1,6 @@
-export type ClaimStatus =
-  | 'DRAFT'
-  | 'ANALYZING'
-  | 'REVIEW_REQUIRED'
-  | 'AI_APPROVED'
-  | 'AI_REJECTED'
-  | 'FAILED'
+import type { ClaimStatus } from '../claims/types'
+
+export type { ClaimStatus } from '../claims/types'
 
 export type CapabilityState = 'ready' | 'mock' | 'warning'
 
@@ -14,7 +10,7 @@ export type ClaimQueueItem = {
   vehicle: string
   status: ClaimStatus
   evidenceCount: number
-  assessment: 'Pending' | 'Repair likely' | 'Replacement likely' | 'Manual inspection'
+  assessment: 'Not assessed' | 'Repair likely' | 'Replacement likely' | 'Manual inspection'
   updatedAt: string
 }
 
