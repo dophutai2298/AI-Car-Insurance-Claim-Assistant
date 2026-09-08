@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models import ClaimStatus
+from app.models import ClaimStatus, EvidenceCategory
 
 
 class VehicleMetadata(BaseModel):
@@ -27,6 +27,7 @@ class ClaimResponse(BaseModel):
     status: ClaimStatus
     created_at: datetime
     updated_at: datetime
+    evidence: list["EvidenceResponse"] = Field(default_factory=list)
 
 
 class ClaimListItem(BaseModel):
@@ -39,3 +40,13 @@ class ClaimListItem(BaseModel):
 
 class ClaimStatusUpdateRequest(BaseModel):
     status: ClaimStatus
+
+
+class EvidenceResponse(BaseModel):
+    id: int
+    category: EvidenceCategory
+    original_filename: str
+    content_type: str | None
+    file_size: int
+    uploaded_at: datetime
+    content_url: str

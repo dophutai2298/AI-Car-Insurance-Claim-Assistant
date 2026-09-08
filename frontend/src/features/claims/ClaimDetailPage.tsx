@@ -3,6 +3,7 @@ import { Alert, Button, Card, Chip, Skeleton } from '@heroui/react'
 import { Link, useParams } from 'react-router'
 
 import { lifecycleAction, statusLabel, statusTone } from './statusPresentation'
+import { EvidencePanel } from './EvidencePanel'
 import { useClaim, useTransitionClaim } from './useClaims'
 
 export function ClaimDetailPage() {
@@ -54,6 +55,8 @@ export function ClaimDetailPage() {
             <DetailField label="VIN" value={claim.vehicle.vin ?? 'Not provided'} />
           </Card.Content>
         </Card>
+
+        <EvidencePanel claimId={claim.id} evidence={claim.evidence ?? []} />
 
         {lifecycleAction[claim.status] ? (
           <section className="flex flex-col gap-4 border-y border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">

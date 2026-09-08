@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useAuth } from '../auth/AuthProvider'
-import { createClaim, getClaim, listClaims, transitionClaimStatus } from './claimsApi'
-import type { ClaimCreateInput, ClaimStatus } from './types'
+import { createClaim, getClaim, listClaims, transitionClaimStatus, uploadEvidence } from './claimsApi'
+import type { ClaimCreateInput, ClaimStatus, EvidenceUploadItem } from './types'
 
 export const claimsQueryKey = ['claims'] as const
 
@@ -50,6 +50,19 @@ export function useTransitionClaim(claimId: string | undefined) {
       queryClient.setQueryData([...claimsQueryKey, claim.id], claim)
       await queryClient.invalidateQueries({ queryKey: claimsQueryKey })
       await queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] })
+    },
+  })
+}
+
+export function useUploadEvidence(claimId: string | undefined) {
+  const { session } = useAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (items: EvidenceUploadItem[]) => uploadEvidence(claimId!, items, session!.access_token),
+    onSuccess: async (claim) => {
+      queryClient.setQueryData([...claimsQueryKey, claim.id], claim)
+      await queryClient.invalidateQueries({ queryKey: claimsQueryKey })
     },
   })
 }

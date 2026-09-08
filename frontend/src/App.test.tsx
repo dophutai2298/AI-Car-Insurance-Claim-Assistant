@@ -6,6 +6,7 @@ import { expect, test, vi } from 'vitest'
 
 import { AppRoutes } from './App'
 import { AuthProvider } from './features/auth/AuthProvider'
+import type { EvidenceCategory, EvidenceItem } from './features/claims/types'
 
 const adminSession = {
   access_token: 'admin-token',
@@ -169,4 +170,46 @@ test('adjuster can start the safe AI review lifecycle from claim detail', async 
   await user.click(await screen.findByRole('button', { name: /begin ai analysis/i }))
 
   expect(await screen.findByText('Analyzing')).toBeVisible()
+})
+
+test('adjuster uploads evidence with a selected category from claim detail', async () => {
+  let currentClaim = {
+    id: 'CLM-000061',
+    claimant_name: 'Mai Nguyen',
+    vehicle: { make: 'Toyota', model: 'Camry', year: 2022, license_plate: null, vin: null },
+    status: 'DRAFT',
+    created_at: '2026-09-08T00:00:00Z',
+    updated_at: '2026-09-08T00:00:00Z',
+    evidence: [] as EvidenceItem[],
+  }
+  let uploadedCategory = ''
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).endsWith('/api/auth/me')) return new Response(JSON.stringify(adjusterSession.user))
+    if (String(input).endsWith('/evidence') && init?.method === 'POST') {
+      uploadedCategory = (init.body as FormData).get('categories') as string
+      currentClaim = {
+        ...currentClaim,
+        evidence: [{
+          id: 1,
+          category: uploadedCategory as EvidenceCategory,
+          original_filename: 'policy.pdf',
+          content_type: 'application/pdf',
+          file_size: 12,
+          uploaded_at: '2026-09-08T00:00:00Z',
+          content_url: '/api/claims/CLM-000061/evidence/1/content',
+        }],
+      }
+    }
+    return new Response(JSON.stringify(currentClaim))
+  })
+  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adjusterSession))
+  const user = userEvent.setup()
+  renderRoute('/claims/CLM-000061')
+
+  await user.upload(await screen.findByLabelText(/select evidence files/i), new File(['document'], 'policy.pdf', { type: 'application/pdf' }))
+  await user.selectOptions(screen.getByLabelText(/category for policy.pdf/i), 'INSURANCE_POLICY')
+  await user.click(screen.getByRole('button', { name: /upload evidence/i }))
+
+  expect(await screen.findByText('Insurance policies')).toBeVisible()
+  expect(uploadedCategory).toBe('INSURANCE_POLICY')
 })

@@ -33,6 +33,15 @@ class ClaimStatus(str, Enum):
     FAILED = "FAILED"
 
 
+class EvidenceCategory(str, Enum):
+    VEHICLE_DAMAGE_IMAGE = "VEHICLE_DAMAGE_IMAGE"
+    ID_CARD = "ID_CARD"
+    INSURANCE_POLICY = "INSURANCE_POLICY"
+    VEHICLE_REGISTRATION = "VEHICLE_REGISTRATION"
+    DRIVER_LICENSE = "DRIVER_LICENSE"
+    OTHER_DOCUMENT = "OTHER_DOCUMENT"
+
+
 class Claim(Base):
     __tablename__ = "claims"
 
@@ -53,4 +62,21 @@ class Claim(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class Evidence(Base):
+    __tablename__ = "evidence"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id"), index=True)
+    category: Mapped[EvidenceCategory] = mapped_column(
+        SqlEnum(EvidenceCategory, native_enum=False)
+    )
+    original_filename: Mapped[str] = mapped_column(String(255))
+    stored_path: Mapped[str] = mapped_column(String(500), unique=True)
+    content_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    file_size: Mapped[int] = mapped_column(Integer)
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

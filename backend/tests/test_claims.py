@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
 from app.main import create_app
+from app.services.evidence_storage import LocalEvidenceStorage
 
 
 @pytest.fixture
@@ -17,6 +18,7 @@ def client(tmp_path, monkeypatch) -> Iterator[TestClient]:
     monkeypatch.setenv("ADJUSTER_EMAIL", "adjuster@example.com")
     monkeypatch.setenv("ADJUSTER_PASSWORD", "Adjuster123!")
     monkeypatch.setenv("CHECK_DATABASE_ON_HEALTH", "false")
+    monkeypatch.setenv("UPLOAD_ROOT", str(tmp_path / "uploads"))
     get_settings.cache_clear()
 
     with TestClient(create_app()) as test_client:
@@ -125,3 +127,76 @@ def test_claim_cannot_skip_safe_lifecycle_transition(client: TestClient):
 
     assert response.status_code == 409
     assert response.json() == {"detail": "Invalid claim lifecycle transition"}
+
+
+def test_adjuster_can_upload_multiple_evidence_files_and_open_image_content(client: TestClient, tmp_path):
+    claim = create_claim(client)
+
+    response = client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=adjuster_headers(client),
+        data={"categories": ["VEHICLE_DAMAGE_IMAGE", "INSURANCE_POLICY"]},
+        files=[
+            ("files", ("front-damage.jpg", b"damage-image-content", "image/jpeg")),
+            ("files", ("policy.pdf", b"policy-document-content", "application/pdf")),
+        ],
+    )
+
+    assert response.status_code == 200
+    evidence = response.json()["evidence"]
+    assert sorted((item["category"], item["original_filename"]) for item in evidence) == [
+        ("INSURANCE_POLICY", "policy.pdf"),
+        ("VEHICLE_DAMAGE_IMAGE", "front-damage.jpg"),
+    ]
+    assert {item["file_size"] for item in evidence} == {20, 23}
+    assert (tmp_path / "uploads" / claim["id"]).is_dir()
+
+    image = next(item for item in evidence if item["category"] == "VEHICLE_DAMAGE_IMAGE")
+    content = client.get(image["content_url"], headers=adjuster_headers(client))
+
+    assert content.status_code == 200
+    assert content.headers["content-type"] == "image/jpeg"
+    assert content.content == b"damage-image-content"
+
+
+def test_evidence_category_mismatch_returns_clear_error_without_metadata_or_files(client: TestClient, tmp_path):
+    claim = create_claim(client)
+
+    response = client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=adjuster_headers(client),
+        data={"categories": ["VEHICLE_DAMAGE_IMAGE", "ID_CARD"]},
+        files=[("files", ("front-damage.jpg", b"damage-image-content", "image/jpeg"))],
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Each uploaded file must have exactly one evidence category"}
+    assert client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()["evidence"] == []
+    assert not (tmp_path / "uploads" / claim["id"]).exists()
+
+
+def test_storage_failure_cleans_up_previously_written_files_and_metadata(client: TestClient, tmp_path, monkeypatch):
+    claim = create_claim(client)
+    original_write_upload = LocalEvidenceStorage._write_upload
+
+    def fail_for_second_file(self, upload, destination):
+        if upload.filename == "policy.pdf":
+            raise RuntimeError("stream read failed")
+        return original_write_upload(self, upload, destination)
+
+    monkeypatch.setattr(LocalEvidenceStorage, "_write_upload", fail_for_second_file)
+
+    response = client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=adjuster_headers(client),
+        data={"categories": ["VEHICLE_DAMAGE_IMAGE", "INSURANCE_POLICY"]},
+        files=[
+            ("files", ("front-damage.jpg", b"damage-image-content", "image/jpeg")),
+            ("files", ("policy.pdf", b"policy-document-content", "application/pdf")),
+        ],
+    )
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Unable to store uploaded evidence"}
+    assert client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()["evidence"] == []
+    assert list((tmp_path / "uploads" / claim["id"]).glob("*")) == []

@@ -1,4 +1,10 @@
-import type { ClaimCreateInput, ClaimDetail, ClaimListItem, ClaimStatus } from './types'
+import type {
+  ClaimCreateInput,
+  ClaimDetail,
+  ClaimListItem,
+  ClaimStatus,
+  EvidenceUploadItem,
+} from './types'
 
 export class ClaimsApiError extends Error {}
 
@@ -42,4 +48,37 @@ export function transitionClaimStatus(claimId: string, status: ClaimStatus, acce
     method: 'PATCH',
     body: JSON.stringify({ status }),
   })
+}
+
+export async function uploadEvidence(
+  claimId: string,
+  items: EvidenceUploadItem[],
+  accessToken: string,
+) {
+  const formData = new FormData()
+  for (const item of items) {
+    formData.append('files', item.file)
+    formData.append('categories', item.category)
+  }
+
+  const response = await fetch(`/api/claims/${claimId}/evidence`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: formData,
+  })
+  const body: unknown = await response.json()
+  if (!response.ok) {
+    const message =
+      typeof body === 'object' && body !== null && 'detail' in body && typeof body.detail === 'string'
+        ? body.detail
+        : 'Unable to upload evidence'
+    throw new ClaimsApiError(message)
+  }
+  return body as ClaimDetail
+}
+
+export async function getEvidenceContent(contentUrl: string, accessToken: string) {
+  const response = await fetch(contentUrl, { headers: { Authorization: `Bearer ${accessToken}` } })
+  if (!response.ok) throw new ClaimsApiError('Unable to load evidence preview')
+  return response.blob()
 }
