@@ -21,10 +21,10 @@ class AccountSpec:
 
 # Update this list before running the script to create a different account set.
 ACCOUNTS: tuple[AccountSpec, ...] = (
-    AccountSpec("admin1", "Admin One", "123456", UserRole.ADMIN),
-    AccountSpec("admin2", "Admin Two", "123456", UserRole.ADMIN),
-    AccountSpec("assistant1", "Assistant One", "123456", UserRole.ADJUSTER),
-    AccountSpec("assistant2", "Assistant Two", "123456", UserRole.ADJUSTER),
+    AccountSpec("admin1@email.com", "Admin One", "123456", UserRole.ADMIN),
+    AccountSpec("admin2@email.com", "Admin Two", "123456", UserRole.ADMIN),
+    AccountSpec("assistant1@email.com", "Assistant One", "123456", UserRole.ADJUSTER),
+    AccountSpec("assistant2@email.com", "Assistant Two", "123456", UserRole.ADJUSTER),
 )
 
 
