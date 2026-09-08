@@ -57,6 +57,55 @@ def test_seeded_adjuster_receives_adjuster_role(client: TestClient):
     assert response.json()["user"]["role"] == "ADJUSTER"
 
 
+def admin_headers(client: TestClient) -> dict[str, str]:
+    token = login(client, "admin@example.com", "Admin123!").json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_admin_can_create_an_adjuster_account(client: TestClient):
+    response = client.post(
+        "/api/auth/users",
+        headers=admin_headers(client),
+        json={
+            "email": "assistant1",
+            "full_name": "Assistant One",
+            "password": "123456",
+            "role": "ADJUSTER",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json() == {
+        "email": "assistant1",
+        "full_name": "Assistant One",
+        "role": "ADJUSTER",
+    }
+    assert login(client, "assistant1", "123456").status_code == 200
+
+
+def test_adjuster_cannot_create_accounts(client: TestClient):
+    token = login(client, "adjuster@example.com", "Adjuster123!").json()["access_token"]
+
+    response = client.post(
+        "/api/auth/users",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"email": "assistant1", "password": "123456", "role": "ADJUSTER"},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Admin access required"}
+
+
+def test_duplicate_account_creation_returns_conflict(client: TestClient):
+    payload = {"email": "assistant1", "password": "123456", "role": "ADJUSTER"}
+
+    assert client.post("/api/auth/users", headers=admin_headers(client), json=payload).status_code == 201
+    response = client.post("/api/auth/users", headers=admin_headers(client), json=payload)
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "A user with this email already exists"}
+
+
 @pytest.mark.parametrize(
     ("email", "password"),
     [

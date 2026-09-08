@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.models import User, UserRole
 from app.repositories.users import UserRepository
+from app.schemas.auth import UserCreateRequest
 
 ALGORITHM = "HS256"
 password_hash = PasswordHash.recommended()
@@ -26,6 +27,21 @@ class AuthService:
         password_matches = password_hash.verify(password, stored_hash)
         if not user or not user.is_active or not password_matches:
             return None
+        return user
+
+    def create_user(self, request: UserCreateRequest) -> User | None:
+        email = request.email.strip().lower()
+        if self.users.find_by_email(email) is not None:
+            return None
+
+        user = self.users.add(
+            email=email,
+            full_name=request.full_name or email,
+            password_hash=password_hash.hash(request.password),
+            role=request.role,
+        )
+        self.session.commit()
+        self.session.refresh(user)
         return user
 
     def create_access_token(self, user: User) -> str:

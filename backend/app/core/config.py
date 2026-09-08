@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     adjuster_email: str = Field(default="adjuster@example.com", validation_alias="ADJUSTER_EMAIL")
     adjuster_password: str = Field(default="Adjuster123!", validation_alias="ADJUSTER_PASSWORD")
     upload_root: str = Field(default="uploads", validation_alias="UPLOAD_ROOT")
+    max_evidence_files: int = Field(default=10, ge=1, validation_alias="MAX_EVIDENCE_FILES")
+    max_evidence_file_size_bytes: int = Field(
+        default=10 * 1024 * 1024, ge=1, validation_alias="MAX_EVIDENCE_FILE_SIZE_BYTES"
+    )
     damage_model_mode: Literal["mock", "http"] = Field(default="mock", validation_alias="DAMAGE_MODEL_MODE")
     damage_model_url: str | None = Field(default=None, validation_alias="DAMAGE_MODEL_URL")
     part_search_mode: Literal["mock"] = Field(default="mock", validation_alias="PART_SEARCH_MODE")
@@ -37,6 +41,10 @@ class Settings(BaseSettings):
             "llm_mode": self.llm_mode,
             "upload_root": self.upload_root,
         }
+
+    def upload_root_path(self) -> Path:
+        configured_root = Path(self.upload_root)
+        return configured_root if configured_root.is_absolute() else ROOT_DIR / configured_root
 
 
 @lru_cache

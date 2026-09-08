@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import admin, auth
+from app.api.routes import admin, auth, claims
 from app.core.config import get_settings
 from app.db import Base, create_database_engine, create_session_factory, ping_database
 from app.services.auth import seed_demo_users
@@ -36,6 +36,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(admin.router)
+    app.include_router(claims.router)
 
     @app.get("/api/health")
     def health_check() -> dict[str, object]:

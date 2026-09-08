@@ -6,26 +6,10 @@ import {
   useLegacyTable,
 } from '@tanstack/react-table/legacy'
 import { useMemo } from 'react'
+import { Link } from 'react-router'
 
-import type { ClaimQueueItem, ClaimStatus } from './types'
-
-const statusTone: Record<ClaimStatus, 'default' | 'accent' | 'success' | 'warning' | 'danger'> = {
-  DRAFT: 'default',
-  ANALYZING: 'accent',
-  REVIEW_REQUIRED: 'warning',
-  AI_APPROVED: 'success',
-  AI_REJECTED: 'danger',
-  FAILED: 'danger',
-}
-
-const statusLabel: Record<ClaimStatus, string> = {
-  DRAFT: 'Draft',
-  ANALYZING: 'Analyzing',
-  REVIEW_REQUIRED: 'Review required',
-  AI_APPROVED: 'AI approved',
-  AI_REJECTED: 'AI rejected',
-  FAILED: 'Failed',
-}
+import { statusLabel, statusTone } from '../claims/statusPresentation'
+import type { ClaimQueueItem } from './types'
 
 type ClaimQueueTableProps = {
   claims: ClaimQueueItem[]
@@ -39,7 +23,9 @@ export function ClaimQueueTable({ claims }: ClaimQueueTableProps) {
         header: 'Claim',
         cell: ({ row }) => (
           <div>
-            <div className="font-semibold text-slate-950">{row.original.id}</div>
+            <Link className="font-semibold text-blue-700 hover:text-blue-900" to={`/claims/${row.original.id}`}>
+              {row.original.id}
+            </Link>
             <div className="text-xs text-slate-500">{row.original.claimant}</div>
           </div>
         ),
