@@ -10,6 +10,13 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class UserCreateRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    full_name: str | None = Field(default=None, min_length=1, max_length=120)
+    password: str = Field(min_length=6, max_length=128)
+    role: UserRole
+
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
