@@ -8,6 +8,13 @@ from app.core.config import get_settings
 from app.db import Base, create_database_engine, create_session_factory, ping_database
 from app.services.auth import seed_demo_users
 
+OPENAPI_TAGS = [
+    {"name": "auth", "description": "Session authentication and current-user operations."},
+    {"name": "claims", "description": "Claim lifecycle, evidence, damage analysis, and copilot results."},
+    {"name": "admin", "description": "Administrator-only assessment rule configuration."},
+    {"name": "system", "description": "Service health and runtime configuration."},
+]
+
 
 def create_app() -> FastAPI:
     settings = get_settings()
@@ -24,7 +31,17 @@ def create_app() -> FastAPI:
         finally:
             engine.dispose()
 
-    app = FastAPI(title=settings.app_name, lifespan=lifespan)
+    app = FastAPI(
+        title=settings.app_name,
+        summary="Interactive API documentation for the insurance claim assistant PoC.",
+        version="0.1.0",
+        openapi_tags=OPENAPI_TAGS,
+        docs_url="/docs",
+        redoc_url="/redoc",
+        openapi_url="/openapi.json",
+        swagger_ui_parameters={"docExpansion": "list", "displayRequestDuration": True},
+        lifespan=lifespan,
+    )
 
     app.add_middleware(
         CORSMiddleware,
@@ -38,7 +55,7 @@ def create_app() -> FastAPI:
     app.include_router(admin.router)
     app.include_router(claims.router)
 
-    @app.get("/api/health")
+    @app.get("/api/health", tags=["system"])
     def health_check() -> dict[str, object]:
         database_status = "not_checked"
 
@@ -55,7 +72,7 @@ def create_app() -> FastAPI:
             "runtime": settings.public_runtime(),
         }
 
-    @app.get("/api/runtime-config")
+    @app.get("/api/runtime-config", tags=["system"])
     def runtime_config() -> dict[str, str]:
         return settings.public_runtime()
 

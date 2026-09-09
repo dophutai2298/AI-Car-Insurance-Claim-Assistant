@@ -1,6 +1,7 @@
 from fastapi.routing import APIRoute
 from pydantic import ValidationError
 import pytest
+from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
 from app.main import create_app
@@ -45,6 +46,24 @@ def test_runtime_config_does_not_expose_secrets(monkeypatch):
 
     assert "jwt_secret" not in response
     assert "openai_api_key" not in response
+
+
+def test_swagger_ui_and_openapi_schema_document_the_backend_api(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET", "test-secret-that-is-long-enough-for-documentation-tests")
+    get_settings.cache_clear()
+    app = create_app()
+
+    client = TestClient(app)
+    swagger_response = client.get("/docs")
+    schema_response = client.get("/openapi.json")
+
+    assert swagger_response.status_code == 200
+    assert "Swagger UI" in swagger_response.text
+    schema = schema_response.json()
+    assert schema["info"]["title"] == "AI Car Insurance Claim Assistant API"
+    assert schema["info"]["version"] == "0.1.0"
+    assert {tag["name"] for tag in schema["tags"]} == {"admin", "auth", "claims", "system"}
+    assert "/api/claims/{claim_number}/damage-analysis" in schema["paths"]
 
 
 def test_short_jwt_secret_is_rejected(monkeypatch):
