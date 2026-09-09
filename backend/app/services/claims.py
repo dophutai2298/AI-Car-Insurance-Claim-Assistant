@@ -4,7 +4,17 @@ from fastapi import UploadFile
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.models import Claim, ClaimStatus, DamageAnalysis, Evidence, EvidenceCategory, User
+from app.models import (
+    Claim,
+    ClaimStatus,
+    DamageAnalysis,
+    Evidence,
+    EvidenceCategory,
+    ReferencePartPrice,
+    ReferencePriceLookupStatus,
+    ReferencePriceStatus,
+    User,
+)
 from app.repositories.claims import ClaimRepository
 from app.repositories.damage_analyses import DamageAnalysisRepository
 from app.repositories.evidence import EvidenceRepository
@@ -15,6 +25,7 @@ from app.schemas.claims import (
     ClaimListItem,
     ClaimResponse,
     EvidenceResponse,
+    ReferencePartPriceResponse,
     VehicleMetadata,
 )
 from app.schemas.admin import AssessmentRuleValuesSchema
@@ -22,6 +33,7 @@ from app.services.assessment_rules import AssessmentRuleService
 from app.services.evidence_storage import EvidenceStorage, EvidenceStorageError, StoredEvidence
 from app.services.damage_assessment import DamageAssessmentService
 from app.services.damage_model import DamageModelAdapter
+from app.services.part_search import PartSearchService
 
 ALLOWED_LIFECYCLE_TRANSITIONS: dict[ClaimStatus, set[ClaimStatus]] = {
     ClaimStatus.DRAFT: {ClaimStatus.ANALYZING},
@@ -42,6 +54,7 @@ class ClaimService:
         damage_model: DamageModelAdapter,
         assessment: DamageAssessmentService,
         rules: AssessmentRuleService,
+        part_search: PartSearchService,
     ):
         self.claims = ClaimRepository(session)
         self.evidence = EvidenceRepository(session)
@@ -50,6 +63,7 @@ class ClaimService:
         self.damage_model = damage_model
         self.assessment = assessment
         self.rules = rules
+        self.part_search = part_search
 
     def create_claim(self, data: ClaimCreateRequest, created_by: User) -> ClaimResponse:
         return self._to_response(self.claims.create(data, created_by.id))
@@ -112,7 +126,9 @@ class ClaimService:
         path = self.storage.resolve_path(evidence.stored_path)
         return (evidence, path) if path.is_file() else None
 
-    def run_damage_analysis(self, claim_number: str) -> DamageAnalysisResponse | None:
+    def run_damage_analysis(
+        self, claim_number: str, force_reference_price_lookup: bool = False
+    ) -> DamageAnalysisResponse | None:
         claim = self.claims.find_by_claim_number(claim_number)
         if claim is None:
             return None
@@ -125,11 +141,21 @@ class ClaimService:
             raise ValueError("Upload at least one vehicle damage image before running analysis")
         detections = self.damage_model.analyze(images)
         rules = self.rules.active_values()
+        assessment = self.assessment.assess(detections, rules)
+        reference_prices = self.part_search.lookup_for_assessment(
+            assessment.assessment,
+            detections,
+            claim.vehicle_make,
+            claim.vehicle_model,
+            claim.vehicle_year,
+            force_reference_price_lookup,
+        )
         analysis = self.damage_analyses.create(
             claim,
-            self.assessment.assess(detections, rules),
+            assessment,
             detections,
             rules,
+            reference_prices,
         )
         return self._to_damage_analysis_response(claim.claim_number, analysis)
 
@@ -180,13 +206,40 @@ class ClaimService:
                     annotated_evidence=self._to_evidence_response(claim_number, annotated_evidence),
                 )
             )
+        reference_prices = self.damage_analyses.reference_prices(analysis.id)
         return DamageAnalysisResponse(
             id=analysis.analysis_number,
             assessment=analysis.assessment,
             warning=analysis.warning,
             detections=detections,
             rules=self._rules_for_analysis(analysis.id),
+            reference_price_status=self._reference_price_status(reference_prices),
+            reference_prices=[self._to_reference_price_response(price) for price in reference_prices],
             created_at=analysis.created_at,
+        )
+
+    @staticmethod
+    def _reference_price_status(prices: list[ReferencePartPrice]) -> ReferencePriceLookupStatus:
+        if not prices:
+            return ReferencePriceLookupStatus.NOT_REQUESTED
+        return (
+            ReferencePriceLookupStatus.FOUND
+            if all(price.status is ReferencePriceStatus.FOUND for price in prices)
+            else ReferencePriceLookupStatus.UNAVAILABLE
+        )
+
+    @staticmethod
+    def _to_reference_price_response(price: ReferencePartPrice) -> ReferencePartPriceResponse:
+        return ReferencePartPriceResponse(
+            part_identity=price.part_identity,
+            amount=price.amount,
+            currency=price.currency,
+            source_name=price.source_name,
+            source_url=price.source_url,
+            price_type=price.price_type,
+            retrieved_at=price.retrieved_at,
+            status=price.status,
+            failure_reason=price.failure_reason,
         )
 
     def _rules_for_analysis(self, analysis_id: int) -> AssessmentRuleValuesSchema | None:

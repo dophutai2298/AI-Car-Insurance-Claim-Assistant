@@ -54,6 +54,17 @@ class DamageDetectionStatus(str, Enum):
     NO_SIGNIFICANT_DAMAGE = "NO_SIGNIFICANT_DAMAGE"
 
 
+class ReferencePriceStatus(str, Enum):
+    FOUND = "FOUND"
+    UNAVAILABLE = "UNAVAILABLE"
+
+
+class ReferencePriceLookupStatus(str, Enum):
+    FOUND = "FOUND"
+    UNAVAILABLE = "UNAVAILABLE"
+    NOT_REQUESTED = "NOT_REQUESTED"
+
+
 class AssessmentRuleConfiguration(Base):
     __tablename__ = "assessment_rule_configurations"
     __table_args__ = (CheckConstraint("id = 1", name="assessment_rule_configurations_singleton"),)
@@ -163,3 +174,21 @@ class DamageAnalysisRuleSnapshot(Base):
     confidence_threshold: Mapped[float] = mapped_column(Float)
     repair_max_percentage: Mapped[float] = mapped_column(Float)
     replacement_min_percentage: Mapped[float] = mapped_column(Float)
+
+
+class ReferencePartPrice(Base):
+    __tablename__ = "reference_part_prices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    analysis_id: Mapped[int] = mapped_column(ForeignKey("damage_analyses.id"), index=True)
+    part_identity: Mapped[str] = mapped_column(String(80))
+    amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    source_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    source_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    price_type: Mapped[str] = mapped_column(String(64))
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    status: Mapped[ReferencePriceStatus] = mapped_column(
+        SqlEnum(ReferencePriceStatus, native_enum=False)
+    )
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -73,7 +73,23 @@ export type DamageAnalysis = {
     repair_max_percentage: number
     replacement_min_percentage: number
   } | null
+  reference_price_status: ReferencePriceLookupStatus
+  reference_prices: ReferencePartPrice[]
   created_at: string
+}
+
+export type ReferencePriceLookupStatus = 'FOUND' | 'UNAVAILABLE' | 'NOT_REQUESTED'
+
+export type ReferencePartPrice = {
+  part_identity: string
+  amount: number | null
+  currency: string | null
+  source_name: string | null
+  source_url: string | null
+  price_type: string
+  retrieved_at: string
+  status: 'FOUND' | 'UNAVAILABLE'
+  failure_reason: string | null
 }
 
 export type ClaimListItem = {

@@ -392,3 +392,66 @@ def test_damage_analyses_preserve_the_active_rules_used_at_runtime(client: TestC
 
     first_detail = client.get(f"/api/claims/{first_claim['id']}", headers=adjuster_headers(client)).json()
     assert first_detail["latest_damage_analysis"]["rules"]["repair_max_percentage"] == 20.0
+
+
+def test_replacement_analysis_returns_a_reference_oem_part_price(client: TestClient):
+    claim = create_claim(client)
+    upload_damage_images(client, claim["id"], ["replacement.jpg"])
+
+    response = client.post(f"/api/claims/{claim['id']}/damage-analysis", headers=adjuster_headers(client))
+
+    assert response.status_code == 200
+    analysis = response.json()
+    assert analysis["reference_price_status"] == "FOUND"
+    assert analysis["reference_prices"] == [{
+        "part_identity": "front_left_door",
+        "amount": 950.0,
+        "currency": "USD",
+        "source_name": "Mock OEM Parts Catalog",
+        "source_url": "https://example.com/oem-parts/front-left-door",
+        "price_type": "REFERENCE_OEM_PART_PRICE",
+        "retrieved_at": analysis["reference_prices"][0]["retrieved_at"],
+        "status": "FOUND",
+        "failure_reason": None,
+    }]
+
+
+def test_non_replacement_analysis_skips_reference_price_lookup(client: TestClient):
+    claim = create_claim(client)
+    upload_damage_images(client, claim["id"], ["repair.jpg"])
+
+    response = client.post(f"/api/claims/{claim['id']}/damage-analysis", headers=adjuster_headers(client))
+
+    assert response.status_code == 200
+    assert response.json()["reference_price_status"] == "NOT_REQUESTED"
+    assert response.json()["reference_prices"] == []
+
+
+def test_non_replacement_analysis_can_explicitly_request_reference_price_lookup(client: TestClient):
+    claim = create_claim(client)
+    upload_damage_images(client, claim["id"], ["repair.jpg"])
+
+    response = client.post(
+        f"/api/claims/{claim['id']}/damage-analysis?force_reference_price_lookup=true",
+        headers=adjuster_headers(client),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["reference_price_status"] == "FOUND"
+    assert response.json()["reference_prices"][0]["part_identity"] == "rear_bumper"
+
+
+def test_reference_price_lookup_failure_does_not_fail_replacement_analysis(client: TestClient, monkeypatch):
+    monkeypatch.setenv("PART_SEARCH_MODE", "unavailable")
+    get_settings.cache_clear()
+    claim = create_claim(client)
+    upload_damage_images(client, claim["id"], ["replacement.jpg"])
+
+    response = client.post(f"/api/claims/{claim['id']}/damage-analysis", headers=adjuster_headers(client))
+
+    assert response.status_code == 200
+    analysis = response.json()
+    assert analysis["assessment"] == "REPLACEMENT_LIKELY"
+    assert analysis["reference_price_status"] == "UNAVAILABLE"
+    assert analysis["reference_prices"][0]["status"] == "UNAVAILABLE"
+    assert "unavailable" in analysis["reference_prices"][0]["failure_reason"].lower()

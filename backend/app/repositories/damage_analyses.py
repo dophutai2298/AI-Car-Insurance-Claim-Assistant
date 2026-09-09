@@ -2,9 +2,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.domain.assessment_rules import AssessmentRuleValues
-from app.models import Claim, ClaimStatus, DamageAnalysis, DamageAnalysisRuleSnapshot, DamageDetection
+from app.models import (
+    Claim,
+    ClaimStatus,
+    DamageAnalysis,
+    DamageAnalysisRuleSnapshot,
+    DamageDetection,
+    ReferencePartPrice,
+)
 from app.services.damage_assessment import AssessmentResult
 from app.services.damage_model import DamageModelDetection
+from app.services.part_search import ReferencePartPriceResult
 
 
 class DamageAnalysisRepository:
@@ -17,6 +25,7 @@ class DamageAnalysisRepository:
         assessment: AssessmentResult,
         detections: list[DamageModelDetection],
         rules: AssessmentRuleValues,
+        reference_prices: list[ReferencePartPriceResult],
     ) -> DamageAnalysis:
         analysis = DamageAnalysis(claim_id=claim.id, assessment=assessment.assessment, warning=assessment.warning)
         self.session.add(analysis)
@@ -45,6 +54,23 @@ class DamageAnalysisRepository:
                 replacement_min_percentage=rules.replacement_min_percentage,
             )
         )
+        self.session.add_all(
+            [
+                ReferencePartPrice(
+                    analysis_id=analysis.id,
+                    part_identity=price.part_identity,
+                    amount=price.amount,
+                    currency=price.currency,
+                    source_name=price.source_name,
+                    source_url=price.source_url,
+                    price_type=price.price_type,
+                    retrieved_at=price.retrieved_at,
+                    status=price.status,
+                    failure_reason=price.failure_reason,
+                )
+                for price in reference_prices
+            ]
+        )
         claim.status = ClaimStatus.REVIEW_REQUIRED
         self.session.commit()
         self.session.refresh(analysis)
@@ -63,3 +89,11 @@ class DamageAnalysisRepository:
             DamageAnalysisRuleSnapshot.analysis_id == analysis_id
         )
         return self.session.scalar(statement)
+
+    def reference_prices(self, analysis_id: int) -> list[ReferencePartPrice]:
+        statement = (
+            select(ReferencePartPrice)
+            .where(ReferencePartPrice.analysis_id == analysis_id)
+            .order_by(ReferencePartPrice.id)
+        )
+        return list(self.session.scalars(statement))

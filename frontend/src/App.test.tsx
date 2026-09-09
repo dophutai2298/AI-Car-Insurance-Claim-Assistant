@@ -267,6 +267,8 @@ test('adjuster can run damage analysis and review the no-damage warning', async 
           id: 'DA-000001', assessment: 'NO_DAMAGE', detections: [],
           warning: 'No significant vehicle damage was detected. This does not guarantee the vehicle is undamaged.',
           rules: { confidence_threshold: 0.7, repair_max_percentage: 40, replacement_min_percentage: 60 },
+          reference_price_status: 'NOT_REQUESTED',
+          reference_prices: [],
           created_at: '2026-09-08T00:01:00Z',
         },
       }
@@ -282,6 +284,8 @@ test('adjuster can run damage analysis and review the no-damage warning', async 
 
   expect((await screen.findAllByText('No significant damage')).length).toBeGreaterThan(0)
   expect(await screen.findByText(/does not guarantee/i)).toBeVisible()
+  expect(await screen.findByText('Reference OEM/original part price')).toBeVisible()
+  expect(await screen.findByText(/not requested\. reference price lookup/i)).toBeVisible()
 })
 
 test('admin can update global assessment rules from the configuration page', async () => {

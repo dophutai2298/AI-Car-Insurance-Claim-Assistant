@@ -1,10 +1,10 @@
-import { Analytics, Image, WarningAlt } from '@carbon/icons-react'
+import { Analytics, Image, Launch, Money, WarningAlt } from '@carbon/icons-react'
 import { Alert, Button, Card, Chip } from '@heroui/react'
 
 import { EvidenceImagePreview } from './EvidencePanel'
 import { ClaimsApiError } from './claimsApi'
 import { useDamageAnalysis } from './useClaims'
-import type { ClaimDetail, DamageAssessment, DamageDetection } from './types'
+import type { ClaimDetail, DamageAssessment, DamageDetection, ReferencePartPrice, ReferencePriceLookupStatus } from './types'
 
 const assessmentPresentation: Record<DamageAssessment, { label: string; color: 'default' | 'success' | 'warning' | 'danger' }> = {
   NO_DAMAGE: { label: 'No significant damage', color: 'default' },
@@ -45,13 +45,13 @@ export function DamageAnalysisPanel({ claim }: { claim: ClaimDetail }) {
             <Alert.Description>Upload at least one vehicle damage image before running the analysis.</Alert.Description>
           </Alert>
         ) : null}
-        {analysis ? <AnalysisResult assessment={analysis.assessment} detections={analysis.detections} rules={analysis.rules} warning={analysis.warning} /> : <p className="text-sm text-slate-500">No damage analysis has been run for this claim.</p>}
+        {analysis ? <AnalysisResult assessment={analysis.assessment} detections={analysis.detections} rules={analysis.rules} warning={analysis.warning} referencePriceStatus={analysis.reference_price_status} referencePrices={analysis.reference_prices} /> : <p className="text-sm text-slate-500">No damage analysis has been run for this claim.</p>}
       </Card.Content>
     </Card>
   )
 }
 
-function AnalysisResult({ assessment, detections, rules, warning }: { assessment: DamageAssessment; detections: DamageDetection[]; rules: { confidence_threshold: number; repair_max_percentage: number; replacement_min_percentage: number } | null; warning: string | null }) {
+function AnalysisResult({ assessment, detections, rules, warning, referencePriceStatus, referencePrices }: { assessment: DamageAssessment; detections: DamageDetection[]; rules: { confidence_threshold: number; repair_max_percentage: number; replacement_min_percentage: number } | null; warning: string | null; referencePriceStatus: ReferencePriceLookupStatus; referencePrices: ReferencePartPrice[] }) {
   const presentation = assessmentPresentation[assessment]
   return (
     <div className="grid gap-5">
@@ -61,6 +61,7 @@ function AnalysisResult({ assessment, detections, rules, warning }: { assessment
       </section>
       {warning ? <Alert status="warning"><WarningAlt size={18} /><Alert.Title>Review note</Alert.Title><Alert.Description>{warning}</Alert.Description></Alert> : null}
       {rules ? <p className="text-xs text-slate-500">Rules used: confidence {formatPercentage(rules.confidence_threshold * 100)}, repair up to {formatPercentage(rules.repair_max_percentage)}, replacement from {formatPercentage(rules.replacement_min_percentage)}.</p> : null}
+      <ReferencePartPriceSection status={referencePriceStatus} prices={referencePrices} />
       {detections.length ? (
         <div className="grid gap-4">
           <h2 className="text-sm font-semibold text-slate-950">Detected damage</h2>
@@ -70,6 +71,27 @@ function AnalysisResult({ assessment, detections, rules, warning }: { assessment
         <div className="flex min-h-32 flex-col items-center justify-center gap-2 border border-dashed border-slate-300 bg-slate-50 px-5 text-center"><Image className="text-slate-400" size={24} /><p className="text-sm font-medium text-slate-700">No significant damage detections</p></div>
       )}
     </div>
+  )
+}
+
+function ReferencePartPriceSection({ status, prices }: { status: ReferencePriceLookupStatus; prices: ReferencePartPrice[] }) {
+  return (
+    <section className="grid gap-3 border-y border-slate-100 py-5">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-2 text-slate-950"><Money size={18} /><h2 className="text-sm font-semibold">Reference OEM/original part price</h2></div>
+        <Chip color={status === 'FOUND' ? 'success' : status === 'UNAVAILABLE' ? 'warning' : 'default'} size="sm" variant="soft">{status === 'FOUND' ? 'Found' : status === 'UNAVAILABLE' ? 'Unavailable' : 'Not requested'}</Chip>
+      </div>
+      {status === 'NOT_REQUESTED' ? <p className="text-sm text-slate-500">Not requested. Reference price lookup runs for replacement-likely assessments.</p> : null}
+      {status === 'UNAVAILABLE' ? <Alert status="warning"><WarningAlt size={18} /><Alert.Title>Reference price unavailable</Alert.Title><Alert.Description>{prices.find((price) => price.failure_reason)?.failure_reason ?? 'The reference price provider could not be reached.'}</Alert.Description></Alert> : null}
+      {prices.filter((price) => price.status === 'FOUND').map((price) => (
+        <div className="grid gap-1 border-l-2 border-emerald-500 pl-3 text-sm" key={`${price.part_identity}-${price.retrieved_at}`}>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"><span className="font-semibold text-slate-950">{formatLabel(price.part_identity)}</span><span className="font-semibold text-slate-950">{formatCurrency(price.amount, price.currency)}</span></div>
+          <p className="text-xs text-slate-500">{price.source_name} · Retrieved {new Date(price.retrieved_at).toLocaleString()}</p>
+          {price.source_url ? <a className="inline-flex w-fit items-center gap-1 text-xs font-medium text-blue-700 hover:text-blue-900 hover:underline" href={price.source_url} rel="noreferrer" target="_blank">View source <Launch size={14} /></a> : null}
+        </div>
+      ))}
+      <p className="text-xs text-slate-500">Reference price only. This is not a final repair cost, insurance payout, or exact replacement cost.</p>
+    </section>
   )
 }
 
@@ -95,4 +117,8 @@ function formatLabel(value: string | null) {
 
 function formatPercentage(value: number) {
   return `${Number.isInteger(value) ? value : value.toFixed(1)}%`
+}
+
+function formatCurrency(amount: number | null, currency: string | null) {
+  return amount === null || currency === null ? 'Unavailable' : new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount)
 }

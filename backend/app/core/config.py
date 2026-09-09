@@ -36,7 +36,9 @@ class Settings(BaseSettings):
     damage_replacement_min_percentage: float = Field(
         default=60, ge=0, le=100, validation_alias="DAMAGE_REPLACEMENT_MIN_PERCENTAGE"
     )
-    part_search_mode: Literal["mock"] = Field(default="mock", validation_alias="PART_SEARCH_MODE")
+    part_search_mode: Literal["mock", "unavailable"] = Field(
+        default="mock", validation_alias="PART_SEARCH_MODE"
+    )
     llm_mode: Literal["mock", "openai"] = Field(default="mock", validation_alias="LLM_MODE")
     frontend_origin: str = Field(default="http://localhost:5173", validation_alias="FRONTEND_ORIGIN")
     check_database_on_health: bool = Field(default=True, validation_alias="CHECK_DATABASE_ON_HEALTH")

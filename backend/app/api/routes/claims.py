@@ -21,6 +21,7 @@ from app.services.assessment_rules import AssessmentRuleService
 from app.services.damage_assessment import DamageAssessmentService
 from app.services.damage_model import DamageModelUnavailableError, get_damage_model_adapter
 from app.services.evidence_storage import EvidenceStorageError, LocalEvidenceStorage
+from app.services.part_search import PartSearchService, get_part_price_provider
 
 router = APIRouter(prefix="/api/claims", tags=["claims"])
 
@@ -35,6 +36,7 @@ def get_claim_service(
         get_damage_model_adapter(settings),
         DamageAssessmentService(),
         AssessmentRuleService(AssessmentRuleRepository(session), settings),
+        PartSearchService(get_part_price_provider(settings)),
     )
 
 
@@ -127,9 +129,10 @@ def run_damage_analysis(
     claim_number: str,
     _current_user: CurrentUser,
     service: ClaimServiceDependency,
+    force_reference_price_lookup: bool = False,
 ) -> DamageAnalysisResponse:
     try:
-        analysis = service.run_damage_analysis(claim_number)
+        analysis = service.run_damage_analysis(claim_number, force_reference_price_lookup)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
     except DamageModelUnavailableError as error:

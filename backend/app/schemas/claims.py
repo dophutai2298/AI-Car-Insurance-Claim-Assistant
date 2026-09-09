@@ -2,7 +2,14 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models import ClaimStatus, DamageAssessment, DamageDetectionStatus, EvidenceCategory
+from app.models import (
+    ClaimStatus,
+    DamageAssessment,
+    DamageDetectionStatus,
+    EvidenceCategory,
+    ReferencePriceLookupStatus,
+    ReferencePriceStatus,
+)
 from app.schemas.admin import AssessmentRuleValuesSchema
 
 
@@ -69,4 +76,18 @@ class DamageAnalysisResponse(BaseModel):
     warning: str | None
     detections: list[DamageDetectionResponse]
     rules: AssessmentRuleValuesSchema | None = None
+    reference_price_status: ReferencePriceLookupStatus
+    reference_prices: list["ReferencePartPriceResponse"] = Field(default_factory=list)
     created_at: datetime
+
+
+class ReferencePartPriceResponse(BaseModel):
+    part_identity: str
+    amount: float | None
+    currency: str | None
+    source_name: str | None
+    source_url: str | None
+    price_type: str
+    retrieved_at: datetime
+    status: ReferencePriceStatus
+    failure_reason: str | None
