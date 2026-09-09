@@ -7,9 +7,12 @@ from sqlalchemy.orm import Session
 from app.models import (
     Claim,
     ClaimStatus,
+    CopilotConclusionStatus,
+    DamageAssessment,
     DamageAnalysis,
     Evidence,
     EvidenceCategory,
+    CopilotConclusion,
     ReferencePartPrice,
     ReferencePriceLookupStatus,
     ReferencePriceStatus,
@@ -18,8 +21,11 @@ from app.models import (
 from app.repositories.claims import ClaimRepository
 from app.repositories.damage_analyses import DamageAnalysisRepository
 from app.repositories.evidence import EvidenceRepository
+from app.repositories.copilot_conclusions import CopilotConclusionRepository
 from app.schemas.claims import (
     ClaimCreateRequest,
+    CopilotConclusionResponse,
+    CopilotFindingResponse,
     DamageAnalysisResponse,
     DamageDetectionResponse,
     ClaimListItem,
@@ -32,8 +38,14 @@ from app.schemas.admin import AssessmentRuleValuesSchema
 from app.services.assessment_rules import AssessmentRuleService
 from app.services.evidence_storage import EvidenceStorage, EvidenceStorageError, StoredEvidence
 from app.services.damage_assessment import DamageAssessmentService
-from app.services.damage_model import DamageModelAdapter
-from app.services.part_search import PartSearchService
+from app.services.damage_model import DamageModelAdapter, DamageModelDetection
+from app.services.part_search import PartSearchService, ReferencePartPriceResult
+from app.services.llm_copilot import (
+    CopilotInput,
+    CopilotReferencePrice,
+    CopilotStructuredFinding,
+    LlmCopilotService,
+)
 
 ALLOWED_LIFECYCLE_TRANSITIONS: dict[ClaimStatus, set[ClaimStatus]] = {
     ClaimStatus.DRAFT: {ClaimStatus.ANALYZING},
@@ -55,15 +67,20 @@ class ClaimService:
         assessment: DamageAssessmentService,
         rules: AssessmentRuleService,
         part_search: PartSearchService,
+        llm_copilot: LlmCopilotService,
+        llm_model: str | None,
     ):
         self.claims = ClaimRepository(session)
         self.evidence = EvidenceRepository(session)
         self.damage_analyses = DamageAnalysisRepository(session)
+        self.copilot_conclusions = CopilotConclusionRepository(session)
         self.storage = storage
         self.damage_model = damage_model
         self.assessment = assessment
         self.rules = rules
         self.part_search = part_search
+        self.llm_copilot = llm_copilot
+        self.llm_model = llm_model
 
     def create_claim(self, data: ClaimCreateRequest, created_by: User) -> ClaimResponse:
         return self._to_response(self.claims.create(data, created_by.id))
@@ -157,6 +174,11 @@ class ClaimService:
             rules,
             reference_prices,
         )
+        conclusion = self.llm_copilot.generate(
+            self._copilot_input(claim, assessment.assessment, assessment.warning, detections, reference_prices)
+        )
+        provider_model = self.llm_model if conclusion.status is CopilotConclusionStatus.GENERATED else None
+        self.copilot_conclusions.create(analysis, conclusion, provider_model)
         return self._to_damage_analysis_response(claim.claim_number, analysis)
 
     def _to_response(self, claim: Claim) -> ClaimResponse:
@@ -207,6 +229,7 @@ class ClaimService:
                 )
             )
         reference_prices = self.damage_analyses.reference_prices(analysis.id)
+        reference_price_responses = [self._to_reference_price_response(price) for price in reference_prices]
         return DamageAnalysisResponse(
             id=analysis.analysis_number,
             assessment=analysis.assessment,
@@ -214,7 +237,13 @@ class ClaimService:
             detections=detections,
             rules=self._rules_for_analysis(analysis.id),
             reference_price_status=self._reference_price_status(reference_prices),
-            reference_prices=[self._to_reference_price_response(price) for price in reference_prices],
+            reference_prices=reference_price_responses,
+            copilot_conclusion=self._to_copilot_conclusion_response(
+                self.copilot_conclusions.find_for_analysis(analysis.id),
+                detections,
+                reference_price_responses,
+                analysis.warning,
+            ),
             created_at=analysis.created_at,
         )
 
@@ -240,6 +269,71 @@ class ClaimService:
             retrieved_at=price.retrieved_at,
             status=price.status,
             failure_reason=price.failure_reason,
+        )
+
+    @staticmethod
+    def _copilot_input(
+        claim: Claim,
+        assessment: DamageAssessment,
+        warning: str | None,
+        detections: list[DamageModelDetection],
+        reference_prices: list[ReferencePartPriceResult],
+    ) -> CopilotInput:
+        return CopilotInput(
+            vehicle_summary=f"{claim.vehicle_year} {claim.vehicle_make} {claim.vehicle_model}",
+            assessment=assessment,
+            warning=warning,
+            findings=[
+                CopilotStructuredFinding(
+                    vehicle_part=detection.vehicle_part,
+                    damage_type=detection.damage_type,
+                    damage_percentage=detection.damage_percentage,
+                    confidence=detection.confidence,
+                )
+                for detection in detections
+            ],
+            reference_prices=[
+                CopilotReferencePrice(
+                    part_identity=price.part_identity,
+                    amount=price.amount,
+                    currency=price.currency,
+                    source_name=price.source_name,
+                    source_url=price.source_url,
+                    price_type=price.price_type,
+                    status=price.status,
+                )
+                for price in reference_prices
+            ],
+        )
+
+    @staticmethod
+    def _to_copilot_conclusion_response(
+        conclusion: CopilotConclusion | None,
+        detections: list[DamageDetectionResponse],
+        reference_prices: list[ReferencePartPriceResponse],
+        warning: str | None,
+    ) -> CopilotConclusionResponse | None:
+        if conclusion is None:
+            return None
+        return CopilotConclusionResponse(
+            status=conclusion.status,
+            recommendation=conclusion.recommendation,
+            summary=conclusion.summary,
+            fallback_summary=conclusion.fallback_summary,
+            failure_reason=conclusion.failure_reason,
+            provider_model=conclusion.provider_model,
+            findings=[
+                CopilotFindingResponse(
+                    vehicle_part=detection.vehicle_part,
+                    damage_type=detection.damage_type,
+                    damage_percentage=detection.damage_percentage,
+                    confidence=detection.confidence,
+                    annotated_evidence=detection.annotated_evidence,
+                )
+                for detection in detections
+            ],
+            warnings=[warning] if warning else [],
+            reference_prices=reference_prices,
         )
 
     def _rules_for_analysis(self, analysis_id: int) -> AssessmentRuleValuesSchema | None:

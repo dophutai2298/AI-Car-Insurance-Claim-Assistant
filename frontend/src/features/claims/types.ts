@@ -75,6 +75,7 @@ export type DamageAnalysis = {
   } | null
   reference_price_status: ReferencePriceLookupStatus
   reference_prices: ReferencePartPrice[]
+  copilot_conclusion: CopilotConclusion | null
   created_at: string
 }
 
@@ -90,6 +91,26 @@ export type ReferencePartPrice = {
   retrieved_at: string
   status: 'FOUND' | 'UNAVAILABLE'
   failure_reason: string | null
+}
+
+export type CopilotConclusion = {
+  status: 'GENERATED' | 'FALLBACK' | 'LLM_UNAVAILABLE'
+  recommendation: 'MANUAL_ADJUSTER_REVIEW'
+  summary: string
+  fallback_summary: string | null
+  failure_reason: string | null
+  provider_model: string | null
+  findings: CopilotFinding[]
+  warnings: string[]
+  reference_prices: ReferencePartPrice[]
+}
+
+export type CopilotFinding = {
+  vehicle_part: string | null
+  damage_type: string | null
+  damage_percentage: number
+  confidence: number
+  annotated_evidence: EvidenceItem
 }
 
 export type ClaimListItem = {

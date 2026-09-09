@@ -7,6 +7,7 @@ from app.models import (
     DamageAssessment,
     DamageDetectionStatus,
     EvidenceCategory,
+    CopilotConclusionStatus,
     ReferencePriceLookupStatus,
     ReferencePriceStatus,
 )
@@ -78,6 +79,7 @@ class DamageAnalysisResponse(BaseModel):
     rules: AssessmentRuleValuesSchema | None = None
     reference_price_status: ReferencePriceLookupStatus
     reference_prices: list["ReferencePartPriceResponse"] = Field(default_factory=list)
+    copilot_conclusion: "CopilotConclusionResponse | None" = None
     created_at: datetime
 
 
@@ -91,3 +93,23 @@ class ReferencePartPriceResponse(BaseModel):
     retrieved_at: datetime
     status: ReferencePriceStatus
     failure_reason: str | None
+
+
+class CopilotFindingResponse(BaseModel):
+    vehicle_part: str | None
+    damage_type: str | None
+    damage_percentage: float
+    confidence: float
+    annotated_evidence: EvidenceResponse
+
+
+class CopilotConclusionResponse(BaseModel):
+    status: CopilotConclusionStatus
+    recommendation: str
+    summary: str
+    fallback_summary: str | None
+    failure_reason: str | None
+    provider_model: str | None
+    findings: list[CopilotFindingResponse]
+    warnings: list[str]
+    reference_prices: list[ReferencePartPriceResponse]

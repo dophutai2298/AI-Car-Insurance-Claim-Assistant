@@ -19,6 +19,7 @@ def client(tmp_path, monkeypatch) -> Iterator[TestClient]:
     monkeypatch.setenv("ADJUSTER_PASSWORD", "Adjuster123!")
     monkeypatch.setenv("CHECK_DATABASE_ON_HEALTH", "false")
     monkeypatch.setenv("UPLOAD_ROOT", str(tmp_path / "uploads"))
+    monkeypatch.setenv("LLM_MODE", "mock")
     get_settings.cache_clear()
 
     with TestClient(create_app()) as test_client:
@@ -455,3 +456,34 @@ def test_reference_price_lookup_failure_does_not_fail_replacement_analysis(clien
     assert analysis["reference_price_status"] == "UNAVAILABLE"
     assert analysis["reference_prices"][0]["status"] == "UNAVAILABLE"
     assert "unavailable" in analysis["reference_prices"][0]["failure_reason"].lower()
+
+
+def test_mock_llm_copilot_returns_a_deterministic_fallback_conclusion(client: TestClient):
+    claim = create_claim(client)
+    upload_damage_images(client, claim["id"], ["replacement.jpg"])
+
+    response = client.post(f"/api/claims/{claim['id']}/damage-analysis", headers=adjuster_headers(client))
+
+    assert response.status_code == 200
+    conclusion = response.json()["copilot_conclusion"]
+    assert conclusion["status"] == "FALLBACK"
+    assert conclusion["recommendation"] == "MANUAL_ADJUSTER_REVIEW"
+    assert conclusion["findings"][0]["vehicle_part"] == "front_left_door"
+    assert conclusion["reference_prices"][0]["amount"] == 950.0
+    assert conclusion["summary"]
+
+
+def test_missing_llm_credentials_returns_unavailable_conclusion_without_hiding_analysis(client: TestClient, monkeypatch):
+    monkeypatch.setenv("LLM_MODE", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    get_settings.cache_clear()
+    claim = create_claim(client)
+    upload_damage_images(client, claim["id"], ["repair.jpg"])
+
+    response = client.post(f"/api/claims/{claim['id']}/damage-analysis", headers=adjuster_headers(client))
+
+    assert response.status_code == 200
+    analysis = response.json()
+    assert analysis["assessment"] == "REPAIR_LIKELY"
+    assert analysis["copilot_conclusion"]["status"] == "LLM_UNAVAILABLE"
+    assert analysis["copilot_conclusion"]["fallback_summary"]

@@ -4,7 +4,7 @@ import { Alert, Button, Card, Chip } from '@heroui/react'
 import { EvidenceImagePreview } from './EvidencePanel'
 import { ClaimsApiError } from './claimsApi'
 import { useDamageAnalysis } from './useClaims'
-import type { ClaimDetail, DamageAssessment, DamageDetection, ReferencePartPrice, ReferencePriceLookupStatus } from './types'
+import type { ClaimDetail, CopilotConclusion, DamageAssessment, DamageDetection, ReferencePartPrice, ReferencePriceLookupStatus } from './types'
 
 const assessmentPresentation: Record<DamageAssessment, { label: string; color: 'default' | 'success' | 'warning' | 'danger' }> = {
   NO_DAMAGE: { label: 'No significant damage', color: 'default' },
@@ -45,13 +45,13 @@ export function DamageAnalysisPanel({ claim }: { claim: ClaimDetail }) {
             <Alert.Description>Upload at least one vehicle damage image before running the analysis.</Alert.Description>
           </Alert>
         ) : null}
-        {analysis ? <AnalysisResult assessment={analysis.assessment} detections={analysis.detections} rules={analysis.rules} warning={analysis.warning} referencePriceStatus={analysis.reference_price_status} referencePrices={analysis.reference_prices} /> : <p className="text-sm text-slate-500">No damage analysis has been run for this claim.</p>}
+        {analysis ? <AnalysisResult assessment={analysis.assessment} detections={analysis.detections} rules={analysis.rules} warning={analysis.warning} referencePriceStatus={analysis.reference_price_status} referencePrices={analysis.reference_prices} copilotConclusion={analysis.copilot_conclusion} /> : <p className="text-sm text-slate-500">No damage analysis has been run for this claim.</p>}
       </Card.Content>
     </Card>
   )
 }
 
-function AnalysisResult({ assessment, detections, rules, warning, referencePriceStatus, referencePrices }: { assessment: DamageAssessment; detections: DamageDetection[]; rules: { confidence_threshold: number; repair_max_percentage: number; replacement_min_percentage: number } | null; warning: string | null; referencePriceStatus: ReferencePriceLookupStatus; referencePrices: ReferencePartPrice[] }) {
+function AnalysisResult({ assessment, detections, rules, warning, referencePriceStatus, referencePrices, copilotConclusion }: { assessment: DamageAssessment; detections: DamageDetection[]; rules: { confidence_threshold: number; repair_max_percentage: number; replacement_min_percentage: number } | null; warning: string | null; referencePriceStatus: ReferencePriceLookupStatus; referencePrices: ReferencePartPrice[]; copilotConclusion: CopilotConclusion | null }) {
   const presentation = assessmentPresentation[assessment]
   return (
     <div className="grid gap-5">
@@ -62,6 +62,7 @@ function AnalysisResult({ assessment, detections, rules, warning, referencePrice
       {warning ? <Alert status="warning"><WarningAlt size={18} /><Alert.Title>Review note</Alert.Title><Alert.Description>{warning}</Alert.Description></Alert> : null}
       {rules ? <p className="text-xs text-slate-500">Rules used: confidence {formatPercentage(rules.confidence_threshold * 100)}, repair up to {formatPercentage(rules.repair_max_percentage)}, replacement from {formatPercentage(rules.replacement_min_percentage)}.</p> : null}
       <ReferencePartPriceSection status={referencePriceStatus} prices={referencePrices} />
+      <CopilotConclusionSection conclusion={copilotConclusion} />
       {detections.length ? (
         <div className="grid gap-4">
           <h2 className="text-sm font-semibold text-slate-950">Detected damage</h2>
@@ -71,6 +72,20 @@ function AnalysisResult({ assessment, detections, rules, warning, referencePrice
         <div className="flex min-h-32 flex-col items-center justify-center gap-2 border border-dashed border-slate-300 bg-slate-50 px-5 text-center"><Image className="text-slate-400" size={24} /><p className="text-sm font-medium text-slate-700">No significant damage detections</p></div>
       )}
     </div>
+  )
+}
+
+function CopilotConclusionSection({ conclusion }: { conclusion: CopilotConclusion | null }) {
+  if (!conclusion) return null
+  const label = conclusion.status === 'GENERATED' ? 'Generated' : conclusion.status === 'FALLBACK' ? 'Demo fallback' : 'Unavailable'
+  const color = conclusion.status === 'GENERATED' ? 'success' : conclusion.status === 'FALLBACK' ? 'default' : 'warning'
+  return (
+    <section className="grid gap-3 border-y border-slate-100 py-5">
+      <div className="flex items-start justify-between gap-4"><div><h2 className="text-sm font-semibold text-slate-950">AI copilot conclusion</h2><p className="mt-1 text-xs text-slate-500">Supporting explanation from normalized claim results.</p></div><Chip color={color} size="sm" variant="soft">{label}</Chip></div>
+      {conclusion.status === 'LLM_UNAVAILABLE' ? <Alert status="warning"><WarningAlt size={18} /><Alert.Title>AI copilot unavailable</Alert.Title><Alert.Description>{conclusion.failure_reason ?? 'The fallback summary is shown below.'}</Alert.Description></Alert> : null}
+      <p className="text-sm leading-6 text-slate-700">{conclusion.summary}</p>
+      <dl className="grid gap-2 border-l-2 border-blue-600 pl-3 text-sm sm:grid-cols-2"><div><dt className="text-xs text-slate-500">Recommendation</dt><dd className="font-semibold text-slate-950">Manual adjuster review</dd></div><div><dt className="text-xs text-slate-500">Source</dt><dd className="font-medium text-slate-700">{conclusion.provider_model ?? 'Deterministic demo fallback'}</dd></div></dl>
+    </section>
   )
 }
 

@@ -17,6 +17,7 @@ def call_registered_route(path: str):
 def test_health_endpoint_reports_service_and_runtime_config(monkeypatch):
     monkeypatch.setenv("JWT_SECRET", "test-secret-that-is-long-enough-for-health-tests")
     monkeypatch.setenv("CHECK_DATABASE_ON_HEALTH", "false")
+    monkeypatch.setenv("LLM_MODE", "mock")
     get_settings.cache_clear()
 
     response = call_registered_route("/api/health")

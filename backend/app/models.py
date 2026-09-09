@@ -65,6 +65,12 @@ class ReferencePriceLookupStatus(str, Enum):
     NOT_REQUESTED = "NOT_REQUESTED"
 
 
+class CopilotConclusionStatus(str, Enum):
+    GENERATED = "GENERATED"
+    FALLBACK = "FALLBACK"
+    LLM_UNAVAILABLE = "LLM_UNAVAILABLE"
+
+
 class AssessmentRuleConfiguration(Base):
     __tablename__ = "assessment_rule_configurations"
     __table_args__ = (CheckConstraint("id = 1", name="assessment_rule_configurations_singleton"),)
@@ -192,3 +198,21 @@ class ReferencePartPrice(Base):
         SqlEnum(ReferencePriceStatus, native_enum=False)
     )
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class CopilotConclusion(Base):
+    __tablename__ = "copilot_conclusions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    analysis_id: Mapped[int] = mapped_column(ForeignKey("damage_analyses.id"), unique=True, index=True)
+    status: Mapped[CopilotConclusionStatus] = mapped_column(
+        SqlEnum(CopilotConclusionStatus, native_enum=False)
+    )
+    recommendation: Mapped[str] = mapped_column(String(64))
+    summary: Mapped[str] = mapped_column(Text)
+    fallback_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider_model: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )

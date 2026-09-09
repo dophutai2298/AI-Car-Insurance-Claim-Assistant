@@ -269,6 +269,17 @@ test('adjuster can run damage analysis and review the no-damage warning', async 
           rules: { confidence_threshold: 0.7, repair_max_percentage: 40, replacement_min_percentage: 60 },
           reference_price_status: 'NOT_REQUESTED',
           reference_prices: [],
+          copilot_conclusion: {
+            status: 'FALLBACK',
+            recommendation: 'MANUAL_ADJUSTER_REVIEW',
+            summary: 'No normalized damage finding supports a no-damage assessment. An adjuster must review this case before any final decision.',
+            fallback_summary: 'No normalized damage finding supports a no-damage assessment. An adjuster must review this case before any final decision.',
+            failure_reason: null,
+            provider_model: null,
+            findings: [],
+            warnings: ['No significant vehicle damage was detected. This does not guarantee the vehicle is undamaged.'],
+            reference_prices: [],
+          },
           created_at: '2026-09-08T00:01:00Z',
         },
       }
@@ -286,6 +297,8 @@ test('adjuster can run damage analysis and review the no-damage warning', async 
   expect(await screen.findByText(/does not guarantee/i)).toBeVisible()
   expect(await screen.findByText('Reference OEM/original part price')).toBeVisible()
   expect(await screen.findByText(/not requested\. reference price lookup/i)).toBeVisible()
+  expect(await screen.findByText('AI copilot conclusion')).toBeVisible()
+  expect(await screen.findByText('Demo fallback')).toBeVisible()
 })
 
 test('admin can update global assessment rules from the configuration page', async () => {

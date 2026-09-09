@@ -22,6 +22,7 @@ from app.services.damage_assessment import DamageAssessmentService
 from app.services.damage_model import DamageModelUnavailableError, get_damage_model_adapter
 from app.services.evidence_storage import EvidenceStorageError, LocalEvidenceStorage
 from app.services.part_search import PartSearchService, get_part_price_provider
+from app.services.llm_copilot import LlmCopilotService, get_llm_copilot_adapter
 
 router = APIRouter(prefix="/api/claims", tags=["claims"])
 
@@ -37,6 +38,8 @@ def get_claim_service(
         DamageAssessmentService(),
         AssessmentRuleService(AssessmentRuleRepository(session), settings),
         PartSearchService(get_part_price_provider(settings)),
+        LlmCopilotService(get_llm_copilot_adapter(settings)),
+        settings.openai_model,
     )
 
 
