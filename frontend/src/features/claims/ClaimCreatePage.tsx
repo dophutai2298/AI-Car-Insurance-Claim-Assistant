@@ -39,9 +39,9 @@ export function ClaimCreatePage() {
 
   return (
     <div className="mx-auto grid max-w-[1440px] gap-6 py-2">
-        <Link className="flex w-fit items-center gap-2 text-sm font-semibold text-blue-700" to="/dashboard">
+        <Link className="flex w-fit items-center gap-2 text-sm font-semibold text-blue-700" to="/claims">
           <ArrowLeft size={18} />
-          Back to dashboard
+          Back to claims
         </Link>
         <header>
           <p className="text-sm font-semibold text-slate-500">Claim intake</p>
