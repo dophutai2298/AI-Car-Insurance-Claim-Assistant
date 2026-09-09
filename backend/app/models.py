@@ -71,6 +71,21 @@ class CopilotConclusionStatus(str, Enum):
     LLM_UNAVAILABLE = "LLM_UNAVAILABLE"
 
 
+class CopilotConclusionReviewStatus(str, Enum):
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
+class CopilotConclusionRejectionCategory(str, Enum):
+    DOCUMENT_INFORMATION_INCOMPLETE = "DOCUMENT_INFORMATION_INCOMPLETE"
+    DOCUMENT_INFORMATION_INCORRECT = "DOCUMENT_INFORMATION_INCORRECT"
+    DAMAGE_ASSESSMENT_ISSUE = "DAMAGE_ASSESSMENT_ISSUE"
+    DAMAGE_EVIDENCE_ISSUE = "DAMAGE_EVIDENCE_ISSUE"
+    MISSING_EVIDENCE = "MISSING_EVIDENCE"
+    INCORRECT_AI_CONCLUSION = "INCORRECT_AI_CONCLUSION"
+    OTHER = "OTHER"
+
+
 class AssessmentRuleConfiguration(Base):
     __tablename__ = "assessment_rule_configurations"
     __table_args__ = (CheckConstraint("id = 1", name="assessment_rule_configurations_singleton"),)
@@ -214,5 +229,26 @@ class CopilotConclusion(Base):
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     provider_model: Mapped[str | None] = mapped_column(String(160), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class CopilotConclusionReview(Base):
+    __tablename__ = "copilot_conclusion_reviews"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id"), index=True)
+    conclusion_id: Mapped[int] = mapped_column(
+        ForeignKey("copilot_conclusions.id"), unique=True, index=True
+    )
+    status: Mapped[CopilotConclusionReviewStatus] = mapped_column(
+        SqlEnum(CopilotConclusionReviewStatus, native_enum=False)
+    )
+    reason_category: Mapped[CopilotConclusionRejectionCategory | None] = mapped_column(
+        SqlEnum(CopilotConclusionRejectionCategory, native_enum=False), nullable=True
+    )
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewer_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    reviewed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

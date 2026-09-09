@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models import (
     ClaimStatus,
@@ -8,6 +8,8 @@ from app.models import (
     DamageDetectionStatus,
     EvidenceCategory,
     CopilotConclusionStatus,
+    CopilotConclusionRejectionCategory,
+    CopilotConclusionReviewStatus,
     ReferencePriceLookupStatus,
     ReferencePriceStatus,
 )
@@ -38,6 +40,7 @@ class ClaimResponse(BaseModel):
     updated_at: datetime
     evidence: list["EvidenceResponse"] = Field(default_factory=list)
     latest_damage_analysis: "DamageAnalysisResponse | None" = None
+    copilot_review_history: list["CopilotConclusionReviewResponse"] = Field(default_factory=list)
 
 
 class ClaimListItem(BaseModel):
@@ -104,6 +107,7 @@ class CopilotFindingResponse(BaseModel):
 
 
 class CopilotConclusionResponse(BaseModel):
+    id: int
     status: CopilotConclusionStatus
     recommendation: str
     summary: str
@@ -113,3 +117,31 @@ class CopilotConclusionResponse(BaseModel):
     findings: list[CopilotFindingResponse]
     warnings: list[str]
     reference_prices: list[ReferencePartPriceResponse]
+    review_history: list["CopilotConclusionReviewResponse"] = Field(default_factory=list)
+
+
+class CopilotConclusionReviewRequest(BaseModel):
+    status: CopilotConclusionReviewStatus
+    reason_category: CopilotConclusionRejectionCategory | None = None
+    comment: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_rejection_feedback(self) -> "CopilotConclusionReviewRequest":
+        if self.status is CopilotConclusionReviewStatus.REJECTED:
+            if self.reason_category is None:
+                raise ValueError("A rejection reason category is required")
+            if not self.comment or not self.comment.strip():
+                raise ValueError("A rejection comment is required")
+        elif self.reason_category is not None or self.comment:
+            raise ValueError("Approval does not accept rejection feedback")
+        return self
+
+
+class CopilotConclusionReviewResponse(BaseModel):
+    claim_id: str
+    conclusion_id: int
+    status: CopilotConclusionReviewStatus
+    reason_category: CopilotConclusionRejectionCategory | None
+    comment: str | None
+    reviewer: str
+    reviewed_at: datetime

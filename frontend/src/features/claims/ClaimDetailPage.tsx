@@ -3,7 +3,7 @@ import { Alert, Button, Card, Chip, Skeleton } from '@heroui/react'
 import { Link, useParams } from 'react-router'
 
 import { lifecycleAction, statusLabel, statusTone } from './statusPresentation'
-import { DamageAnalysisPanel } from './DamageAnalysisPanel'
+import { CopilotReviewHistory, DamageAnalysisPanel } from './DamageAnalysisPanel'
 import { EvidencePanel } from './EvidencePanel'
 import { useClaim, useTransitionClaim } from './useClaims'
 
@@ -57,6 +57,7 @@ export function ClaimDetailPage() {
         <EvidencePanel claimId={claim.id} evidence={claim.evidence ?? []} />
 
         <DamageAnalysisPanel claim={claim} />
+        <CopilotReviewHistory history={claim.copilot_review_history ?? []} />
 
         {lifecycleAction[claim.status] ? (
           <section className="flex flex-col gap-4 border-y border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">

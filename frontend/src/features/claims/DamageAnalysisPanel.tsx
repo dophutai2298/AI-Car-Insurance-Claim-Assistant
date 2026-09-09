@@ -1,10 +1,12 @@
 import { Analytics, Image, Launch, Money, WarningAlt } from '@carbon/icons-react'
 import { Alert, Button, Card, Chip } from '@heroui/react'
+import { useState } from 'react'
 
+import { useAuth } from '../auth/AuthProvider'
 import { EvidenceImagePreview } from './EvidencePanel'
 import { ClaimsApiError } from './claimsApi'
-import { useDamageAnalysis } from './useClaims'
-import type { ClaimDetail, CopilotConclusion, DamageAssessment, DamageDetection, ReferencePartPrice, ReferencePriceLookupStatus } from './types'
+import { useDamageAnalysis, useReviewCopilotConclusion } from './useClaims'
+import type { ClaimDetail, ClaimStatus, CopilotConclusion, CopilotConclusionRejectionCategory, CopilotConclusionReview, DamageAssessment, DamageDetection, ReferencePartPrice, ReferencePriceLookupStatus } from './types'
 
 const assessmentPresentation: Record<DamageAssessment, { label: string; color: 'default' | 'success' | 'warning' | 'danger' }> = {
   NO_DAMAGE: { label: 'No significant damage', color: 'default' },
@@ -45,13 +47,13 @@ export function DamageAnalysisPanel({ claim }: { claim: ClaimDetail }) {
             <Alert.Description>Upload at least one vehicle damage image before running the analysis.</Alert.Description>
           </Alert>
         ) : null}
-        {analysis ? <AnalysisResult assessment={analysis.assessment} detections={analysis.detections} rules={analysis.rules} warning={analysis.warning} referencePriceStatus={analysis.reference_price_status} referencePrices={analysis.reference_prices} copilotConclusion={analysis.copilot_conclusion} /> : <p className="text-sm text-slate-500">No damage analysis has been run for this claim.</p>}
+        {analysis ? <AnalysisResult claimId={claim.id} claimStatus={claim.status} assessment={analysis.assessment} detections={analysis.detections} rules={analysis.rules} warning={analysis.warning} referencePriceStatus={analysis.reference_price_status} referencePrices={analysis.reference_prices} copilotConclusion={analysis.copilot_conclusion} /> : <p className="text-sm text-slate-500">No damage analysis has been run for this claim.</p>}
       </Card.Content>
     </Card>
   )
 }
 
-function AnalysisResult({ assessment, detections, rules, warning, referencePriceStatus, referencePrices, copilotConclusion }: { assessment: DamageAssessment; detections: DamageDetection[]; rules: { confidence_threshold: number; repair_max_percentage: number; replacement_min_percentage: number } | null; warning: string | null; referencePriceStatus: ReferencePriceLookupStatus; referencePrices: ReferencePartPrice[]; copilotConclusion: CopilotConclusion | null }) {
+function AnalysisResult({ claimId, claimStatus, assessment, detections, rules, warning, referencePriceStatus, referencePrices, copilotConclusion }: { claimId: string; claimStatus: ClaimStatus; assessment: DamageAssessment; detections: DamageDetection[]; rules: { confidence_threshold: number; repair_max_percentage: number; replacement_min_percentage: number } | null; warning: string | null; referencePriceStatus: ReferencePriceLookupStatus; referencePrices: ReferencePartPrice[]; copilotConclusion: CopilotConclusion | null }) {
   const presentation = assessmentPresentation[assessment]
   return (
     <div className="grid gap-5">
@@ -62,7 +64,7 @@ function AnalysisResult({ assessment, detections, rules, warning, referencePrice
       {warning ? <Alert status="warning"><WarningAlt size={18} /><Alert.Title>Review note</Alert.Title><Alert.Description>{warning}</Alert.Description></Alert> : null}
       {rules ? <p className="text-xs text-slate-500">Rules used: confidence {formatPercentage(rules.confidence_threshold * 100)}, repair up to {formatPercentage(rules.repair_max_percentage)}, replacement from {formatPercentage(rules.replacement_min_percentage)}.</p> : null}
       <ReferencePartPriceSection status={referencePriceStatus} prices={referencePrices} />
-      <CopilotConclusionSection conclusion={copilotConclusion} />
+      <CopilotConclusionSection claimId={claimId} claimStatus={claimStatus} conclusion={copilotConclusion} />
       {detections.length ? (
         <div className="grid gap-4">
           <h2 className="text-sm font-semibold text-slate-950">Detected damage</h2>
@@ -75,7 +77,7 @@ function AnalysisResult({ assessment, detections, rules, warning, referencePrice
   )
 }
 
-function CopilotConclusionSection({ conclusion }: { conclusion: CopilotConclusion | null }) {
+function CopilotConclusionSection({ claimId, claimStatus, conclusion }: { claimId: string; claimStatus: ClaimStatus; conclusion: CopilotConclusion | null }) {
   if (!conclusion) return null
   const label = conclusion.status === 'GENERATED' ? 'Generated' : conclusion.status === 'FALLBACK' ? 'Demo fallback' : 'Unavailable'
   const color = conclusion.status === 'GENERATED' ? 'success' : conclusion.status === 'FALLBACK' ? 'default' : 'warning'
@@ -85,8 +87,66 @@ function CopilotConclusionSection({ conclusion }: { conclusion: CopilotConclusio
       {conclusion.status === 'LLM_UNAVAILABLE' ? <Alert status="warning"><WarningAlt size={18} /><Alert.Title>AI copilot unavailable</Alert.Title><Alert.Description>{conclusion.failure_reason ?? 'The fallback summary is shown below.'}</Alert.Description></Alert> : null}
       <p className="text-sm leading-6 text-slate-700">{conclusion.summary}</p>
       <dl className="grid gap-2 border-l-2 border-blue-600 pl-3 text-sm sm:grid-cols-2"><div><dt className="text-xs text-slate-500">Recommendation</dt><dd className="font-semibold text-slate-950">Manual adjuster review</dd></div><div><dt className="text-xs text-slate-500">Source</dt><dd className="font-medium text-slate-700">{conclusion.provider_model ?? 'Deterministic demo fallback'}</dd></div></dl>
+      <CopilotConclusionReviewSection claimId={claimId} claimStatus={claimStatus} conclusion={conclusion} />
     </section>
   )
+}
+
+const rejectionCategories: Array<{ value: CopilotConclusionRejectionCategory; label: string }> = [
+  { value: 'DOCUMENT_INFORMATION_INCOMPLETE', label: 'Document information incomplete' },
+  { value: 'DOCUMENT_INFORMATION_INCORRECT', label: 'Document information incorrect' },
+  { value: 'DAMAGE_ASSESSMENT_ISSUE', label: 'Damage assessment issue' },
+  { value: 'DAMAGE_EVIDENCE_ISSUE', label: 'Damage evidence issue' },
+  { value: 'MISSING_EVIDENCE', label: 'Missing evidence' },
+  { value: 'INCORRECT_AI_CONCLUSION', label: 'Incorrect AI conclusion' },
+  { value: 'OTHER', label: 'Other' },
+]
+
+function CopilotConclusionReviewSection({ claimId, claimStatus, conclusion }: { claimId: string; claimStatus: ClaimStatus; conclusion: CopilotConclusion }) {
+  const { session } = useAuth()
+  const review = useReviewCopilotConclusion(claimId, conclusion.id)
+  const [isRejecting, setIsRejecting] = useState(false)
+  const [reasonCategory, setReasonCategory] = useState<CopilotConclusionRejectionCategory | ''>('')
+  const [comment, setComment] = useState('')
+  const [validationError, setValidationError] = useState<string | null>(null)
+  const canReview = session?.user.role === 'ADJUSTER' && claimStatus === 'REVIEW_REQUIRED' && conclusion.review_history.length === 0
+
+  function submitRejection(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!reasonCategory || !comment.trim()) {
+      setValidationError('Select a reason category and enter a review comment.')
+      return
+    }
+    setValidationError(null)
+    review.mutate({ status: 'REJECTED', reason_category: reasonCategory, comment: comment.trim() })
+  }
+
+  return (
+    <section className="grid gap-3 border-t border-slate-100 pt-4">
+      <div><h3 className="text-sm font-semibold text-slate-950">AI conclusion review</h3><p className="mt-1 text-xs leading-5 text-slate-500">This approves the AI conclusion only. It does not approve or reject the insurance claim.</p></div>
+      {canReview ? (
+        <>
+          {review.error ? <Alert status="danger"><Alert.Title>AI conclusion review could not be saved</Alert.Title><Alert.Description>{review.error instanceof ClaimsApiError ? review.error.message : 'Try again after checking the conclusion.'}</Alert.Description></Alert> : null}
+          {!isRejecting ? <div className="flex flex-wrap gap-3"><Button isPending={review.isPending} onPress={() => review.mutate({ status: 'APPROVED' })} variant="primary">Approve AI conclusion</Button><Button isDisabled={review.isPending} onPress={() => setIsRejecting(true)} variant="secondary">Reject AI conclusion</Button></div> : null}
+          {isRejecting ? <form className="grid gap-3 border-l-2 border-amber-500 bg-amber-50/50 p-4" onSubmit={submitRejection}>
+            <label className="grid gap-1 text-sm font-medium text-slate-800">Reason category<select aria-label="Rejection reason category" className="min-h-10 border border-slate-300 bg-white px-3 text-sm text-slate-900" onChange={(event) => setReasonCategory(event.target.value as CopilotConclusionRejectionCategory)} value={reasonCategory}><option value="">Select a reason</option>{rejectionCategories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}</select></label>
+            <label className="grid gap-1 text-sm font-medium text-slate-800">Review comment<textarea aria-label="Rejection review comment" className="min-h-24 border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" maxLength={2000} onChange={(event) => setComment(event.target.value)} value={comment} /></label>
+            {validationError ? <p className="text-sm text-red-700">{validationError}</p> : null}
+            <div className="flex flex-wrap gap-3"><Button isPending={review.isPending} type="submit" variant="danger">Confirm AI conclusion rejection</Button><Button isDisabled={review.isPending} onPress={() => { setIsRejecting(false); setValidationError(null) }} variant="secondary">Cancel</Button></div>
+          </form> : null}
+        </>
+      ) : null}
+    </section>
+  )
+}
+
+export function CopilotReviewHistory({ history }: { history: CopilotConclusionReview[] }) {
+  if (!history.length) return null
+  return <section className="grid gap-3 border-y border-slate-200 py-5"><div><h2 className="text-sm font-semibold text-slate-950">AI conclusion review history</h2><p className="mt-1 text-xs text-slate-500">Recorded adjuster feedback for AI conclusions in this claim.</p></div><ReviewHistory history={history} /></section>
+}
+
+function ReviewHistory({ history }: { history: CopilotConclusionReview[] }) {
+  return <div className="grid gap-3 border-l-2 border-slate-300 pl-3">{history.map((review) => <div className="grid gap-1 text-sm" key={`${review.conclusion_id}-${review.reviewed_at}`}><div className="flex flex-wrap items-center gap-2"><Chip color={review.status === 'APPROVED' ? 'success' : 'danger'} size="sm" variant="soft">AI conclusion {review.status === 'APPROVED' ? 'approved' : 'rejected'}</Chip><span className="text-xs text-slate-500">Conclusion #{review.conclusion_id}</span><span className="text-xs text-slate-500">Reviewed by {review.reviewer} on {new Date(review.reviewed_at).toLocaleString()}</span></div>{review.reason_category ? <p className="text-xs text-slate-600">Reason: {formatLabel(review.reason_category)}</p> : null}{review.comment ? <p className="text-sm text-slate-700">{review.comment}</p> : null}</div>)}</div>
 }
 
 function ReferencePartPriceSection({ status, prices }: { status: ReferencePriceLookupStatus; prices: ReferencePartPrice[] }) {

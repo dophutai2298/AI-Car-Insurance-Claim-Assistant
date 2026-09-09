@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import CopilotConclusion, DamageAnalysis
+from app.models import Claim, CopilotConclusion, DamageAnalysis
 from app.services.llm_copilot import CopilotConclusionResult
 
 
@@ -31,4 +31,13 @@ class CopilotConclusionRepository:
 
     def find_for_analysis(self, analysis_id: int) -> CopilotConclusion | None:
         statement = select(CopilotConclusion).where(CopilotConclusion.analysis_id == analysis_id)
+        return self.session.scalar(statement)
+
+    def find_for_claim(self, claim_id: int, conclusion_id: int) -> CopilotConclusion | None:
+        statement = (
+            select(CopilotConclusion)
+            .join(DamageAnalysis, DamageAnalysis.id == CopilotConclusion.analysis_id)
+            .join(Claim, Claim.id == DamageAnalysis.claim_id)
+            .where(Claim.id == claim_id, CopilotConclusion.id == conclusion_id)
+        )
         return self.session.scalar(statement)

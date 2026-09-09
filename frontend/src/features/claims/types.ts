@@ -31,6 +31,7 @@ export type ClaimDetail = {
   updated_at: string
   evidence: EvidenceItem[]
   latest_damage_analysis: DamageAnalysis | null
+  copilot_review_history?: CopilotConclusionReview[]
 }
 
 export type EvidenceItem = {
@@ -94,6 +95,7 @@ export type ReferencePartPrice = {
 }
 
 export type CopilotConclusion = {
+  id: number
   status: 'GENERATED' | 'FALLBACK' | 'LLM_UNAVAILABLE'
   recommendation: 'MANUAL_ADJUSTER_REVIEW'
   summary: string
@@ -103,6 +105,34 @@ export type CopilotConclusion = {
   findings: CopilotFinding[]
   warnings: string[]
   reference_prices: ReferencePartPrice[]
+  review_history: CopilotConclusionReview[]
+}
+
+export type CopilotConclusionReviewStatus = 'APPROVED' | 'REJECTED'
+
+export type CopilotConclusionRejectionCategory =
+  | 'DOCUMENT_INFORMATION_INCOMPLETE'
+  | 'DOCUMENT_INFORMATION_INCORRECT'
+  | 'DAMAGE_ASSESSMENT_ISSUE'
+  | 'DAMAGE_EVIDENCE_ISSUE'
+  | 'MISSING_EVIDENCE'
+  | 'INCORRECT_AI_CONCLUSION'
+  | 'OTHER'
+
+export type CopilotConclusionReview = {
+  claim_id: string
+  conclusion_id: number
+  status: CopilotConclusionReviewStatus
+  reason_category: CopilotConclusionRejectionCategory | null
+  comment: string | null
+  reviewer: string
+  reviewed_at: string
+}
+
+export type CopilotConclusionReviewInput = {
+  status: CopilotConclusionReviewStatus
+  reason_category?: CopilotConclusionRejectionCategory
+  comment?: string
 }
 
 export type CopilotFinding = {

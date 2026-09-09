@@ -4,6 +4,7 @@ import type {
   ClaimDetail,
   ClaimListItem,
   ClaimStatus,
+  CopilotConclusionReviewInput,
   EvidenceUploadItem,
 } from './types'
 
@@ -53,6 +54,19 @@ export function transitionClaimStatus(claimId: string, status: ClaimStatus, acce
 
 export function runDamageAnalysis(claimId: string, accessToken: string) {
   return request<DamageAnalysis>(`/api/claims/${claimId}/damage-analysis`, accessToken, { method: 'POST' })
+}
+
+export function reviewCopilotConclusion(
+  claimId: string,
+  conclusionId: number,
+  input: CopilotConclusionReviewInput,
+  accessToken: string,
+) {
+  return request<ClaimDetail>(
+    `/api/claims/${claimId}/copilot-conclusions/${conclusionId}/review`,
+    accessToken,
+    { method: 'POST', body: JSON.stringify(input) },
+  )
 }
 
 export async function uploadEvidence(

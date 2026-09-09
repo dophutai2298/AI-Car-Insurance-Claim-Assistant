@@ -487,3 +487,88 @@ def test_missing_llm_credentials_returns_unavailable_conclusion_without_hiding_a
     assert analysis["assessment"] == "REPAIR_LIKELY"
     assert analysis["copilot_conclusion"]["status"] == "LLM_UNAVAILABLE"
     assert analysis["copilot_conclusion"]["fallback_summary"]
+
+
+def create_reviewable_conclusion(client: TestClient) -> tuple[dict[str, object], dict[str, object]]:
+    claim = create_claim(client)
+    upload_damage_images(client, claim["id"], ["repair.jpg"])
+    analysis = client.post(
+        f"/api/claims/{claim['id']}/damage-analysis", headers=adjuster_headers(client)
+    ).json()
+    return claim, analysis["copilot_conclusion"]
+
+
+def test_adjuster_can_approve_an_ai_conclusion_and_view_persisted_review_history(client: TestClient):
+    claim, conclusion = create_reviewable_conclusion(client)
+
+    response = client.post(
+        f"/api/claims/{claim['id']}/copilot-conclusions/{conclusion['id']}/review",
+        headers=adjuster_headers(client),
+        json={"status": "APPROVED"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "AI_APPROVED"
+    assert response.json()["latest_damage_analysis"]["copilot_conclusion"]["review_history"] == [{
+        "claim_id": claim["id"],
+        "conclusion_id": conclusion["id"],
+        "status": "APPROVED",
+        "reason_category": None,
+        "comment": None,
+        "reviewer": "adjuster@example.com",
+        "reviewed_at": response.json()["latest_damage_analysis"]["copilot_conclusion"]["review_history"][0]["reviewed_at"],
+    }]
+    assert response.json()["copilot_review_history"][0]["conclusion_id"] == conclusion["id"]
+
+
+def test_rejecting_an_ai_conclusion_requires_a_category_and_comment_at_the_api(client: TestClient):
+    claim, conclusion = create_reviewable_conclusion(client)
+
+    missing_reason = client.post(
+        f"/api/claims/{claim['id']}/copilot-conclusions/{conclusion['id']}/review",
+        headers=adjuster_headers(client),
+        json={"status": "REJECTED"},
+    )
+    assert missing_reason.status_code == 422
+
+    response = client.post(
+        f"/api/claims/{claim['id']}/copilot-conclusions/{conclusion['id']}/review",
+        headers=adjuster_headers(client),
+        json={
+            "status": "REJECTED",
+            "reason_category": "DAMAGE_ASSESSMENT_ISSUE",
+            "comment": "The rear bumper damage area is understated in the annotated image.",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "AI_REJECTED"
+    review = response.json()["latest_damage_analysis"]["copilot_conclusion"]["review_history"][0]
+    assert review["reason_category"] == "DAMAGE_ASSESSMENT_ISSUE"
+    assert review["comment"] == "The rear bumper damage area is understated in the annotated image."
+
+
+def test_admin_cannot_review_an_ai_conclusion_and_a_conclusion_cannot_be_reviewed_twice(client: TestClient):
+    claim, conclusion = create_reviewable_conclusion(client)
+
+    admin_response = client.post(
+        f"/api/claims/{claim['id']}/copilot-conclusions/{conclusion['id']}/review",
+        headers=admin_headers(client),
+        json={"status": "APPROVED"},
+    )
+    assert admin_response.status_code == 403
+
+    approved = client.post(
+        f"/api/claims/{claim['id']}/copilot-conclusions/{conclusion['id']}/review",
+        headers=adjuster_headers(client),
+        json={"status": "APPROVED"},
+    )
+    assert approved.status_code == 200
+
+    duplicate = client.post(
+        f"/api/claims/{claim['id']}/copilot-conclusions/{conclusion['id']}/review",
+        headers=adjuster_headers(client),
+        json={"status": "APPROVED"},
+    )
+    assert duplicate.status_code == 409
+    assert duplicate.json() == {"detail": "AI conclusion has already been reviewed"}

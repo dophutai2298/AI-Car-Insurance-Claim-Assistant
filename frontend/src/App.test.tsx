@@ -270,6 +270,7 @@ test('adjuster can run damage analysis and review the no-damage warning', async 
           reference_price_status: 'NOT_REQUESTED',
           reference_prices: [],
           copilot_conclusion: {
+            id: 1,
             status: 'FALLBACK',
             recommendation: 'MANUAL_ADJUSTER_REVIEW',
             summary: 'No normalized damage finding supports a no-damage assessment. An adjuster must review this case before any final decision.',
@@ -279,11 +280,32 @@ test('adjuster can run damage analysis and review the no-damage warning', async 
             findings: [],
             warnings: ['No significant vehicle damage was detected. This does not guarantee the vehicle is undamaged.'],
             reference_prices: [],
+            review_history: [],
           },
           created_at: '2026-09-08T00:01:00Z',
         },
       }
       return new Response(JSON.stringify(currentClaim.latest_damage_analysis))
+    }
+    if (String(input).includes('/copilot-conclusions/1/review') && init?.method === 'POST') {
+      currentClaim = {
+        ...currentClaim,
+        status: 'AI_APPROVED',
+        copilot_review_history: [{
+          claim_id: 'CLM-000071', conclusion_id: 1, status: 'APPROVED', reason_category: null,
+          comment: null, reviewer: 'adjuster@example.com', reviewed_at: '2026-09-08T00:02:00Z',
+        }],
+        latest_damage_analysis: {
+          ...currentClaim.latest_damage_analysis!,
+          copilot_conclusion: {
+            ...currentClaim.latest_damage_analysis!.copilot_conclusion!,
+            review_history: [{
+              claim_id: 'CLM-000071', conclusion_id: 1, status: 'APPROVED', reason_category: null,
+              comment: null, reviewer: 'adjuster@example.com', reviewed_at: '2026-09-08T00:02:00Z',
+            }],
+          },
+        },
+      }
     }
     return new Response(JSON.stringify(currentClaim))
   })
@@ -299,6 +321,10 @@ test('adjuster can run damage analysis and review the no-damage warning', async 
   expect(await screen.findByText(/not requested\. reference price lookup/i)).toBeVisible()
   expect(await screen.findByText('AI copilot conclusion')).toBeVisible()
   expect(await screen.findByText('Demo fallback')).toBeVisible()
+  expect(await screen.findByText(/this approves the ai conclusion only/i)).toBeVisible()
+  await user.click(screen.getByRole('button', { name: /approve ai conclusion/i }))
+  expect(await screen.findByText('AI conclusion approved')).toBeVisible()
+  expect(await screen.findByText(/reviewed by adjuster@example.com/i)).toBeVisible()
 })
 
 test('admin can update global assessment rules from the configuration page', async () => {

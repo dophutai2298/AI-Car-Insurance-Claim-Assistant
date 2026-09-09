@@ -8,6 +8,7 @@ from app.models import (
     Claim,
     ClaimStatus,
     CopilotConclusionStatus,
+    CopilotConclusionReview,
     DamageAssessment,
     DamageAnalysis,
     Evidence,
@@ -22,9 +23,15 @@ from app.repositories.claims import ClaimRepository
 from app.repositories.damage_analyses import DamageAnalysisRepository
 from app.repositories.evidence import EvidenceRepository
 from app.repositories.copilot_conclusions import CopilotConclusionRepository
+from app.repositories.copilot_conclusion_reviews import (
+    CopilotConclusionAlreadyReviewedError,
+    CopilotConclusionReviewRepository,
+)
 from app.schemas.claims import (
     ClaimCreateRequest,
     CopilotConclusionResponse,
+    CopilotConclusionReviewRequest,
+    CopilotConclusionReviewResponse,
     CopilotFindingResponse,
     DamageAnalysisResponse,
     DamageDetectionResponse,
@@ -74,6 +81,7 @@ class ClaimService:
         self.evidence = EvidenceRepository(session)
         self.damage_analyses = DamageAnalysisRepository(session)
         self.copilot_conclusions = CopilotConclusionRepository(session)
+        self.copilot_conclusion_reviews = CopilotConclusionReviewRepository(session)
         self.storage = storage
         self.damage_model = damage_model
         self.assessment = assessment
@@ -109,6 +117,32 @@ class ClaimService:
         if next_status not in ALLOWED_LIFECYCLE_TRANSITIONS.get(claim.status, set()):
             raise ValueError("Invalid claim lifecycle transition")
         return self._to_response(self.claims.update_status(claim, next_status))
+
+    def review_copilot_conclusion(
+        self,
+        claim_number: str,
+        conclusion_id: int,
+        request: CopilotConclusionReviewRequest,
+        reviewer: User,
+    ) -> ClaimResponse | None:
+        claim = self.claims.find_by_claim_number(claim_number)
+        if claim is None:
+            return None
+        conclusion = self.copilot_conclusions.find_for_claim(claim.id, conclusion_id)
+        if conclusion is None:
+            raise LookupError("AI conclusion not found")
+        if self.copilot_conclusion_reviews.exists_for_conclusion(conclusion.id):
+            raise RuntimeError("AI conclusion has already been reviewed")
+        if claim.status is not ClaimStatus.REVIEW_REQUIRED:
+            raise ValueError("Claim is not awaiting AI conclusion review")
+        latest_analysis = self.damage_analyses.latest_for_claim(claim.id)
+        if latest_analysis is None or conclusion.analysis_id != latest_analysis.id:
+            raise ValueError("AI conclusion is not current")
+        try:
+            self.copilot_conclusion_reviews.create(claim, conclusion, request, reviewer)
+        except CopilotConclusionAlreadyReviewedError as error:
+            raise RuntimeError("AI conclusion has already been reviewed") from error
+        return self._to_response(claim)
 
     def upload_evidence(
         self,
@@ -203,6 +237,10 @@ class ClaimService:
                 for item in self.evidence.list_for_claim(claim.id)
             ],
             latest_damage_analysis=self._latest_damage_analysis_response(claim.claim_number, claim.id),
+            copilot_review_history=[
+                self._to_copilot_conclusion_review_response(claim.claim_number, item, reviewer)
+                for item, reviewer in self.copilot_conclusion_reviews.list_for_claim(claim.id)
+            ],
         )
 
     def _latest_damage_analysis_response(self, claim_number: str, claim_id: int) -> DamageAnalysisResponse | None:
@@ -239,6 +277,7 @@ class ClaimService:
             reference_price_status=self._reference_price_status(reference_prices),
             reference_prices=reference_price_responses,
             copilot_conclusion=self._to_copilot_conclusion_response(
+                claim_number,
                 self.copilot_conclusions.find_for_analysis(analysis.id),
                 detections,
                 reference_price_responses,
@@ -306,8 +345,9 @@ class ClaimService:
             ],
         )
 
-    @staticmethod
     def _to_copilot_conclusion_response(
+        self,
+        claim_number: str,
         conclusion: CopilotConclusion | None,
         detections: list[DamageDetectionResponse],
         reference_prices: list[ReferencePartPriceResponse],
@@ -316,6 +356,7 @@ class ClaimService:
         if conclusion is None:
             return None
         return CopilotConclusionResponse(
+            id=conclusion.id,
             status=conclusion.status,
             recommendation=conclusion.recommendation,
             summary=conclusion.summary,
@@ -334,6 +375,24 @@ class ClaimService:
             ],
             warnings=[warning] if warning else [],
             reference_prices=reference_prices,
+            review_history=[
+                self._to_copilot_conclusion_review_response(claim_number, item, reviewer)
+                for item, reviewer in self.copilot_conclusion_reviews.list_for_conclusion(conclusion.id)
+            ],
+        )
+
+    @staticmethod
+    def _to_copilot_conclusion_review_response(
+        claim_number: str, review: CopilotConclusionReview, reviewer: str
+    ) -> CopilotConclusionReviewResponse:
+        return CopilotConclusionReviewResponse(
+            claim_id=claim_number,
+            conclusion_id=review.conclusion_id,
+            status=review.status,
+            reason_category=review.reason_category,
+            comment=review.comment,
+            reviewer=reviewer,
+            reviewed_at=review.reviewed_at,
         )
 
     def _rules_for_analysis(self, analysis_id: int) -> AssessmentRuleValuesSchema | None:

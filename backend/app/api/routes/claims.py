@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import CurrentUser
+from app.api.dependencies import AdjusterUser, CurrentUser
 from app.core.config import Settings, get_settings
 from app.db import get_db
 from app.models import EvidenceCategory
@@ -13,6 +13,7 @@ from app.schemas.claims import (
     ClaimListItem,
     ClaimResponse,
     ClaimStatusUpdateRequest,
+    CopilotConclusionReviewRequest,
     DamageAnalysisResponse,
 )
 from app.services.claims import ClaimService, EvidencePersistenceError
@@ -143,3 +144,24 @@ def run_damage_analysis(
     if analysis is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
     return analysis
+
+
+@router.post("/{claim_number}/copilot-conclusions/{conclusion_id}/review", response_model=ClaimResponse)
+def review_copilot_conclusion(
+    claim_number: str,
+    conclusion_id: int,
+    request: CopilotConclusionReviewRequest,
+    current_user: AdjusterUser,
+    service: ClaimServiceDependency,
+) -> ClaimResponse:
+    try:
+        claim = service.review_copilot_conclusion(claim_number, conclusion_id, request, current_user)
+    except LookupError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="AI conclusion not found") from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+    if claim is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
+    return claim

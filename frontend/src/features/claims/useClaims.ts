@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useAuth } from '../auth/AuthProvider'
-import { createClaim, getClaim, listClaims, runDamageAnalysis, transitionClaimStatus, uploadEvidence } from './claimsApi'
-import type { ClaimCreateInput, ClaimStatus, EvidenceUploadItem } from './types'
+import { createClaim, getClaim, listClaims, reviewCopilotConclusion, runDamageAnalysis, transitionClaimStatus, uploadEvidence } from './claimsApi'
+import type { ClaimCreateInput, ClaimStatus, CopilotConclusionReviewInput, EvidenceUploadItem } from './types'
 
 export const claimsQueryKey = ['claims'] as const
 
@@ -75,6 +75,21 @@ export function useDamageAnalysis(claimId: string | undefined) {
     mutationFn: () => runDamageAnalysis(claimId!, session!.access_token),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [...claimsQueryKey, claimId] })
+      await queryClient.invalidateQueries({ queryKey: claimsQueryKey })
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] })
+    },
+  })
+}
+
+export function useReviewCopilotConclusion(claimId: string | undefined, conclusionId: number | undefined) {
+  const { session } = useAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: CopilotConclusionReviewInput) =>
+      reviewCopilotConclusion(claimId!, conclusionId!, input, session!.access_token),
+    onSuccess: async (claim) => {
+      queryClient.setQueryData([...claimsQueryKey, claim.id], claim)
       await queryClient.invalidateQueries({ queryKey: claimsQueryKey })
       await queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] })
     },
