@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 
 import { AdminApiError } from './adminApi'
 import { useAssessmentRuleHistory, useAssessmentRules, useUpdateAssessmentRules } from './useAssessmentRules'
+import { VehicleManufacturerPanel } from './VehicleManufacturerPanel'
 
 type RuleForm = {
   confidenceThreshold: string
@@ -89,6 +90,8 @@ export function AdminConfigPage() {
           ) : null}
         </Card.Content>
       </Card>
+
+      <VehicleManufacturerPanel />
 
       <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
         <Card.Header className="flex items-center gap-3 border-b border-slate-100 px-6 py-5"><Time className="text-slate-600" size={20} /><div><Card.Title className="text-lg text-slate-950">Change history</Card.Title><Card.Description className="text-sm text-slate-500">Persisted audit trail for assessment-rule updates.</Card.Description></div></Card.Header>

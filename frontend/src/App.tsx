@@ -14,22 +14,18 @@ import {
 import { Alert, Button, Card, Chip, EmptyState, Skeleton } from '@heroui/react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Navigate, NavLink, Outlet, Route, Routes, useNavigate } from 'react-router'
+import { useTranslation } from 'react-i18next'
 
 import { ClaimQueueTable } from './features/dashboard/ClaimQueueTable'
 import type { CapabilityState } from './features/dashboard/types'
 import { useDashboardOverview } from './features/dashboard/useDashboardOverview'
 import { LoginPage } from './features/auth/LoginPage'
 import { useAuth } from './features/auth/AuthProvider'
+import { LanguageSwitcher } from './features/auth/LanguageSwitcher'
 import { ProtectedRoute, RoleRoute } from './features/auth/ProtectedRoute'
 import { ClaimCreatePage } from './features/claims/ClaimCreatePage'
 import { ClaimDetailPage } from './features/claims/ClaimDetailPage'
 import { AdminConfigPage } from './features/admin/AdminConfigPage'
-
-const navigation = [
-  { label: 'Dashboard', icon: Activity, path: '/dashboard' },
-  { label: 'Claims', icon: Document, path: '/claims' },
-  { label: 'Admin Config', icon: SettingsAdjust, path: '/admin', adminOnly: true },
-]
 
 const capabilityTone: Record<CapabilityState, 'success' | 'warning' | 'default'> = {
   ready: 'success',
@@ -39,6 +35,12 @@ const capabilityTone: Record<CapabilityState, 'success' | 'warning' | 'default'>
 
 function AppShell() {
   const { logout, session } = useAuth()
+  const { t } = useTranslation()
+  const navigation = [
+    { label: t('navigation.dashboard'), icon: Activity, path: '/dashboard' },
+    { label: t('navigation.claims'), icon: Document, path: '/claims' },
+    { label: t('navigation.admin'), icon: SettingsAdjust, path: '/admin', adminOnly: true },
+  ]
   const visibleNavigation = navigation.filter(
     (item) => !item.adminOnly || session?.user.role === 'ADMIN',
   )
@@ -82,14 +84,15 @@ function AppShell() {
               })}
             </nav>
 
-            <div className="mt-auto hidden border-t border-slate-800 pt-4 lg:block">
-              <div className="mb-3 min-w-0">
+            <div className="mt-auto border-t border-slate-800 pt-4">
+              <LanguageSwitcher />
+              <div className="mb-3 mt-4 hidden min-w-0 lg:block">
                 <div className="truncate text-sm font-semibold text-white">{session?.user.full_name}</div>
                 <div className="truncate text-xs text-slate-400">{session?.user.email}</div>
               </div>
-              <Button className="w-full justify-start" onPress={logout} size="sm" variant="ghost">
+              <Button className="hidden w-full justify-start lg:flex" onPress={logout} size="sm" variant="danger-soft">
                 <Logout size={17} />
-                Sign out
+                {t('navigation.signOut')}
               </Button>
             </div>
           </div>

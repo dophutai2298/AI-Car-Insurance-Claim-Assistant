@@ -3,6 +3,7 @@ import { Alert, Button, Card, Chip, Skeleton } from '@heroui/react'
 import { Link, useParams } from 'react-router'
 
 import { lifecycleAction, statusLabel, statusTone } from './statusPresentation'
+import { ClaimWorkflowStepper, claimWorkflowForStatus } from './ClaimWorkflowStepper'
 import { CopilotReviewHistory, DamageAnalysisPanel } from './DamageAnalysisPanel'
 import { EvidencePanel } from './EvidencePanel'
 import { useClaim, useTransitionClaim } from './useClaims'
@@ -29,6 +30,8 @@ export function ClaimDetailPage() {
     )
   }
 
+  const workflow = claimWorkflowForStatus(claim.status)
+
   return (
     <div className="mx-auto grid max-w-[1440px] gap-6 py-2">
         <Link className="flex w-fit items-center gap-2 text-sm font-semibold text-blue-700" to="/claims"><ArrowLeft size={18} />Back to claims</Link>
@@ -40,6 +43,8 @@ export function ClaimDetailPage() {
           </div>
           <Chip color={statusTone[claim.status]} variant="soft">{statusLabel[claim.status]}</Chip>
         </header>
+
+        <ClaimWorkflowStepper current={workflow.current} states={workflow.states} />
 
         <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
           <Card.Header className="flex items-center gap-3 border-b border-slate-100 px-6 py-5">

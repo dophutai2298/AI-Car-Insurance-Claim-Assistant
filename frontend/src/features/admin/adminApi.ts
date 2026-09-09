@@ -1,4 +1,5 @@
 import type { AssessmentRuleChange, AssessmentRuleConfiguration, AssessmentRuleValues } from './types'
+import type { VehicleManufacturer, VehicleManufacturerUpdate, VehicleManufacturerWrite } from '../vehicleMakes/types'
 
 export class AdminApiError extends Error {}
 
@@ -13,7 +14,7 @@ async function request<T>(path: string, accessToken: string, init?: RequestInit)
   })
   const body: unknown = await response.json()
   if (!response.ok) {
-    const message = validationMessage(body) ?? 'Unable to update assessment rules'
+    const message = validationMessage(body) ?? 'Unable to complete administrator request'
     throw new AdminApiError(message)
   }
   return body as T
@@ -42,4 +43,26 @@ export function updateAssessmentRules(values: AssessmentRuleValues, accessToken:
 
 export function getAssessmentRuleHistory(accessToken: string) {
   return request<AssessmentRuleChange[]>('/api/admin/assessment-rules/history', accessToken)
+}
+
+export function getAdminVehicleManufacturers(accessToken: string) {
+  return request<VehicleManufacturer[]>('/api/admin/vehicle-makes', accessToken)
+}
+
+export function createVehicleManufacturer(values: VehicleManufacturerWrite, accessToken: string) {
+  return request<VehicleManufacturer>('/api/admin/vehicle-makes', accessToken, {
+    method: 'POST',
+    body: JSON.stringify(values),
+  })
+}
+
+export function updateVehicleManufacturer(
+  manufacturerId: number,
+  values: VehicleManufacturerUpdate,
+  accessToken: string,
+) {
+  return request<VehicleManufacturer>(`/api/admin/vehicle-makes/${manufacturerId}`, accessToken, {
+    method: 'PUT',
+    body: JSON.stringify(values),
+  })
 }

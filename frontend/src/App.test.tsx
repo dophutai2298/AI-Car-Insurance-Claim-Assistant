@@ -147,6 +147,9 @@ test('adjuster can create a claim and open its detail', async () => {
     if (String(input).endsWith('/api/claims') && init?.method === 'POST') {
       return new Response(JSON.stringify(createdClaim), { status: 201 })
     }
+    if (String(input).endsWith('/api/vehicle-makes')) {
+      return new Response(JSON.stringify([{ id: 1, name: 'Toyota', is_active: true }]), { status: 200 })
+    }
     if (String(input).endsWith('/api/claims/CLM-000042')) {
       return new Response(JSON.stringify(createdClaim), { status: 200 })
     }
@@ -159,7 +162,8 @@ test('adjuster can create a claim and open its detail', async () => {
   expect(await screen.findByRole('navigation', { name: /primary navigation/i })).toBeVisible()
   expect(within(screen.getByRole('navigation', { name: /primary navigation/i })).getByRole('link', { name: /^claims$/i })).toBeVisible()
   await user.type(await screen.findByLabelText(/claimant name/i), 'Mai Nguyen')
-  await user.type(screen.getByLabelText(/make/i), 'Toyota')
+  await user.click(await screen.findByLabelText(/vehicle make/i))
+  await user.click(await screen.findByRole('option', { name: 'Toyota' }))
   await user.type(screen.getByLabelText(/model/i), 'Camry')
   await user.type(screen.getByLabelText(/year/i), '2022')
   await user.click(screen.getByRole('button', { name: /create claim/i }))
@@ -167,6 +171,79 @@ test('adjuster can create a claim and open its detail', async () => {
   expect(await screen.findByRole('heading', { name: /claim clm-000042/i })).toBeVisible()
   expect(screen.getByText('Toyota Camry')).toBeVisible()
   expect(screen.getByRole('navigation', { name: /primary navigation/i })).toBeVisible()
+})
+
+test('claim information uses a vehicle-make autocomplete and persists the selected language', async () => {
+  const createdClaim = {
+    id: 'CLM-000043',
+    claimant_name: 'Mai Nguyen',
+    vehicle: { make: 'Toyota', model: 'Camry', year: 2022, license_plate: null, vin: null },
+    status: 'DRAFT',
+    created_at: '2026-09-08T00:00:00Z',
+    updated_at: '2026-09-08T00:00:00Z',
+  }
+  let submittedMake = ''
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).endsWith('/api/auth/me')) return new Response(JSON.stringify(adjusterSession.user))
+    if (String(input).endsWith('/api/vehicle-makes')) {
+      return new Response(JSON.stringify([
+        { id: 1, name: 'Toyota', is_active: true },
+        { id: 2, name: 'VinFast', is_active: true },
+      ]))
+    }
+    if (String(input).endsWith('/api/claims') && init?.method === 'POST') {
+      submittedMake = JSON.parse(init.body as string).vehicle.make
+      return new Response(JSON.stringify(createdClaim), { status: 201 })
+    }
+    return new Response(JSON.stringify(createdClaim))
+  })
+  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adjusterSession))
+  const user = userEvent.setup()
+  renderRoute('/claims/new')
+
+  expect(await screen.findByText('Claim information')).toBeVisible()
+  expect(screen.getByText('Current')).toBeVisible()
+  await user.click(screen.getByLabelText('Vehicle make'))
+  await user.click(await screen.findByRole('option', { name: 'Toyota' }))
+  await user.click(screen.getByRole('button', { name: 'Tiếng Việt' }))
+
+  expect(await screen.findByText('Thông tin yêu cầu bồi thường')).toBeVisible()
+  expect(localStorage.getItem('app.language')).toBe('vi')
+
+  await user.type(screen.getByLabelText('Tên người yêu cầu'), 'Mai Nguyen')
+  await user.type(screen.getByLabelText('Mẫu xe'), 'Camry')
+  await user.type(screen.getByLabelText('Năm sản xuất'), '2022')
+  await user.click(screen.getByRole('button', { name: 'Tạo hồ sơ' }))
+
+  expect(submittedMake).toBe('Toyota')
+})
+
+test('vehicle make autocomplete renders its empty state', async () => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const path = input instanceof Request ? input.url : String(input)
+    if (path.endsWith('/api/auth/me')) return new Response(JSON.stringify(adjusterSession.user))
+    if (path.includes('/api/vehicle-makes')) return new Response(JSON.stringify([]))
+    return new Response(JSON.stringify([]))
+  })
+  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adjusterSession))
+  const user = userEvent.setup()
+  renderRoute('/claims/new')
+
+  await user.click(await screen.findByLabelText(/vehicle make/i))
+  expect(await screen.findByText('No vehicle manufacturers are available.')).toBeVisible()
+})
+
+test('vehicle make autocomplete renders its loading state', async () => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const path = input instanceof Request ? input.url : String(input)
+    if (path.endsWith('/api/auth/me')) return new Response(JSON.stringify(adjusterSession.user))
+    if (path.includes('/api/vehicle-makes')) return new Promise<Response>(() => {})
+    return new Response(JSON.stringify([]))
+  })
+  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adjusterSession))
+  renderRoute('/claims/new')
+
+  expect(await screen.findByRole('status')).toHaveTextContent('Loading vehicle manufacturers...')
 })
 
 test('adjuster can start the safe AI review lifecycle from claim detail', async () => {
@@ -336,6 +413,7 @@ test('admin can update global assessment rules from the configuration page', asy
   let savedValues: unknown = null
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     if (String(input).endsWith('/api/auth/me')) return new Response(JSON.stringify(adminSession.user))
+    if (String(input).endsWith('/vehicle-makes')) return new Response(JSON.stringify([{ id: 1, name: 'Toyota', is_active: true }]))
     if (String(input).endsWith('/assessment-rules/history')) return new Response(JSON.stringify([]))
     if (String(input).endsWith('/assessment-rules') && init?.method === 'PUT') {
       savedValues = JSON.parse(init.body as string)
@@ -354,4 +432,51 @@ test('admin can update global assessment rules from the configuration page', asy
 
   expect(savedValues).toEqual({ confidence_threshold: 0.8, repair_max_percentage: 40, replacement_min_percentage: 60 })
   expect(await screen.findByText(/last changed by admin@example.com/i)).toBeVisible()
+})
+
+test('admin can create, disable, and re-enable a vehicle manufacturer', async () => {
+  const configuration: AssessmentRuleConfiguration = {
+    values: { confidence_threshold: 0.7, repair_max_percentage: 40, replacement_min_percentage: 60 },
+    updated_by: null,
+    updated_at: '2026-09-08T00:00:00Z',
+  }
+  let manufacturers = [{ id: 1, name: 'Toyota', is_active: true }]
+  const updates: Array<{ id: number; name: string; is_active: boolean }> = []
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const path = input instanceof Request ? input.url : String(input)
+    if (path.endsWith('/api/auth/me')) return new Response(JSON.stringify(adminSession.user))
+    if (path.endsWith('/assessment-rules/history')) return new Response(JSON.stringify([]))
+    if (path.endsWith('/assessment-rules')) return new Response(JSON.stringify(configuration))
+    if (path.endsWith('/api/admin/vehicle-makes') && init?.method === 'POST') {
+      const created = { id: 2, name: JSON.parse(init.body as string).name, is_active: true }
+      manufacturers = [...manufacturers, created]
+      return new Response(JSON.stringify(created), { status: 201 })
+    }
+    const manufacturerMatch = path.match(/\/api\/admin\/vehicle-makes\/(\d+)$/)
+    if (manufacturerMatch && init?.method === 'PUT') {
+      const values = JSON.parse(init.body as string) as { name: string; is_active: boolean }
+      const id = Number(manufacturerMatch[1])
+      updates.push({ id, ...values })
+      manufacturers = manufacturers.map((manufacturer) => manufacturer.id === id ? { id, ...values } : manufacturer)
+      return new Response(JSON.stringify(manufacturers.find((manufacturer) => manufacturer.id === id)))
+    }
+    if (path.endsWith('/api/admin/vehicle-makes')) return new Response(JSON.stringify(manufacturers))
+    return new Response(JSON.stringify([]))
+  })
+  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adminSession))
+  const user = userEvent.setup()
+  renderRoute('/admin')
+
+  await user.type(await screen.findByLabelText('Manufacturer name'), 'BYD')
+  await user.click(screen.getByRole('button', { name: 'Add manufacturer' }))
+  expect(await screen.findByDisplayValue('BYD')).toBeVisible()
+
+  await user.click(screen.getAllByRole('button', { name: 'Disable' })[0])
+  expect(await screen.findByRole('button', { name: 'Enable' })).toBeVisible()
+  await user.click(screen.getByRole('button', { name: 'Enable' }))
+
+  expect(updates).toEqual([
+    { id: 1, name: 'Toyota', is_active: false },
+    { id: 1, name: 'Toyota', is_active: true },
+  ])
 })

@@ -24,6 +24,8 @@ from app.services.damage_model import DamageModelUnavailableError, get_damage_mo
 from app.services.evidence_storage import EvidenceStorageError, LocalEvidenceStorage
 from app.services.part_search import PartSearchService, get_part_price_provider
 from app.services.llm_copilot import LlmCopilotService, get_llm_copilot_adapter
+from app.repositories.vehicle_manufacturers import VehicleManufacturerRepository
+from app.services.vehicle_manufacturers import VehicleManufacturerService
 
 router = APIRouter(prefix="/api/claims", tags=["claims"])
 
@@ -41,6 +43,7 @@ def get_claim_service(
         PartSearchService(get_part_price_provider(settings)),
         LlmCopilotService(get_llm_copilot_adapter(settings)),
         settings.openai_model,
+        VehicleManufacturerService(VehicleManufacturerRepository(session)),
     )
 
 
@@ -53,7 +56,10 @@ def create_claim(
     current_user: CurrentUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
-    return service.create_claim(request, current_user)
+    try:
+        return service.create_claim(request, current_user)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
 
 
 @router.get("", response_model=list[ClaimListItem])

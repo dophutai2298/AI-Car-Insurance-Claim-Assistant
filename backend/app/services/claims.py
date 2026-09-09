@@ -53,6 +53,7 @@ from app.services.llm_copilot import (
     CopilotStructuredFinding,
     LlmCopilotService,
 )
+from app.services.vehicle_manufacturers import VehicleManufacturerService
 
 ALLOWED_LIFECYCLE_TRANSITIONS: dict[ClaimStatus, set[ClaimStatus]] = {
     ClaimStatus.DRAFT: {ClaimStatus.ANALYZING},
@@ -76,6 +77,7 @@ class ClaimService:
         part_search: PartSearchService,
         llm_copilot: LlmCopilotService,
         llm_model: str | None,
+        vehicle_manufacturers: VehicleManufacturerService,
     ):
         self.claims = ClaimRepository(session)
         self.evidence = EvidenceRepository(session)
@@ -89,8 +91,11 @@ class ClaimService:
         self.part_search = part_search
         self.llm_copilot = llm_copilot
         self.llm_model = llm_model
+        self.vehicle_manufacturers = vehicle_manufacturers
 
     def create_claim(self, data: ClaimCreateRequest, created_by: User) -> ClaimResponse:
+        if not self.vehicle_manufacturers.is_active_name(data.vehicle.make):
+            raise ValueError("Vehicle manufacturer is unavailable for new claims")
         return self._to_response(self.claims.create(data, created_by.id))
 
     def list_claims(self) -> list[ClaimListItem]:

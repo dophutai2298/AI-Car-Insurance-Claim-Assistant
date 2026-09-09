@@ -105,6 +105,73 @@ def test_adjuster_can_open_claim_detail(client: TestClient):
     assert response.json()["status"] == "DRAFT"
 
 
+def test_vehicle_manufacturer_catalog_is_seeded_and_admin_can_manage_active_status(client: TestClient):
+    catalog_response = client.get("/api/vehicle-makes", headers=adjuster_headers(client))
+
+    assert catalog_response.status_code == 200
+    assert {item["name"] for item in catalog_response.json()} >= {"Toyota", "Honda", "VinFast"}
+    assert all(item["is_active"] for item in catalog_response.json())
+
+    blank_name_response = client.post(
+        "/api/admin/vehicle-makes",
+        headers=admin_headers(client),
+        json={"name": "   "},
+    )
+    assert blank_name_response.status_code == 422
+
+    create_response = client.post(
+        "/api/admin/vehicle-makes",
+        headers=admin_headers(client),
+        json={"name": "BYD"},
+    )
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created == {"id": created["id"], "name": "BYD", "is_active": True}
+
+    disable_response = client.put(
+        f"/api/admin/vehicle-makes/{created['id']}",
+        headers=admin_headers(client),
+        json={"name": "BYD Auto", "is_active": False},
+    )
+    assert disable_response.status_code == 200
+    assert disable_response.json()["name"] == "BYD Auto"
+    assert disable_response.json()["is_active"] is False
+
+    admin_catalog = client.get("/api/admin/vehicle-makes", headers=admin_headers(client))
+    assert any(item["name"] == "BYD Auto" and not item["is_active"] for item in admin_catalog.json())
+
+    reenable_response = client.put(
+        f"/api/admin/vehicle-makes/{created['id']}",
+        headers=admin_headers(client),
+        json={"name": "BYD Auto", "is_active": True},
+    )
+    assert reenable_response.status_code == 200
+    assert reenable_response.json()["is_active"] is True
+
+
+def test_claim_creation_rejects_a_disabled_vehicle_manufacturer(client: TestClient):
+    vehicle_makes = client.get("/api/admin/vehicle-makes", headers=admin_headers(client)).json()
+    toyota = next(item for item in vehicle_makes if item["name"] == "Toyota")
+    disable_response = client.put(
+        f"/api/admin/vehicle-makes/{toyota['id']}",
+        headers=admin_headers(client),
+        json={"name": "Toyota", "is_active": False},
+    )
+    assert disable_response.status_code == 200
+
+    response = client.post(
+        "/api/claims",
+        headers=adjuster_headers(client),
+        json={
+            "claimant_name": "Mai Nguyen",
+            "vehicle": {"make": "Toyota", "model": "Camry", "year": 2022},
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Vehicle manufacturer is unavailable for new claims"}
+
+
 def test_unknown_claim_returns_not_found(client: TestClient):
     response = client.get("/api/claims/CLM-999999", headers=adjuster_headers(client))
 

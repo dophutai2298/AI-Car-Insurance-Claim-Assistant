@@ -24,6 +24,14 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class VehicleManufacturer(Base):
+    __tablename__ = "vehicle_manufacturers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+
 class ClaimStatus(str, Enum):
     DRAFT = "DRAFT"
     ANALYZING = "ANALYZING"

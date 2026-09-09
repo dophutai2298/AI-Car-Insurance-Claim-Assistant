@@ -6,6 +6,7 @@ import { BrowserRouter } from 'react-router'
 import App from './App'
 import { AuthProvider } from './features/auth/AuthProvider'
 import { queryClient } from './lib/queryClient'
+import './i18n'
 import './styles.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

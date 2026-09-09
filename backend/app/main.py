@@ -3,10 +3,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import admin, auth, claims
+from app.api.routes import admin, auth, claims, vehicle_makes
 from app.core.config import get_settings
 from app.db import Base, create_database_engine, create_session_factory, ping_database
 from app.services.auth import seed_demo_users
+from app.services.vehicle_manufacturers import seed_vehicle_manufacturers
 
 OPENAPI_TAGS = [
     {"name": "auth", "description": "Session authentication and current-user operations."},
@@ -26,6 +27,7 @@ def create_app() -> FastAPI:
         app.state.session_factory = create_session_factory(engine)
         with app.state.session_factory() as session:
             seed_demo_users(session, settings)
+            seed_vehicle_manufacturers(session)
         try:
             yield
         finally:
@@ -54,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(admin.router)
     app.include_router(claims.router)
+    app.include_router(vehicle_makes.router)
 
     @app.get("/api/health", tags=["system"])
     def health_check() -> dict[str, object]:
