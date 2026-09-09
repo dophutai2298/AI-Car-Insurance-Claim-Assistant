@@ -6,6 +6,7 @@ import { expect, test, vi } from 'vitest'
 
 import { AppRoutes } from './App'
 import { AuthProvider } from './features/auth/AuthProvider'
+import type { AssessmentRuleConfiguration } from './features/admin/types'
 import type { ClaimDetail, EvidenceCategory, EvidenceItem } from './features/claims/types'
 
 const adminSession = {
@@ -265,6 +266,7 @@ test('adjuster can run damage analysis and review the no-damage warning', async 
         latest_damage_analysis: {
           id: 'DA-000001', assessment: 'NO_DAMAGE', detections: [],
           warning: 'No significant vehicle damage was detected. This does not guarantee the vehicle is undamaged.',
+          rules: { confidence_threshold: 0.7, repair_max_percentage: 40, replacement_min_percentage: 60 },
           created_at: '2026-09-08T00:01:00Z',
         },
       }
@@ -280,4 +282,33 @@ test('adjuster can run damage analysis and review the no-damage warning', async 
 
   expect((await screen.findAllByText('No significant damage')).length).toBeGreaterThan(0)
   expect(await screen.findByText(/does not guarantee/i)).toBeVisible()
+})
+
+test('admin can update global assessment rules from the configuration page', async () => {
+  let configuration: AssessmentRuleConfiguration = {
+    values: { confidence_threshold: 0.7, repair_max_percentage: 40, replacement_min_percentage: 60 },
+    updated_by: null,
+    updated_at: '2026-09-08T00:00:00Z',
+  }
+  let savedValues: unknown = null
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).endsWith('/api/auth/me')) return new Response(JSON.stringify(adminSession.user))
+    if (String(input).endsWith('/assessment-rules/history')) return new Response(JSON.stringify([]))
+    if (String(input).endsWith('/assessment-rules') && init?.method === 'PUT') {
+      savedValues = JSON.parse(init.body as string)
+      configuration = { ...configuration, values: savedValues as typeof configuration.values, updated_by: 'admin@example.com' }
+      return new Response(JSON.stringify(configuration))
+    }
+    return new Response(JSON.stringify(configuration))
+  })
+  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adminSession))
+  const user = userEvent.setup()
+  renderRoute('/admin')
+
+  await user.clear(await screen.findByLabelText(/confidence threshold/i))
+  await user.type(screen.getByLabelText(/confidence threshold/i), '0.8')
+  await user.click(screen.getByRole('button', { name: /save rules/i }))
+
+  expect(savedValues).toEqual({ confidence_threshold: 0.8, repair_max_percentage: 40, replacement_min_percentage: 60 })
+  expect(await screen.findByText(/last changed by admin@example.com/i)).toBeVisible()
 })

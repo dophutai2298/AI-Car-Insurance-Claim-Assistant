@@ -23,6 +23,7 @@ import { useAuth } from './features/auth/AuthProvider'
 import { ProtectedRoute, RoleRoute } from './features/auth/ProtectedRoute'
 import { ClaimCreatePage } from './features/claims/ClaimCreatePage'
 import { ClaimDetailPage } from './features/claims/ClaimDetailPage'
+import { AdminConfigPage } from './features/admin/AdminConfigPage'
 
 const navigation = [
   { label: 'Dashboard', icon: Activity, path: '/dashboard' },
@@ -332,18 +333,6 @@ function AccessRestricted() {
   )
 }
 
-function AdminPage() {
-  return (
-    <div className="mx-auto max-w-[1440px] py-4">
-      <h1 className="text-3xl font-semibold text-slate-950">Admin configuration</h1>
-      <p className="mt-3 text-sm text-slate-600">Configuration controls arrive in task 08.</p>
-      <NavLink className="mt-6 inline-block text-sm font-semibold text-blue-700" to="/dashboard">
-        Return to dashboard
-      </NavLink>
-    </div>
-  )
-}
-
 export function AppRoutes() {
   return (
     <Routes>
@@ -356,7 +345,7 @@ export function AppRoutes() {
         <Route
           element={
             <RoleRoute fallback={<AccessRestricted />} role="ADMIN">
-              <AdminPage />
+              <AdminConfigPage />
             </RoleRoute>
           }
           path="/admin"

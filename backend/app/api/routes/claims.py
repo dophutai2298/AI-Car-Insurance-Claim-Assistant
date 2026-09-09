@@ -16,6 +16,8 @@ from app.schemas.claims import (
     DamageAnalysisResponse,
 )
 from app.services.claims import ClaimService, EvidencePersistenceError
+from app.repositories.assessment_rules import AssessmentRuleRepository
+from app.services.assessment_rules import AssessmentRuleService
 from app.services.damage_assessment import DamageAssessmentService
 from app.services.damage_model import DamageModelUnavailableError, get_damage_model_adapter
 from app.services.evidence_storage import EvidenceStorageError, LocalEvidenceStorage
@@ -31,7 +33,8 @@ def get_claim_service(
         session,
         LocalEvidenceStorage(settings),
         get_damage_model_adapter(settings),
-        DamageAssessmentService(settings),
+        DamageAssessmentService(),
+        AssessmentRuleService(AssessmentRuleRepository(session), settings),
     )
 
 

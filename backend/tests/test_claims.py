@@ -35,6 +35,14 @@ def adjuster_headers(client: TestClient) -> dict[str, str]:
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 
+def admin_headers(client: TestClient) -> dict[str, str]:
+    response = client.post(
+        "/api/auth/login",
+        json={"email": "admin@example.com", "password": "Admin123!"},
+    )
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
 def create_claim(client: TestClient) -> dict[str, object]:
     response = client.post(
         "/api/claims",
@@ -281,3 +289,106 @@ def test_damage_analysis_requires_vehicle_damage_images(client: TestClient):
 
     assert response.status_code == 422
     assert response.json() == {"detail": "Upload at least one vehicle damage image before running analysis"}
+
+
+def test_admin_can_update_persisted_assessment_rules_with_an_audit_record(client: TestClient):
+    initial_response = client.get("/api/admin/assessment-rules", headers=admin_headers(client))
+
+    assert initial_response.status_code == 200
+    assert initial_response.json()["values"] == {
+        "confidence_threshold": 0.7,
+        "repair_max_percentage": 40.0,
+        "replacement_min_percentage": 60.0,
+    }
+
+    update_response = client.put(
+        "/api/admin/assessment-rules",
+        headers=admin_headers(client),
+        json={
+            "confidence_threshold": 0.8,
+            "repair_max_percentage": 35,
+            "replacement_min_percentage": 70,
+        },
+    )
+
+    assert update_response.status_code == 200
+    assert update_response.json()["values"]["confidence_threshold"] == 0.8
+    assert update_response.json()["updated_by"] == "admin@example.com"
+    history_response = client.get("/api/admin/assessment-rules/history", headers=admin_headers(client))
+    assert history_response.status_code == 200
+    assert history_response.json()[0]["changed_by"] == "admin@example.com"
+    assert history_response.json()[0]["old_values"]["repair_max_percentage"] == 40.0
+    assert history_response.json()[0]["new_values"]["replacement_min_percentage"] == 70.0
+
+
+def test_adjuster_cannot_update_assessment_rules(client: TestClient):
+    response = client.put(
+        "/api/admin/assessment-rules",
+        headers=adjuster_headers(client),
+        json={
+            "confidence_threshold": 0.8,
+            "repair_max_percentage": 35,
+            "replacement_min_percentage": 70,
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Admin access required"}
+
+
+def test_invalid_assessment_rule_combinations_are_rejected(client: TestClient):
+    response = client.put(
+        "/api/admin/assessment-rules",
+        headers=admin_headers(client),
+        json={
+            "confidence_threshold": 0.8,
+            "repair_max_percentage": 70,
+            "replacement_min_percentage": 60,
+        },
+    )
+
+    assert response.status_code == 422
+    assert "repair_max_percentage must be less than replacement_min_percentage" in response.text
+
+
+def test_damage_analyses_preserve_the_active_rules_used_at_runtime(client: TestClient):
+    update_response = client.put(
+        "/api/admin/assessment-rules",
+        headers=admin_headers(client),
+        json={
+            "confidence_threshold": 0.8,
+            "repair_max_percentage": 20,
+            "replacement_min_percentage": 60,
+        },
+    )
+    assert update_response.status_code == 200
+
+    first_claim = create_claim(client)
+    upload_damage_images(client, first_claim["id"], ["repair.jpg"])
+    first_analysis = client.post(
+        f"/api/claims/{first_claim['id']}/damage-analysis", headers=adjuster_headers(client)
+    ).json()
+    assert first_analysis["assessment"] == "MANUAL_INSPECTION_REQUIRED"
+    assert first_analysis["rules"]["repair_max_percentage"] == 20.0
+
+    update_response = client.put(
+        "/api/admin/assessment-rules",
+        headers=admin_headers(client),
+        json={
+            "confidence_threshold": 0.8,
+            "repair_max_percentage": 40,
+            "replacement_min_percentage": 60,
+        },
+    )
+    assert update_response.status_code == 200
+
+    second_claim = create_claim(client)
+    upload_damage_images(client, second_claim["id"], ["repair.jpg"])
+    second_analysis = client.post(
+        f"/api/claims/{second_claim['id']}/damage-analysis", headers=adjuster_headers(client)
+    ).json()
+    assert second_analysis["assessment"] == "REPAIR_LIKELY"
+    assert second_analysis["rules"]["repair_max_percentage"] == 40.0
+
+    first_detail = client.get(f"/api/claims/{first_claim['id']}", headers=adjuster_headers(client)).json()
+    assert first_detail["latest_damage_analysis"]["rules"]["repair_max_percentage"] == 20.0

@@ -3,6 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models import ClaimStatus, DamageAssessment, DamageDetectionStatus, EvidenceCategory
+from app.schemas.admin import AssessmentRuleValuesSchema
 
 
 class VehicleMetadata(BaseModel):
@@ -67,4 +68,5 @@ class DamageAnalysisResponse(BaseModel):
     assessment: DamageAssessment
     warning: str | None
     detections: list[DamageDetectionResponse]
+    rules: AssessmentRuleValuesSchema | None = None
     created_at: datetime

@@ -45,13 +45,13 @@ export function DamageAnalysisPanel({ claim }: { claim: ClaimDetail }) {
             <Alert.Description>Upload at least one vehicle damage image before running the analysis.</Alert.Description>
           </Alert>
         ) : null}
-        {analysis ? <AnalysisResult assessment={analysis.assessment} detections={analysis.detections} warning={analysis.warning} /> : <p className="text-sm text-slate-500">No damage analysis has been run for this claim.</p>}
+        {analysis ? <AnalysisResult assessment={analysis.assessment} detections={analysis.detections} rules={analysis.rules} warning={analysis.warning} /> : <p className="text-sm text-slate-500">No damage analysis has been run for this claim.</p>}
       </Card.Content>
     </Card>
   )
 }
 
-function AnalysisResult({ assessment, detections, warning }: { assessment: DamageAssessment; detections: DamageDetection[]; warning: string | null }) {
+function AnalysisResult({ assessment, detections, rules, warning }: { assessment: DamageAssessment; detections: DamageDetection[]; rules: { confidence_threshold: number; repair_max_percentage: number; replacement_min_percentage: number } | null; warning: string | null }) {
   const presentation = assessmentPresentation[assessment]
   return (
     <div className="grid gap-5">
@@ -60,6 +60,7 @@ function AnalysisResult({ assessment, detections, warning }: { assessment: Damag
         <Chip color={presentation.color} variant="soft">{presentation.label}</Chip>
       </section>
       {warning ? <Alert status="warning"><WarningAlt size={18} /><Alert.Title>Review note</Alert.Title><Alert.Description>{warning}</Alert.Description></Alert> : null}
+      {rules ? <p className="text-xs text-slate-500">Rules used: confidence {formatPercentage(rules.confidence_threshold * 100)}, repair up to {formatPercentage(rules.repair_max_percentage)}, replacement from {formatPercentage(rules.replacement_min_percentage)}.</p> : null}
       {detections.length ? (
         <div className="grid gap-4">
           <h2 className="text-sm font-semibold text-slate-950">Detected damage</h2>

@@ -17,6 +17,8 @@ from app.schemas.claims import (
     EvidenceResponse,
     VehicleMetadata,
 )
+from app.schemas.admin import AssessmentRuleValuesSchema
+from app.services.assessment_rules import AssessmentRuleService
 from app.services.evidence_storage import EvidenceStorage, EvidenceStorageError, StoredEvidence
 from app.services.damage_assessment import DamageAssessmentService
 from app.services.damage_model import DamageModelAdapter
@@ -33,13 +35,21 @@ class EvidencePersistenceError(Exception):
 
 
 class ClaimService:
-    def __init__(self, session: Session, storage: EvidenceStorage, damage_model: DamageModelAdapter, assessment: DamageAssessmentService):
+    def __init__(
+        self,
+        session: Session,
+        storage: EvidenceStorage,
+        damage_model: DamageModelAdapter,
+        assessment: DamageAssessmentService,
+        rules: AssessmentRuleService,
+    ):
         self.claims = ClaimRepository(session)
         self.evidence = EvidenceRepository(session)
         self.damage_analyses = DamageAnalysisRepository(session)
         self.storage = storage
         self.damage_model = damage_model
         self.assessment = assessment
+        self.rules = rules
 
     def create_claim(self, data: ClaimCreateRequest, created_by: User) -> ClaimResponse:
         return self._to_response(self.claims.create(data, created_by.id))
@@ -114,7 +124,13 @@ class ClaimService:
         if not images:
             raise ValueError("Upload at least one vehicle damage image before running analysis")
         detections = self.damage_model.analyze(images)
-        analysis = self.damage_analyses.create(claim, self.assessment.assess(detections), detections)
+        rules = self.rules.active_values()
+        analysis = self.damage_analyses.create(
+            claim,
+            self.assessment.assess(detections, rules),
+            detections,
+            rules,
+        )
         return self._to_damage_analysis_response(claim.claim_number, analysis)
 
     def _to_response(self, claim: Claim) -> ClaimResponse:
@@ -169,7 +185,18 @@ class ClaimService:
             assessment=analysis.assessment,
             warning=analysis.warning,
             detections=detections,
+            rules=self._rules_for_analysis(analysis.id),
             created_at=analysis.created_at,
+        )
+
+    def _rules_for_analysis(self, analysis_id: int) -> AssessmentRuleValuesSchema | None:
+        snapshot = self.damage_analyses.rule_snapshot(analysis_id)
+        if snapshot is None:
+            return None
+        return AssessmentRuleValuesSchema(
+            confidence_threshold=snapshot.confidence_threshold,
+            repair_max_percentage=snapshot.repair_max_percentage,
+            replacement_min_percentage=snapshot.replacement_min_percentage,
         )
 
     @staticmethod

@@ -68,6 +68,11 @@ export type DamageAnalysis = {
   assessment: DamageAssessment
   warning: string | null
   detections: DamageDetection[]
+  rules: {
+    confidence_threshold: number
+    repair_max_percentage: number
+    replacement_min_percentage: number
+  } | null
   created_at: string
 }
 

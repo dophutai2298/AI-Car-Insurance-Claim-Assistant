@@ -2,7 +2,7 @@ from enum import Enum
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum as SqlEnum, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -52,6 +52,38 @@ class DamageAssessment(str, Enum):
 class DamageDetectionStatus(str, Enum):
     DETECTED = "DETECTED"
     NO_SIGNIFICANT_DAMAGE = "NO_SIGNIFICANT_DAMAGE"
+
+
+class AssessmentRuleConfiguration(Base):
+    __tablename__ = "assessment_rule_configurations"
+    __table_args__ = (CheckConstraint("id = 1", name="assessment_rule_configurations_singleton"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    confidence_threshold: Mapped[float] = mapped_column(Float)
+    repair_max_percentage: Mapped[float] = mapped_column(Float)
+    replacement_min_percentage: Mapped[float] = mapped_column(Float)
+    updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class AssessmentRuleChange(Base):
+    __tablename__ = "assessment_rule_changes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    changed_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    old_confidence_threshold: Mapped[float] = mapped_column(Float)
+    old_repair_max_percentage: Mapped[float] = mapped_column(Float)
+    old_replacement_min_percentage: Mapped[float] = mapped_column(Float)
+    new_confidence_threshold: Mapped[float] = mapped_column(Float)
+    new_repair_max_percentage: Mapped[float] = mapped_column(Float)
+    new_replacement_min_percentage: Mapped[float] = mapped_column(Float)
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
 
 
 class Claim(Base):
@@ -121,3 +153,13 @@ class DamageDetection(Base):
     status: Mapped[DamageDetectionStatus] = mapped_column(
         SqlEnum(DamageDetectionStatus, native_enum=False)
     )
+
+
+class DamageAnalysisRuleSnapshot(Base):
+    __tablename__ = "damage_analysis_rule_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    analysis_id: Mapped[int] = mapped_column(ForeignKey("damage_analyses.id"), unique=True, index=True)
+    confidence_threshold: Mapped[float] = mapped_column(Float)
+    repair_max_percentage: Mapped[float] = mapped_column(Float)
+    replacement_min_percentage: Mapped[float] = mapped_column(Float)
