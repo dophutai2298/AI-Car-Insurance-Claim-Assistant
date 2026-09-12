@@ -1,13 +1,13 @@
 export type VehicleManufacturer = {
-  id: number
-  name: string
-  is_active: boolean
-}
+  id: number;
+  name: string;
+  is_active: boolean;
+};
 
 export type VehicleManufacturerWrite = {
-  name: string
-}
+  name: string;
+};
 
 export type VehicleManufacturerUpdate = VehicleManufacturerWrite & {
-  is_active: boolean
-}
+  is_active: boolean;
+};

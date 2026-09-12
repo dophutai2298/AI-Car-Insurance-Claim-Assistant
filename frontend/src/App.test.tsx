@@ -1,28 +1,38 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router'
-import { expect, test, vi } from 'vitest'
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
+import { expect, test, vi } from "vitest";
 
-import { AppRoutes } from './App'
-import { AuthProvider } from './features/auth/AuthProvider'
-import type { AssessmentRuleConfiguration } from './features/admin/types'
-import type { ClaimDetail, EvidenceCategory, EvidenceItem } from './features/claims/types'
+import { AppRoutes } from "./App";
+import { AuthProvider } from "./features/auth/AuthProvider";
+import type { AssessmentRuleConfiguration } from "./features/admin/types";
+import type {
+  ClaimDetail,
+  EvidenceCategory,
+  EvidenceItem,
+} from "./features/claims/types";
 
 const adminSession = {
-  access_token: 'admin-token',
-  token_type: 'bearer',
-  user: { email: 'admin@example.com', full_name: 'Demo Admin', role: 'ADMIN' },
-}
+  access_token: "admin-token",
+  token_type: "bearer",
+  user: { email: "admin@example.com", full_name: "Demo Admin", role: "ADMIN" },
+};
 
 const adjusterSession = {
-  access_token: 'adjuster-token',
-  token_type: 'bearer',
-  user: { email: 'adjuster@example.com', full_name: 'Demo Adjuster', role: 'ADJUSTER' },
-}
+  access_token: "adjuster-token",
+  token_type: "bearer",
+  user: {
+    email: "adjuster@example.com",
+    full_name: "Demo Adjuster",
+    role: "ADJUSTER",
+  },
+};
 
 function renderRoute(path: string) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[path]}>
@@ -31,452 +41,842 @@ function renderRoute(path: string) {
         </AuthProvider>
       </MemoryRouter>
     </QueryClientProvider>,
-  )
+  );
 }
 
-test('unauthenticated user is redirected to login', async () => {
-  renderRoute('/dashboard')
+test("unauthenticated user is redirected to login", async () => {
+  renderRoute("/dashboard");
 
-  expect(await screen.findByRole('heading', { name: /sign in to claim assistant/i })).toBeVisible()
-})
+  expect(
+    await screen.findByRole("heading", { name: /sign in to claim assistant/i }),
+  ).toBeVisible();
+});
 
-test('admin can log in and land on dashboard with admin navigation', async () => {
-  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+test("admin can log in and land on dashboard with admin navigation", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(
     new Response(JSON.stringify(adminSession), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { "Content-Type": "application/json" },
     }),
-  )
-  const user = userEvent.setup()
-  renderRoute('/login')
+  );
+  const user = userEvent.setup();
+  renderRoute("/login");
 
-  await user.type(screen.getByLabelText(/email/i), 'admin@example.com')
-  await user.type(screen.getByLabelText(/password/i), 'Admin123!')
-  await user.click(screen.getByRole('button', { name: /sign in/i }))
+  await user.type(screen.getByLabelText(/email/i), "admin@example.com");
+  await user.type(screen.getByLabelText(/password/i), "Admin123!");
+  await user.click(screen.getByRole("button", { name: /sign in/i }));
 
-  expect(await screen.findByRole('heading', { name: /claim review workspace/i })).toBeVisible()
-  expect(screen.getByRole('link', { name: /admin config/i })).toBeVisible()
-  expect(sessionStorage.getItem('claim-assistant-session')).toContain('admin-token')
-})
+  expect(
+    await screen.findByRole("heading", { name: /claim review workspace/i }),
+  ).toBeVisible();
+  expect(screen.getByRole("link", { name: /admin config/i })).toBeVisible();
+  expect(sessionStorage.getItem("claim-assistant-session")).toContain(
+    "admin-token",
+  );
+});
 
-test('adjuster cannot open the admin route', async () => {
-  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+test("adjuster cannot open the admin route", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(
     new Response(JSON.stringify(adjusterSession.user), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { "Content-Type": "application/json" },
     }),
-  )
-  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adjusterSession))
-  renderRoute('/admin')
-
-  expect(await screen.findByRole('heading', { name: /access restricted/i })).toBeVisible()
-  expect(screen.queryByRole('link', { name: /admin config/i })).not.toBeInTheDocument()
-})
-
-test('server role overrides an admin role fabricated in browser storage', async () => {
-  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-    new Response(JSON.stringify(adjusterSession.user), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    }),
-  )
+  );
   sessionStorage.setItem(
-    'claim-assistant-session',
-    JSON.stringify({ ...adjusterSession, user: adminSession.user }),
-  )
-  renderRoute('/admin')
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  renderRoute("/admin");
 
-  expect(await screen.findByRole('heading', { name: /access restricted/i })).toBeVisible()
-})
+  expect(
+    await screen.findByRole("heading", { name: /access restricted/i }),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("link", { name: /admin config/i }),
+  ).not.toBeInTheDocument();
+});
 
-test('invalid credentials display the safe API error', async () => {
-  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-    new Response(JSON.stringify({ detail: 'Invalid email or password' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json' },
+test("server role overrides an admin role fabricated in browser storage", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(JSON.stringify(adjusterSession.user), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
     }),
-  )
-  const user = userEvent.setup()
-  renderRoute('/login')
+  );
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify({ ...adjusterSession, user: adminSession.user }),
+  );
+  renderRoute("/admin");
 
-  await user.type(screen.getByLabelText(/email/i), 'admin@example.com')
-  await user.type(screen.getByLabelText(/password/i), 'incorrect')
-  await user.click(screen.getByRole('button', { name: /sign in/i }))
+  expect(
+    await screen.findByRole("heading", { name: /access restricted/i }),
+  ).toBeVisible();
+});
 
-  expect(await screen.findByText('Invalid email or password')).toBeVisible()
-})
+test("invalid credentials display the safe API error", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(JSON.stringify({ detail: "Invalid email or password" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    }),
+  );
+  const user = userEvent.setup();
+  renderRoute("/login");
 
-test('claims route renders the dedicated claim table', async () => {
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-    if (String(input).endsWith('/api/auth/me')) return new Response(JSON.stringify(adjusterSession.user))
-    return new Response(JSON.stringify([{
-      id: 'CLM-000071',
-      claimant_name: 'Mai Nguyen',
-      vehicle_summary: '2022 Toyota Camry',
-      status: 'DRAFT',
-      updated_at: '2026-09-08T00:00:00Z',
-    }]))
-  })
-  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adjusterSession))
-  renderRoute('/claims')
+  await user.type(screen.getByLabelText(/email/i), "admin@example.com");
+  await user.type(screen.getByLabelText(/password/i), "incorrect");
+  await user.click(screen.getByRole("button", { name: /sign in/i }));
 
-  expect(await screen.findByRole('heading', { name: /claim cases/i })).toBeVisible()
-  expect(await screen.findByRole('table')).toBeVisible()
-  expect(screen.getByRole('link', { name: /clm-000071/i })).toBeVisible()
-})
+  expect(await screen.findByText("Invalid email or password")).toBeVisible();
+});
 
-test('adjuster can create a claim and open its detail', async () => {
+test("claims route renders the dedicated claim table", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    if (String(input).endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adjusterSession.user));
+    return new Response(
+      JSON.stringify([
+        {
+          id: "CLM-000071",
+          claimant_name: "Mai Nguyen",
+          vehicle_summary: "2022 Toyota Camry",
+          status: "DRAFT",
+          updated_at: "2026-09-08T00:00:00Z",
+        },
+      ]),
+    );
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  renderRoute("/claims");
+
+  expect(
+    await screen.findByRole("heading", { name: /claim cases/i }),
+  ).toBeVisible();
+  expect(await screen.findByRole("table")).toBeVisible();
+  expect(screen.getByRole("link", { name: /clm-000071/i })).toBeVisible();
+});
+
+test("adjuster can create a claim and open its detail", async () => {
   const createdClaim = {
-    id: 'CLM-000042',
-    claimant_name: 'Mai Nguyen',
+    id: "CLM-000042",
+    claimant_name: "Mai Nguyen",
     vehicle: {
-      make: 'Toyota',
-      model: 'Camry',
+      make: "Toyota",
+      model: "Camry",
       year: 2022,
-      license_plate: '51H-123.45',
-      vin: '4T1G11AKXNU123456',
+      license_plate: "51H-123.45",
+      vin: "4T1G11AKXNU123456",
     },
-    status: 'DRAFT',
-    created_at: '2026-09-08T00:00:00Z',
-    updated_at: '2026-09-08T00:00:00Z',
-  }
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-    if (String(input).endsWith('/api/auth/me')) {
-      return new Response(JSON.stringify(adjusterSession.user), { status: 200 })
+    status: "DRAFT",
+    created_at: "2026-09-08T00:00:00Z",
+    updated_at: "2026-09-08T00:00:00Z",
+  };
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    if (String(input).endsWith("/api/auth/me")) {
+      return new Response(JSON.stringify(adjusterSession.user), {
+        status: 200,
+      });
     }
-    if (String(input).endsWith('/api/claims') && init?.method === 'POST') {
-      return new Response(JSON.stringify(createdClaim), { status: 201 })
+    if (String(input).endsWith("/api/claims") && init?.method === "POST") {
+      return new Response(JSON.stringify(createdClaim), { status: 201 });
     }
-    if (String(input).endsWith('/api/vehicle-makes')) {
-      return new Response(JSON.stringify([{ id: 1, name: 'Toyota', is_active: true }]), { status: 200 })
+    if (String(input).endsWith("/api/vehicle-makes")) {
+      return new Response(
+        JSON.stringify([{ id: 1, name: "Toyota", is_active: true }]),
+        { status: 200 },
+      );
     }
-    if (String(input).endsWith('/api/claims/CLM-000042')) {
-      return new Response(JSON.stringify(createdClaim), { status: 200 })
+    if (String(input).endsWith("/api/claims/CLM-000042")) {
+      return new Response(JSON.stringify(createdClaim), { status: 200 });
     }
-    return new Response(JSON.stringify([]), { status: 200 })
-  })
-  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adjusterSession))
-  const user = userEvent.setup()
-  renderRoute('/claims/new')
+    return new Response(JSON.stringify([]), { status: 200 });
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  const user = userEvent.setup();
+  renderRoute("/claims/new");
 
-  expect(await screen.findByRole('navigation', { name: /primary navigation/i })).toBeVisible()
-  expect(within(screen.getByRole('navigation', { name: /primary navigation/i })).getByRole('link', { name: /^claims$/i })).toBeVisible()
-  await user.type(await screen.findByLabelText(/claimant name/i), 'Mai Nguyen')
-  await user.click(await screen.findByLabelText(/vehicle make/i))
-  await user.click(await screen.findByRole('option', { name: 'Toyota' }))
-  await user.type(screen.getByLabelText(/model/i), 'Camry')
-  await user.type(screen.getByLabelText(/year/i), '2022')
-  await user.click(screen.getByRole('button', { name: /create claim/i }))
+  expect(
+    await screen.findByRole("navigation", { name: /primary navigation/i }),
+  ).toBeVisible();
+  expect(
+    within(
+      screen.getByRole("navigation", { name: /primary navigation/i }),
+    ).getByRole("link", { name: /^claims$/i }),
+  ).toBeVisible();
+  await user.type(await screen.findByLabelText(/claimant name/i), "Mai Nguyen");
+  await user.click(await screen.findByLabelText(/vehicle make/i));
+  await user.click(await screen.findByRole("option", { name: "Toyota" }));
+  await user.type(screen.getByLabelText(/model/i), "Camry");
+  await user.type(screen.getByLabelText(/year/i), "2022");
+  await user.type(
+    screen.getByLabelText(/incident date and time/i),
+    "2026-09-09T08:30",
+  );
+  await user.type(screen.getByLabelText(/incident location/i), "District 1");
+  await user.type(
+    screen.getByLabelText(/incident description/i),
+    "Rear impact.",
+  );
+  await user.click(screen.getByRole("button", { name: /create claim/i }));
 
-  expect(await screen.findByRole('heading', { name: /claim clm-000042/i })).toBeVisible()
-  expect(screen.getByText('Toyota Camry')).toBeVisible()
-  expect(screen.getByRole('navigation', { name: /primary navigation/i })).toBeVisible()
-})
+  expect(
+    await screen.findByRole("heading", { name: /claim clm-000042/i }),
+  ).toBeVisible();
+  expect(screen.getByText("Toyota Camry")).toBeVisible();
+  expect(
+    screen.getByRole("navigation", { name: /primary navigation/i }),
+  ).toBeVisible();
+});
 
-test('claim information uses a vehicle-make autocomplete and persists the selected language', async () => {
+test("claim information uses a vehicle-make autocomplete and persists the selected language", async () => {
   const createdClaim = {
-    id: 'CLM-000043',
-    claimant_name: 'Mai Nguyen',
-    vehicle: { make: 'Toyota', model: 'Camry', year: 2022, license_plate: null, vin: null },
-    status: 'DRAFT',
-    created_at: '2026-09-08T00:00:00Z',
-    updated_at: '2026-09-08T00:00:00Z',
-  }
-  let submittedMake = ''
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-    if (String(input).endsWith('/api/auth/me')) return new Response(JSON.stringify(adjusterSession.user))
-    if (String(input).endsWith('/api/vehicle-makes')) {
-      return new Response(JSON.stringify([
-        { id: 1, name: 'Toyota', is_active: true },
-        { id: 2, name: 'VinFast', is_active: true },
-      ]))
+    id: "CLM-000043",
+    claimant_name: "Mai Nguyen",
+    vehicle: {
+      make: "Toyota",
+      model: "Camry",
+      year: 2022,
+      license_plate: null,
+      vin: null,
+    },
+    status: "DRAFT",
+    created_at: "2026-09-08T00:00:00Z",
+    updated_at: "2026-09-08T00:00:00Z",
+  };
+  let submittedMake = "";
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    if (String(input).endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adjusterSession.user));
+    if (String(input).endsWith("/api/vehicle-makes")) {
+      return new Response(
+        JSON.stringify([
+          { id: 1, name: "Toyota", is_active: true },
+          { id: 2, name: "VinFast", is_active: true },
+        ]),
+      );
     }
-    if (String(input).endsWith('/api/claims') && init?.method === 'POST') {
-      submittedMake = JSON.parse(init.body as string).vehicle.make
-      return new Response(JSON.stringify(createdClaim), { status: 201 })
+    if (String(input).endsWith("/api/claims") && init?.method === "POST") {
+      submittedMake = JSON.parse(init.body as string).vehicle.make;
+      return new Response(JSON.stringify(createdClaim), { status: 201 });
     }
-    return new Response(JSON.stringify(createdClaim))
-  })
-  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adjusterSession))
-  const user = userEvent.setup()
-  renderRoute('/claims/new')
+    return new Response(JSON.stringify(createdClaim));
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  const user = userEvent.setup();
+  renderRoute("/claims/new");
 
-  expect(await screen.findByText('Claim information')).toBeVisible()
-  expect(screen.getByText('Current')).toBeVisible()
-  await user.click(screen.getByLabelText('Vehicle make'))
-  await user.click(await screen.findByRole('option', { name: 'Toyota' }))
-  await user.click(screen.getByRole('button', { name: 'Tiếng Việt' }))
+  expect(await screen.findByText("Claim information")).toBeVisible();
+  expect(screen.getByText("Current")).toBeVisible();
+  await user.click(screen.getByLabelText("Vehicle make"));
+  await user.click(await screen.findByRole("option", { name: "Toyota" }));
+  await user.click(screen.getByRole("button", { name: "Tiếng Việt" }));
 
-  expect(await screen.findByText('Thông tin yêu cầu bồi thường')).toBeVisible()
-  expect(localStorage.getItem('app.language')).toBe('vi')
+  expect(await screen.findByText("Thông tin yêu cầu bồi thường")).toBeVisible();
+  expect(localStorage.getItem("app.language")).toBe("vi");
+  await user.type(
+    document.querySelector('input[name="incident_at"]')!,
+    "2026-09-09T08:30",
+  );
+  await user.type(
+    document.querySelector('input[name="incident_location"]')!,
+    "District 1",
+  );
+  await user.type(
+    document.querySelector('input[name="incident_description"]')!,
+    "Rear impact.",
+  );
 
-  await user.type(screen.getByLabelText('Tên người yêu cầu'), 'Mai Nguyen')
-  await user.type(screen.getByLabelText('Mẫu xe'), 'Camry')
-  await user.type(screen.getByLabelText('Năm sản xuất'), '2022')
-  await user.click(screen.getByRole('button', { name: 'Tạo hồ sơ' }))
+  await user.type(screen.getByLabelText("Tên người yêu cầu"), "Mai Nguyen");
+  await user.type(screen.getByLabelText("Mẫu xe"), "Camry");
+  await user.type(screen.getByLabelText("Năm sản xuất"), "2022");
+  await user.click(screen.getByRole("button", { name: "Tạo hồ sơ" }));
 
-  expect(submittedMake).toBe('Toyota')
-})
+  expect(submittedMake).toBe("Toyota");
+});
 
-test('vehicle make autocomplete renders its empty state', async () => {
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-    const path = input instanceof Request ? input.url : String(input)
-    if (path.endsWith('/api/auth/me')) return new Response(JSON.stringify(adjusterSession.user))
-    if (path.includes('/api/vehicle-makes')) return new Response(JSON.stringify([]))
-    return new Response(JSON.stringify([]))
-  })
-  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adjusterSession))
-  const user = userEvent.setup()
-  renderRoute('/claims/new')
+test("vehicle make autocomplete renders its empty state", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const path = input instanceof Request ? input.url : String(input);
+    if (path.endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adjusterSession.user));
+    if (path.includes("/api/vehicle-makes"))
+      return new Response(JSON.stringify([]));
+    return new Response(JSON.stringify([]));
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  const user = userEvent.setup();
+  renderRoute("/claims/new");
 
-  await user.click(await screen.findByLabelText(/vehicle make/i))
-  expect(await screen.findByText('No vehicle manufacturers are available.')).toBeVisible()
-})
+  await user.click(await screen.findByLabelText(/vehicle make/i));
+  expect(
+    await screen.findByText("No vehicle manufacturers are available."),
+  ).toBeVisible();
+});
 
-test('vehicle make autocomplete renders its loading state', async () => {
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-    const path = input instanceof Request ? input.url : String(input)
-    if (path.endsWith('/api/auth/me')) return new Response(JSON.stringify(adjusterSession.user))
-    if (path.includes('/api/vehicle-makes')) return new Promise<Response>(() => {})
-    return new Response(JSON.stringify([]))
-  })
-  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adjusterSession))
-  renderRoute('/claims/new')
+test("vehicle make autocomplete renders its loading state", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const path = input instanceof Request ? input.url : String(input);
+    if (path.endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adjusterSession.user));
+    if (path.includes("/api/vehicle-makes"))
+      return new Promise<Response>(() => {});
+    return new Response(JSON.stringify([]));
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  renderRoute("/claims/new");
 
-  expect(await screen.findByRole('status')).toHaveTextContent('Loading vehicle manufacturers...')
-})
+  expect(await screen.findByRole("status")).toHaveTextContent(
+    "Loading vehicle manufacturers...",
+  );
+});
 
-test('adjuster can start the safe AI review lifecycle from claim detail', async () => {
+test("claim detail blocks analysis until all required evidence is present", async () => {
   const draftClaim = {
-    id: 'CLM-000051',
-    claimant_name: 'Mai Nguyen',
-    vehicle: { make: 'Toyota', model: 'Camry', year: 2022, license_plate: null, vin: null },
-    status: 'DRAFT',
-    created_at: '2026-09-08T00:00:00Z',
-    updated_at: '2026-09-08T00:00:00Z',
-  }
-  let currentClaim = draftClaim
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-    if (String(input).endsWith('/api/auth/me')) return new Response(JSON.stringify(adjusterSession.user))
-    if (String(input).endsWith('/status') && init?.method === 'PATCH') {
-      currentClaim = { ...draftClaim, status: 'ANALYZING' }
-    }
-    return new Response(JSON.stringify(currentClaim))
-  })
-  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adjusterSession))
-  const user = userEvent.setup()
-  renderRoute('/claims/CLM-000051')
+    id: "CLM-000051",
+    claimant_name: "Mai Nguyen",
+    vehicle: {
+      make: "Toyota",
+      model: "Camry",
+      year: 2022,
+      license_plate: null,
+      vin: null,
+    },
+    incident: {
+      occurred_at: "2026-09-09T01:30:00Z",
+      location: "District 1",
+      description: "Rear impact.",
+    },
+    status: "DRAFT",
+    created_at: "2026-09-08T00:00:00Z",
+    updated_at: "2026-09-08T00:00:00Z",
+    evidence: [],
+    latest_damage_analysis: null,
+    latest_analysis_run: null,
+  };
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    if (String(input).endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adjusterSession.user));
+    return new Response(JSON.stringify(draftClaim));
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  renderRoute("/claims/CLM-000051");
 
-  await user.click(await screen.findByRole('button', { name: /begin ai analysis/i }))
+  expect(await screen.findByText("Vehicle damage images")).toBeVisible();
+  expect(screen.getByText("ID cards")).toBeVisible();
+  expect(screen.getByRole("button", { name: /^analyze$/i })).toBeDisabled();
+  expect(screen.getByText(/5 required evidence section/i)).toBeVisible();
+});
 
-  expect(await screen.findByText('Analyzing')).toBeVisible()
-})
-
-test('adjuster uploads evidence with a selected category from claim detail', async () => {
+test("adjuster uploads evidence through its dedicated category section", async () => {
   let currentClaim = {
-    id: 'CLM-000061',
-    claimant_name: 'Mai Nguyen',
-    vehicle: { make: 'Toyota', model: 'Camry', year: 2022, license_plate: null, vin: null },
-    status: 'DRAFT',
-    created_at: '2026-09-08T00:00:00Z',
-    updated_at: '2026-09-08T00:00:00Z',
+    id: "CLM-000061",
+    claimant_name: "Mai Nguyen",
+    vehicle: {
+      make: "Toyota",
+      model: "Camry",
+      year: 2022,
+      license_plate: null,
+      vin: null,
+    },
+    status: "DRAFT",
+    created_at: "2026-09-08T00:00:00Z",
+    updated_at: "2026-09-08T00:00:00Z",
     evidence: [] as EvidenceItem[],
-  }
-  let uploadedCategory = ''
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-    if (String(input).endsWith('/api/auth/me')) return new Response(JSON.stringify(adjusterSession.user))
-    if (String(input).endsWith('/evidence') && init?.method === 'POST') {
-      uploadedCategory = (init.body as FormData).get('categories') as string
+  };
+  let uploadedCategory = "";
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    if (String(input).endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adjusterSession.user));
+    if (String(input).endsWith("/evidence") && init?.method === "POST") {
+      uploadedCategory = (init.body as FormData).get("categories") as string;
       currentClaim = {
         ...currentClaim,
-        evidence: [{
-          id: 1,
-          category: uploadedCategory as EvidenceCategory,
-          original_filename: 'policy.pdf',
-          content_type: 'application/pdf',
-          file_size: 12,
-          uploaded_at: '2026-09-08T00:00:00Z',
-          content_url: '/api/claims/CLM-000061/evidence/1/content',
-        }],
-      }
+        evidence: [
+          {
+            id: 1,
+            category: uploadedCategory as EvidenceCategory,
+            original_filename: "policy.pdf",
+            content_type: "application/pdf",
+            file_size: 12,
+            uploaded_at: "2026-09-08T00:00:00Z",
+            content_url: "/api/claims/CLM-000061/evidence/1/content",
+          },
+        ],
+      };
     }
-    return new Response(JSON.stringify(currentClaim))
-  })
-  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adjusterSession))
-  const user = userEvent.setup()
-  renderRoute('/claims/CLM-000061')
+    return new Response(JSON.stringify(currentClaim));
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  const user = userEvent.setup();
+  renderRoute("/claims/CLM-000061");
 
-  await user.upload(await screen.findByLabelText(/select evidence files/i), new File(['document'], 'policy.pdf', { type: 'application/pdf' }))
-  await user.selectOptions(screen.getByLabelText(/category for policy.pdf/i), 'INSURANCE_POLICY')
-  await user.click(screen.getByRole('button', { name: /upload evidence/i }))
+  await user.upload(
+    await screen.findByLabelText(/select files for insurance policies/i),
+    new File(["document"], "policy.pdf", { type: "application/pdf" }),
+  );
 
-  expect(await screen.findByText('Insurance policies')).toBeVisible()
-  expect(uploadedCategory).toBe('INSURANCE_POLICY')
-})
+  expect(await screen.findByText("Insurance policies")).toBeVisible();
+  expect(uploadedCategory).toBe("INSURANCE_POLICY");
+});
 
-test('adjuster can run damage analysis and review the no-damage warning', async () => {
+test("evidence cards render a constrained thumbnail for uploaded images", async () => {
+  const imageEvidence: EvidenceItem = {
+    id: 1,
+    category: "VEHICLE_DAMAGE_IMAGE",
+    original_filename: "repair.jpg",
+    content_type: "image/jpeg",
+    file_size: 20,
+    uploaded_at: "2026-09-08T00:00:00Z",
+    content_url: "/api/claims/CLM-000062/evidence/1/content",
+  };
+  const claim: ClaimDetail = {
+    id: "CLM-000062",
+    claimant_name: "Mai Nguyen",
+    vehicle: {
+      make: "Toyota",
+      model: "Camry",
+      year: 2022,
+      license_plate: null,
+      vin: null,
+    },
+    incident: null,
+    status: "DRAFT",
+    created_at: "2026-09-08T00:00:00Z",
+    updated_at: "2026-09-08T00:00:00Z",
+    evidence: [imageEvidence],
+    latest_damage_analysis: null,
+    latest_analysis_run: null,
+    copilot_review_history: [],
+  };
+  vi.stubGlobal("URL", {
+    createObjectURL: () => "blob:evidence-preview",
+    revokeObjectURL: () => undefined,
+  });
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const path = String(input);
+    if (path.endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adjusterSession.user));
+    if (path.endsWith("/content"))
+      return new Response(new Blob(["image"], { type: "image/jpeg" }));
+    return new Response(JSON.stringify(claim));
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  renderRoute("/claims/CLM-000062");
+
+  const preview = await screen.findByRole("img", { name: "repair.jpg" });
+  expect(preview).toHaveClass("size-20");
+  expect(preview.closest("a")).toHaveAttribute("href", "blob:evidence-preview");
+  expect(preview.closest("a")).toHaveAttribute("target", "_blank");
+  expect(preview.closest("a")).toHaveAttribute("rel", "noopener noreferrer");
+});
+
+test("legacy claim data remains readable and requests the missing workflow information", async () => {
   const damageImage: EvidenceItem = {
     id: 1,
-    category: 'VEHICLE_DAMAGE_IMAGE',
-    original_filename: 'no-damage.jpg',
-    content_type: 'image/jpeg',
+    category: "VEHICLE_DAMAGE_IMAGE",
+    original_filename: "no-damage.jpg",
+    content_type: "image/jpeg",
     file_size: 20,
-    uploaded_at: '2026-09-08T00:00:00Z',
-    content_url: '/api/claims/CLM-000071/evidence/1/content',
-  }
+    uploaded_at: "2026-09-08T00:00:00Z",
+    content_url: "/api/claims/CLM-000071/evidence/1/content",
+  };
   let currentClaim: ClaimDetail = {
-    id: 'CLM-000071',
-    claimant_name: 'Mai Nguyen',
-    vehicle: { make: 'Toyota', model: 'Camry', year: 2022, license_plate: null, vin: null },
-    status: 'ANALYZING',
-    created_at: '2026-09-08T00:00:00Z',
-    updated_at: '2026-09-08T00:00:00Z',
+    id: "CLM-000071",
+    claimant_name: "Mai Nguyen",
+    vehicle: {
+      make: "Toyota",
+      model: "Camry",
+      year: 2022,
+      license_plate: null,
+      vin: null,
+    },
+    status: "ANALYZING",
+    created_at: "2026-09-08T00:00:00Z",
+    updated_at: "2026-09-08T00:00:00Z",
     evidence: [damageImage],
     latest_damage_analysis: null,
-  }
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-    if (String(input).endsWith('/api/auth/me')) return new Response(JSON.stringify(adjusterSession.user))
-    if (String(input).endsWith('/damage-analysis') && init?.method === 'POST') {
+  };
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    if (String(input).endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adjusterSession.user));
+    if (String(input).endsWith("/damage-analysis") && init?.method === "POST") {
       currentClaim = {
         ...currentClaim,
-        status: 'REVIEW_REQUIRED',
+        status: "REVIEW_REQUIRED",
         latest_damage_analysis: {
-          id: 'DA-000001', assessment: 'NO_DAMAGE', detections: [],
-          warning: 'No significant vehicle damage was detected. This does not guarantee the vehicle is undamaged.',
-          rules: { confidence_threshold: 0.7, repair_max_percentage: 40, replacement_min_percentage: 60 },
-          reference_price_status: 'NOT_REQUESTED',
+          id: "DA-000001",
+          assessment: "NO_DAMAGE",
+          detections: [],
+          warning:
+            "No significant vehicle damage was detected. This does not guarantee the vehicle is undamaged.",
+          rules: {
+            confidence_threshold: 0.7,
+            repair_max_percentage: 40,
+            replacement_min_percentage: 60,
+          },
+          reference_price_status: "NOT_REQUESTED",
           reference_prices: [],
           copilot_conclusion: {
             id: 1,
-            status: 'FALLBACK',
-            recommendation: 'MANUAL_ADJUSTER_REVIEW',
-            summary: 'No normalized damage finding supports a no-damage assessment. An adjuster must review this case before any final decision.',
-            fallback_summary: 'No normalized damage finding supports a no-damage assessment. An adjuster must review this case before any final decision.',
+            status: "FALLBACK",
+            recommendation: "MANUAL_ADJUSTER_REVIEW",
+            summary:
+              "No normalized damage finding supports a no-damage assessment. An adjuster must review this case before any final decision.",
+            fallback_summary:
+              "No normalized damage finding supports a no-damage assessment. An adjuster must review this case before any final decision.",
             failure_reason: null,
             provider_model: null,
             findings: [],
-            warnings: ['No significant vehicle damage was detected. This does not guarantee the vehicle is undamaged.'],
+            warnings: [
+              "No significant vehicle damage was detected. This does not guarantee the vehicle is undamaged.",
+            ],
             reference_prices: [],
             review_history: [],
           },
-          created_at: '2026-09-08T00:01:00Z',
+          created_at: "2026-09-08T00:01:00Z",
         },
-      }
-      return new Response(JSON.stringify(currentClaim.latest_damage_analysis))
+      };
+      return new Response(JSON.stringify(currentClaim.latest_damage_analysis));
     }
-    if (String(input).includes('/copilot-conclusions/1/review') && init?.method === 'POST') {
+    if (
+      String(input).includes("/copilot-conclusions/1/review") &&
+      init?.method === "POST"
+    ) {
       currentClaim = {
         ...currentClaim,
-        status: 'AI_APPROVED',
-        copilot_review_history: [{
-          claim_id: 'CLM-000071', conclusion_id: 1, status: 'APPROVED', reason_category: null,
-          comment: null, reviewer: 'adjuster@example.com', reviewed_at: '2026-09-08T00:02:00Z',
-        }],
+        status: "AI_APPROVED",
+        copilot_review_history: [
+          {
+            claim_id: "CLM-000071",
+            conclusion_id: 1,
+            status: "APPROVED",
+            reason_category: null,
+            comment: null,
+            reviewer: "adjuster@example.com",
+            reviewed_at: "2026-09-08T00:02:00Z",
+          },
+        ],
         latest_damage_analysis: {
           ...currentClaim.latest_damage_analysis!,
           copilot_conclusion: {
             ...currentClaim.latest_damage_analysis!.copilot_conclusion!,
-            review_history: [{
-              claim_id: 'CLM-000071', conclusion_id: 1, status: 'APPROVED', reason_category: null,
-              comment: null, reviewer: 'adjuster@example.com', reviewed_at: '2026-09-08T00:02:00Z',
-            }],
+            review_history: [
+              {
+                claim_id: "CLM-000071",
+                conclusion_id: 1,
+                status: "APPROVED",
+                reason_category: null,
+                comment: null,
+                reviewer: "adjuster@example.com",
+                reviewed_at: "2026-09-08T00:02:00Z",
+              },
+            ],
           },
         },
-      }
+      };
     }
-    return new Response(JSON.stringify(currentClaim))
-  })
-  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adjusterSession))
-  const user = userEvent.setup()
-  renderRoute('/claims/CLM-000071')
+    return new Response(JSON.stringify(currentClaim));
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  renderRoute("/claims/CLM-000071");
 
-  await user.click(await screen.findByRole('button', { name: /run analysis/i }))
+  expect(
+    await screen.findByText(/complete incident information first/i),
+  ).toBeVisible();
+  expect(screen.getByRole("button", { name: /^analyze$/i })).toBeDisabled();
+  expect(screen.getByText("no-damage.jpg")).toBeVisible();
+});
 
-  expect((await screen.findAllByText('No significant damage')).length).toBeGreaterThan(0)
-  expect(await screen.findByText(/does not guarantee/i)).toBeVisible()
-  expect(await screen.findByText('Reference OEM/original part price')).toBeVisible()
-  expect(await screen.findByText(/not requested\. reference price lookup/i)).toBeVisible()
-  expect(await screen.findByText('AI copilot conclusion')).toBeVisible()
-  expect(await screen.findByText('Demo fallback')).toBeVisible()
-  expect(await screen.findByText(/this approves the ai conclusion only/i)).toBeVisible()
-  await user.click(screen.getByRole('button', { name: /approve ai conclusion/i }))
-  expect(await screen.findByText('AI conclusion approved')).toBeVisible()
-  expect(await screen.findByText(/reviewed by adjuster@example.com/i)).toBeVisible()
-})
+test("adjuster reviews grouped workflow results and submits a noted human decision", async () => {
+  const evidence = [
+    "VEHICLE_DAMAGE_IMAGE",
+    "ID_CARD",
+    "INSURANCE_POLICY",
+    "VEHICLE_REGISTRATION",
+    "DRIVER_LICENSE",
+  ].map((category, index) => ({
+    id: index + 1,
+    category: category as EvidenceCategory,
+    original_filename: `${category.toLowerCase()}.jpg`,
+    content_type: "image/jpeg",
+    file_size: 20,
+    uploaded_at: "2026-09-08T00:00:00Z",
+    content_url: `/api/claims/CLM-000081/evidence/${index + 1}/content`,
+  }));
+  const damageAnalysis = {
+    id: "DA-000008",
+    assessment: "NO_DAMAGE" as const,
+    detections: [],
+    warning: null,
+    rules: {
+      confidence_threshold: 0.7,
+      repair_max_percentage: 40,
+      replacement_min_percentage: 60,
+    },
+    reference_price_status: "NOT_REQUESTED" as const,
+    reference_prices: [],
+    copilot_conclusion: {
+      id: 8,
+      status: "FALLBACK" as const,
+      recommendation: "MANUAL_ADJUSTER_REVIEW" as const,
+      summary:
+        "Submitted evidence is consistent and still requires adjuster review.",
+      fallback_summary: null,
+      failure_reason: null,
+      provider_model: null,
+      findings: [],
+      warnings: [],
+      reference_prices: [],
+      review_history: [],
+      validity_percentage: 85,
+      review_status: "REVIEW_REQUIRED",
+      evidence_references: evidence.map((item) => ({
+        id: item.id,
+        category: item.category,
+        original_filename: item.original_filename,
+      })),
+    },
+    created_at: "2026-09-08T00:01:00Z",
+  };
+  let submittedReview: unknown = null;
+  const currentClaim: ClaimDetail = {
+    id: "CLM-000081",
+    claimant_name: "Mai Nguyen",
+    vehicle: {
+      make: "Toyota",
+      model: "Camry",
+      year: 2022,
+      license_plate: "51H-123.45",
+      vin: null,
+    },
+    incident: {
+      occurred_at: "2026-09-08T00:00:00Z",
+      location: "District 1",
+      description: "Rear impact.",
+    },
+    status: "REVIEW_REQUIRED",
+    created_at: "2026-09-08T00:00:00Z",
+    updated_at: "2026-09-08T00:01:00Z",
+    evidence,
+    latest_damage_analysis: damageAnalysis,
+    latest_analysis_run: {
+      id: 8,
+      status: "COMPLETED",
+      damage_status: "COMPLETED",
+      damage_analysis: damageAnalysis,
+      document_analyses: [
+        {
+          id: 10,
+          document_type: "ID_CARD",
+          status: "COMPLETED",
+          warnings: [],
+          fields: [
+            {
+              id: 11,
+              key: "full_name",
+              label: "Full name",
+              original_ai_value: "Nguyen Van A",
+              reviewed_value: "Nguyen Van A",
+              confidence: 0.97,
+              status: "VALID",
+            },
+          ],
+        },
+      ],
+      failure_reason: null,
+      created_at: "2026-09-08T00:00:00Z",
+      started_at: "2026-09-08T00:00:01Z",
+      completed_at: "2026-09-08T00:00:02Z",
+    },
+    copilot_review_history: [],
+  };
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    if (String(input).endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adjusterSession.user));
+    if (
+      String(input).includes("/copilot-conclusions/8/review") &&
+      init?.method === "POST"
+    )
+      submittedReview = JSON.parse(init.body as string);
+    return new Response(JSON.stringify(currentClaim));
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  const user = userEvent.setup();
+  renderRoute("/claims/CLM-000081");
 
-test('admin can update global assessment rules from the configuration page', async () => {
+  expect(await screen.findByText("Document analysis")).toBeVisible();
+  expect(screen.getByText("85%")).toBeVisible();
+  expect(
+    screen.getByText(/not an automatic approval probability/i),
+  ).toBeVisible();
+  await user.type(
+    screen.getByLabelText("Review note"),
+    "Evidence checked against the submitted documents.",
+  );
+  await user.click(
+    screen.getByRole("button", { name: /submit human review/i }),
+  );
+  expect(submittedReview).toEqual({
+    status: "APPROVED",
+    comment: "Evidence checked against the submitted documents.",
+  });
+});
+
+test("admin can update global assessment rules from the configuration page", async () => {
   let configuration: AssessmentRuleConfiguration = {
-    values: { confidence_threshold: 0.7, repair_max_percentage: 40, replacement_min_percentage: 60 },
+    values: {
+      confidence_threshold: 0.7,
+      repair_max_percentage: 40,
+      replacement_min_percentage: 60,
+    },
     updated_by: null,
-    updated_at: '2026-09-08T00:00:00Z',
-  }
-  let savedValues: unknown = null
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-    if (String(input).endsWith('/api/auth/me')) return new Response(JSON.stringify(adminSession.user))
-    if (String(input).endsWith('/vehicle-makes')) return new Response(JSON.stringify([{ id: 1, name: 'Toyota', is_active: true }]))
-    if (String(input).endsWith('/assessment-rules/history')) return new Response(JSON.stringify([]))
-    if (String(input).endsWith('/assessment-rules') && init?.method === 'PUT') {
-      savedValues = JSON.parse(init.body as string)
-      configuration = { ...configuration, values: savedValues as typeof configuration.values, updated_by: 'admin@example.com' }
-      return new Response(JSON.stringify(configuration))
+    updated_at: "2026-09-08T00:00:00Z",
+  };
+  let savedValues: unknown = null;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    if (String(input).endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adminSession.user));
+    if (String(input).endsWith("/vehicle-makes"))
+      return new Response(
+        JSON.stringify([{ id: 1, name: "Toyota", is_active: true }]),
+      );
+    if (String(input).endsWith("/assessment-rules/history"))
+      return new Response(JSON.stringify([]));
+    if (String(input).endsWith("/assessment-rules") && init?.method === "PUT") {
+      savedValues = JSON.parse(init.body as string);
+      configuration = {
+        ...configuration,
+        values: savedValues as typeof configuration.values,
+        updated_by: "admin@example.com",
+      };
+      return new Response(JSON.stringify(configuration));
     }
-    return new Response(JSON.stringify(configuration))
-  })
-  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adminSession))
-  const user = userEvent.setup()
-  renderRoute('/admin')
+    return new Response(JSON.stringify(configuration));
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adminSession),
+  );
+  const user = userEvent.setup();
+  renderRoute("/admin");
 
-  await user.clear(await screen.findByLabelText(/confidence threshold/i))
-  await user.type(screen.getByLabelText(/confidence threshold/i), '0.8')
-  await user.click(screen.getByRole('button', { name: /save rules/i }))
+  await user.clear(await screen.findByLabelText(/confidence threshold/i));
+  await user.type(screen.getByLabelText(/confidence threshold/i), "0.8");
+  await user.click(screen.getByRole("button", { name: /save rules/i }));
 
-  expect(savedValues).toEqual({ confidence_threshold: 0.8, repair_max_percentage: 40, replacement_min_percentage: 60 })
-  expect(await screen.findByText(/last changed by admin@example.com/i)).toBeVisible()
-})
+  expect(savedValues).toEqual({
+    confidence_threshold: 0.8,
+    repair_max_percentage: 40,
+    replacement_min_percentage: 60,
+  });
+  expect(
+    await screen.findByText(/last changed by admin@example.com/i),
+  ).toBeVisible();
+});
 
-test('admin can create, disable, and re-enable a vehicle manufacturer', async () => {
+test("admin can create, disable, and re-enable a vehicle manufacturer", async () => {
   const configuration: AssessmentRuleConfiguration = {
-    values: { confidence_threshold: 0.7, repair_max_percentage: 40, replacement_min_percentage: 60 },
+    values: {
+      confidence_threshold: 0.7,
+      repair_max_percentage: 40,
+      replacement_min_percentage: 60,
+    },
     updated_by: null,
-    updated_at: '2026-09-08T00:00:00Z',
-  }
-  let manufacturers = [{ id: 1, name: 'Toyota', is_active: true }]
-  const updates: Array<{ id: number; name: string; is_active: boolean }> = []
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-    const path = input instanceof Request ? input.url : String(input)
-    if (path.endsWith('/api/auth/me')) return new Response(JSON.stringify(adminSession.user))
-    if (path.endsWith('/assessment-rules/history')) return new Response(JSON.stringify([]))
-    if (path.endsWith('/assessment-rules')) return new Response(JSON.stringify(configuration))
-    if (path.endsWith('/api/admin/vehicle-makes') && init?.method === 'POST') {
-      const created = { id: 2, name: JSON.parse(init.body as string).name, is_active: true }
-      manufacturers = [...manufacturers, created]
-      return new Response(JSON.stringify(created), { status: 201 })
+    updated_at: "2026-09-08T00:00:00Z",
+  };
+  let manufacturers = [{ id: 1, name: "Toyota", is_active: true }];
+  const updates: Array<{ id: number; name: string; is_active: boolean }> = [];
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const path = input instanceof Request ? input.url : String(input);
+    if (path.endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adminSession.user));
+    if (path.endsWith("/assessment-rules/history"))
+      return new Response(JSON.stringify([]));
+    if (path.endsWith("/assessment-rules"))
+      return new Response(JSON.stringify(configuration));
+    if (path.endsWith("/api/admin/vehicle-makes") && init?.method === "POST") {
+      const created = {
+        id: 2,
+        name: JSON.parse(init.body as string).name,
+        is_active: true,
+      };
+      manufacturers = [...manufacturers, created];
+      return new Response(JSON.stringify(created), { status: 201 });
     }
-    const manufacturerMatch = path.match(/\/api\/admin\/vehicle-makes\/(\d+)$/)
-    if (manufacturerMatch && init?.method === 'PUT') {
-      const values = JSON.parse(init.body as string) as { name: string; is_active: boolean }
-      const id = Number(manufacturerMatch[1])
-      updates.push({ id, ...values })
-      manufacturers = manufacturers.map((manufacturer) => manufacturer.id === id ? { id, ...values } : manufacturer)
-      return new Response(JSON.stringify(manufacturers.find((manufacturer) => manufacturer.id === id)))
+    const manufacturerMatch = path.match(/\/api\/admin\/vehicle-makes\/(\d+)$/);
+    if (manufacturerMatch && init?.method === "PUT") {
+      const values = JSON.parse(init.body as string) as {
+        name: string;
+        is_active: boolean;
+      };
+      const id = Number(manufacturerMatch[1]);
+      updates.push({ id, ...values });
+      manufacturers = manufacturers.map((manufacturer) =>
+        manufacturer.id === id ? { id, ...values } : manufacturer,
+      );
+      return new Response(
+        JSON.stringify(
+          manufacturers.find((manufacturer) => manufacturer.id === id),
+        ),
+      );
     }
-    if (path.endsWith('/api/admin/vehicle-makes')) return new Response(JSON.stringify(manufacturers))
-    return new Response(JSON.stringify([]))
-  })
-  sessionStorage.setItem('claim-assistant-session', JSON.stringify(adminSession))
-  const user = userEvent.setup()
-  renderRoute('/admin')
+    if (path.endsWith("/api/admin/vehicle-makes"))
+      return new Response(JSON.stringify(manufacturers));
+    return new Response(JSON.stringify([]));
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adminSession),
+  );
+  const user = userEvent.setup();
+  renderRoute("/admin");
 
-  await user.type(await screen.findByLabelText('Manufacturer name'), 'BYD')
-  await user.click(screen.getByRole('button', { name: 'Add manufacturer' }))
-  expect(await screen.findByDisplayValue('BYD')).toBeVisible()
+  expect(await screen.findByRole("table")).toBeVisible();
+  expect(screen.getByRole("columnheader", { name: "Manufacturer" })).toBeVisible();
+  expect(screen.getByRole("columnheader", { name: "Status" })).toBeVisible();
+  expect(screen.getByRole("columnheader", { name: "Actions" })).toBeVisible();
 
-  await user.click(screen.getAllByRole('button', { name: 'Disable' })[0])
-  expect(await screen.findByRole('button', { name: 'Enable' })).toBeVisible()
-  await user.click(screen.getByRole('button', { name: 'Enable' }))
+  await user.type(await screen.findByLabelText("Manufacturer name"), "BYD");
+  await user.click(screen.getByRole("button", { name: "Add manufacturer" }));
+  expect(await screen.findByDisplayValue("BYD")).toBeVisible();
+
+  await user.click(screen.getAllByRole("button", { name: "Disable" })[0]);
+  expect(await screen.findByRole("button", { name: "Enable" })).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "Enable" }));
 
   expect(updates).toEqual([
-    { id: 1, name: 'Toyota', is_active: false },
-    { id: 1, name: 'Toyota', is_active: true },
-  ])
-})
+    { id: 1, name: "Toyota", is_active: false },
+    { id: 1, name: "Toyota", is_active: true },
+  ]);
+});

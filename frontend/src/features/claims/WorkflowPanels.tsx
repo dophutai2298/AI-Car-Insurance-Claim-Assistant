@@ -1,0 +1,751 @@
+import {
+  Analytics,
+  CheckmarkOutline,
+  DataStructured,
+  Document,
+  Image,
+  Reset,
+  Save,
+  WarningAlt,
+} from "@carbon/icons-react";
+import {
+  Alert,
+  Button,
+  Card,
+  Chip,
+  Input,
+  Label,
+  TextField,
+} from "@heroui/react";
+import { useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
+
+import { useAuth } from "../auth/AuthProvider";
+import {
+  EvidenceImagePreview,
+  requiredEvidenceCategories,
+} from "./EvidencePanel";
+import { ClaimsApiError } from "./claimsApi";
+import {
+  useRevertCopilotReview,
+  useReviewCopilotConclusion,
+  useUpdateDocumentField,
+  useWorkflowAiReview,
+  useWorkflowAnalysis,
+} from "./useClaims";
+import type {
+  ClaimDetail,
+  CopilotConclusion,
+  CopilotConclusionRejectionCategory,
+  CopilotConclusionReview,
+  DamageAnalysis,
+  DocumentAnalysis,
+  DocumentAnalysisField,
+  WorkflowAnalysisRun,
+} from "./types";
+
+export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
+  const { t } = useTranslation();
+  const start = useWorkflowAnalysis(claim.id);
+  const run = claim.latest_analysis_run;
+  const conclusion =
+    run?.damage_analysis?.copilot_conclusion ??
+    (!run ? claim.latest_damage_analysis?.copilot_conclusion : undefined);
+  const activeReview = conclusion?.review_history[0];
+  const missingEvidence = requiredEvidenceCategories.filter(
+    (category) =>
+      !(claim.evidence ?? []).some((item) => item.category === category),
+  );
+  const canStart =
+    Boolean(claim.incident) &&
+    missingEvidence.length === 0 &&
+    !["PENDING", "PROCESSING"].includes(run?.status ?? "") &&
+    !(activeReview && !activeReview.reverted_at);
+  const statusColor =
+    run?.status === "COMPLETED"
+      ? "success"
+      : run?.status === "PARTIAL"
+        ? "warning"
+        : run?.status === "FAILED"
+          ? "danger"
+          : "default";
+
+  return (
+    <Card
+      className="rounded-lg border border-slate-200 bg-white shadow-sm"
+      id="analysis"
+    >
+      <Card.Header className="flex flex-col gap-4 border-b border-slate-100 px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100">
+            <Analytics size={20} />
+          </div>
+          <div>
+            <Card.Title className="text-lg text-slate-950">
+              {t("claim.stepAnalysis")}
+            </Card.Title>
+            <Card.Description className="text-sm text-slate-500">
+              {t("analysis.description")}
+            </Card.Description>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          {run ? (
+            <Chip color={statusColor} variant="soft">
+              {t(`analysis.status.${run.status}`)}
+            </Chip>
+          ) : null}
+          <Button
+            isDisabled={!canStart}
+            isPending={start.isPending}
+            onPress={() => start.mutate()}
+            variant="primary"
+          >
+            {run ? t("analysis.runAgain") : t("analysis.analyze")}
+          </Button>
+        </div>
+      </Card.Header>
+      <Card.Content className="grid gap-6 p-6">
+        {start.error ? (
+          <Alert status="danger">
+            <Alert.Title>{t("analysis.startFailed")}</Alert.Title>
+            <Alert.Description>
+              {start.error instanceof ClaimsApiError
+                ? start.error.message
+                : t("common.tryAgain")}
+            </Alert.Description>
+          </Alert>
+        ) : null}
+        {!claim.incident || missingEvidence.length ? (
+          <Alert status="warning">
+            <WarningAlt size={18} />
+            <Alert.Title>{t("analysis.notReady")}</Alert.Title>
+            <Alert.Description>
+              {!claim.incident
+                ? t("analysis.incidentMissing")
+                : t("analysis.evidenceMissing", {
+                    count: missingEvidence.length,
+                  })}
+            </Alert.Description>
+          </Alert>
+        ) : null}
+        {run && ["PENDING", "PROCESSING"].includes(run.status) ? (
+          <div className="border-l-2 border-blue-500 bg-blue-50 p-4">
+            <p className="text-sm font-semibold text-blue-950">
+              {t("analysis.processing")}
+            </p>
+            <p className="mt-1 text-sm text-blue-800">
+              {t("analysis.processingDescription")}
+            </p>
+          </div>
+        ) : null}
+        {run?.inputs_changed ? (
+          <Alert status="warning">
+            <WarningAlt size={18} />
+            <Alert.Title>{t("analysis.inputsChanged")}</Alert.Title>
+            <Alert.Description>
+              {t("analysis.inputsChangedDescription")}
+            </Alert.Description>
+          </Alert>
+        ) : null}
+        {run?.status === "PARTIAL" ? (
+          <Alert status="warning">
+            <WarningAlt size={18} />
+            <Alert.Title>{t("analysis.partial")}</Alert.Title>
+            <Alert.Description>
+              {t("analysis.partialDescription")}
+            </Alert.Description>
+          </Alert>
+        ) : null}
+        {run?.status === "FAILED" ? (
+          <Alert status="danger">
+            <Alert.Title>{t("analysis.failed")}</Alert.Title>
+            <Alert.Description>
+              {run.failure_reason ?? t("common.tryAgain")}
+            </Alert.Description>
+          </Alert>
+        ) : null}
+        {run?.damage_analysis ? (
+          <DamageResults analysis={run.damage_analysis} />
+        ) : null}
+        {/* {run?.document_analyses.length ? (
+          <DocumentResults
+            claimId={claim.id}
+            documents={run.document_analyses}
+            editable={!run.damage_analysis?.copilot_conclusion}
+          />
+        ) : null} */}
+        {!run ? (
+          <p className="text-sm text-slate-500">{t("analysis.empty")}</p>
+        ) : null}
+      </Card.Content>
+    </Card>
+  );
+}
+
+function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
+  const { t } = useTranslation();
+  return (
+    <section className="grid gap-4">
+      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-950">
+            {t("analysis.vehicleDamage")}
+          </h3>
+          <p className="mt-1 text-xs text-slate-500">
+            {t("analysis.damageDescription")}
+          </p>
+        </div>
+        <Chip
+          color={
+            analysis.assessment === "REPLACEMENT_LIKELY"
+              ? "danger"
+              : analysis.assessment === "MANUAL_INSPECTION_REQUIRED"
+                ? "warning"
+                : "success"
+          }
+          size="sm"
+          variant="soft"
+        >
+          {t(`analysis.assessment.${analysis.assessment}`)}
+        </Chip>
+      </div>
+      {analysis.warning ? (
+        <Alert status="warning">
+          <WarningAlt size={18} />
+          <Alert.Title>{t("analysis.reviewNote")}</Alert.Title>
+          <Alert.Description>{analysis.warning}</Alert.Description>
+        </Alert>
+      ) : null}
+      {analysis.detections.length ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {analysis.detections.map((detection, index) => (
+            <article
+              className="grid overflow-hidden border border-slate-200 sm:grid-cols-[10rem_minmax(0,1fr)]"
+              key={`${detection.annotated_evidence.id}-${index}`}
+            >
+              <div className="flex min-h-36 items-center justify-center bg-slate-100">
+                <EvidenceImagePreview item={detection.annotated_evidence} />
+              </div>
+              <div className="grid content-start gap-3 p-4">
+                <div>
+                  <p className="text-sm font-semibold text-slate-950">
+                    {formatLabel(detection.vehicle_part) ||
+                      t("analysis.areaUnknown")}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {formatLabel(detection.damage_type) ||
+                      t("analysis.damageUnknown")}
+                  </p>
+                </div>
+                <dl className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <dt className="text-xs text-slate-500">
+                      {t("analysis.damage")}
+                    </dt>
+                    <dd className="font-semibold">
+                      {formatPercent(detection.damage_percentage)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-500">
+                      {t("analysis.confidence")}
+                    </dt>
+                    <dd className="font-semibold">
+                      {formatPercent(detection.confidence * 100)}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="flex min-h-24 items-center justify-center gap-2 border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-600">
+          <Image size={20} />
+          {t("analysis.noDamage")}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DocumentResults({
+  claimId,
+  documents,
+  editable,
+}: {
+  claimId: string;
+  documents: DocumentAnalysis[];
+  editable: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <section className="grid gap-4 border-t border-slate-200 pt-5">
+      <div>
+        <h3 className="text-sm font-semibold text-slate-950">
+          {t("documents.title")}
+        </h3>
+        <p className="mt-1 text-xs text-slate-500">
+          {t("documents.description")}
+        </p>
+      </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        {documents.map((document) => (
+          <article
+            className="grid content-start gap-4 border border-slate-200 p-4"
+            key={document.id}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Document size={18} />
+                <h4 className="text-sm font-semibold text-slate-950">
+                  {t(`evidence.categories.${document.document_type}`)}
+                </h4>
+              </div>
+              <Chip
+                color={document.status === "COMPLETED" ? "success" : "danger"}
+                size="sm"
+                variant="soft"
+              >
+                {t(`analysis.status.${document.status}`)}
+              </Chip>
+            </div>
+            {document.warnings.map((warning) => (
+              <Alert key={warning} status="warning">
+                <Alert.Description>{warning}</Alert.Description>
+              </Alert>
+            ))}
+            {document.fields.map((field) => (
+              <EditableDocumentField
+                claimId={claimId}
+                documentId={document.id}
+                editable={editable}
+                field={field}
+                key={field.id}
+              />
+            ))}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function EditableDocumentField({
+  claimId,
+  documentId,
+  field,
+  editable,
+}: {
+  claimId: string;
+  documentId: number;
+  field: DocumentAnalysisField;
+  editable: boolean;
+}) {
+  const { t } = useTranslation();
+  const update = useUpdateDocumentField(claimId);
+  const [value, setValue] = useState(field.reviewed_value);
+  const changed = value.trim() !== field.reviewed_value;
+  const label = t(`documents.fields.${field.key}`, {
+    defaultValue: field.label,
+  });
+  return (
+    <div className="grid gap-2 border-t border-slate-100 pt-3">
+      <div className="flex items-center justify-between gap-3">
+        <Label className="text-xs font-semibold text-slate-600">{label}</Label>
+        <span className="text-xs text-slate-500">
+          {t("analysis.confidence")} {formatPercent(field.confidence * 100)}
+        </span>
+      </div>
+      <div className="flex gap-2">
+        <Input
+          aria-label={label}
+          disabled={!editable}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+        <Button
+          aria-label={t("documents.saveField", { field: label })}
+          isDisabled={!changed || !value.trim() || !editable}
+          isIconOnly
+          isPending={update.isPending}
+          onPress={() =>
+            update.mutate({
+              documentId,
+              fieldId: field.id,
+              reviewedValue: value,
+            })
+          }
+          variant="outline"
+        >
+          <Save size={16} />
+        </Button>
+      </div>
+      {field.original_ai_value !== field.reviewed_value ? (
+        <p className="text-xs text-slate-500">
+          {t("documents.originalValue", { value: field.original_ai_value })}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
+  const { t } = useTranslation();
+  const run = claim.latest_analysis_run;
+  const conclusion =
+    run?.damage_analysis?.copilot_conclusion ??
+    (!run ? claim.latest_damage_analysis?.copilot_conclusion : null);
+  const review = useWorkflowAiReview(claim.id, run?.id);
+  const ready = Boolean(
+    run &&
+    !run.inputs_changed &&
+    ["COMPLETED", "PARTIAL"].includes(run.status) &&
+    run.damage_analysis,
+  );
+  return (
+    <Card
+      className="rounded-lg border border-slate-200 bg-white shadow-sm"
+      id="aiReview"
+    >
+      <Card.Header className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-lg bg-teal-50 text-teal-700 ring-1 ring-teal-100">
+            <DataStructured size={20} />
+          </div>
+          <div>
+            <Card.Title className="text-lg text-slate-950">
+              {t("claim.stepAiReview")}
+            </Card.Title>
+            <Card.Description className="text-sm text-slate-500">
+              {t("aiReview.description")}
+            </Card.Description>
+          </div>
+        </div>
+        {!conclusion ? (
+          <Button
+            isDisabled={!ready}
+            isPending={review.isPending}
+            onPress={() => review.mutate()}
+            variant="primary"
+          >
+            {t("aiReview.run")}
+          </Button>
+        ) : null}
+      </Card.Header>
+      <Card.Content className="grid gap-5 p-6">
+        {review.error ? (
+          <Alert status="danger">
+            <Alert.Title>{t("aiReview.failed")}</Alert.Title>
+            <Alert.Description>
+              {review.error instanceof ClaimsApiError
+                ? review.error.message
+                : t("common.tryAgain")}
+            </Alert.Description>
+          </Alert>
+        ) : null}
+        {conclusion ? (
+          <AiReviewResult conclusion={conclusion} />
+        ) : (
+          <p className="text-sm text-slate-500">
+            {ready ? t("aiReview.ready") : t("aiReview.blocked")}
+          </p>
+        )}
+      </Card.Content>
+    </Card>
+  );
+}
+
+function AiReviewResult({ conclusion }: { conclusion: CopilotConclusion }) {
+  const { t } = useTranslation();
+  return (
+    <div className="grid gap-5">
+      <div className="grid gap-4 border-b border-slate-100 pb-5 sm:grid-cols-[12rem_minmax(0,1fr)]">
+        <div>
+          <p className="text-xs font-semibold uppercase text-slate-500">
+            {t("aiReview.validity")}
+          </p>
+          <p className="mt-2 font-mono text-4xl font-semibold text-slate-950">
+            {conclusion.validity_percentage ?? "--"}%
+          </p>
+          <p className="mt-2 text-xs leading-5 text-slate-500">
+            {t("aiReview.validityDisclaimer")}
+          </p>
+        </div>
+        <div>
+          <div className="flex flex-wrap gap-2">
+            <Chip color="warning" variant="soft">
+              {conclusion.review_status ?? t("aiReview.reviewRequired")}
+            </Chip>
+            <Chip
+              color={conclusion.status === "GENERATED" ? "success" : "default"}
+              variant="soft"
+            >
+              {conclusion.status === "GENERATED"
+                ? t("aiReview.generated")
+                : t("aiReview.fallback")}
+            </Chip>
+          </div>
+          <p className="mt-4 text-sm leading-6 text-slate-700">
+            {conclusion.summary}
+          </p>
+        </div>
+      </div>
+      {conclusion.warnings.length ? (
+        <Alert status="warning">
+          <WarningAlt size={18} />
+          <Alert.Title>{t("aiReview.warnings")}</Alert.Title>
+          <Alert.Description>{conclusion.warnings.join(" ")}</Alert.Description>
+        </Alert>
+      ) : null}
+      <div>
+        <h3 className="text-sm font-semibold text-slate-950">
+          {t("aiReview.evidenceReferences")}
+        </h3>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {(conclusion.evidence_references ?? []).map((item) => (
+            <Chip key={item.id} size="sm" variant="soft">
+              {item.original_filename}
+            </Chip>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const rejectionCategories: CopilotConclusionRejectionCategory[] = [
+  "DOCUMENT_INFORMATION_INCOMPLETE",
+  "DOCUMENT_INFORMATION_INCORRECT",
+  "DAMAGE_ASSESSMENT_ISSUE",
+  "DAMAGE_EVIDENCE_ISSUE",
+  "MISSING_EVIDENCE",
+  "INCORRECT_AI_CONCLUSION",
+  "OTHER",
+];
+
+export function HumanReviewPanel({ claim }: { claim: ClaimDetail }) {
+  const { t } = useTranslation();
+  const { session } = useAuth();
+  const run = claim.latest_analysis_run;
+  const conclusion =
+    run?.damage_analysis?.copilot_conclusion ??
+    (!run ? claim.latest_damage_analysis?.copilot_conclusion : undefined);
+  const submit = useReviewCopilotConclusion(claim.id, conclusion?.id);
+  const revert = useRevertCopilotReview(claim.id, conclusion?.id);
+  const latest = conclusion?.review_history[0];
+  const [mode, setMode] = useState<"APPROVED" | "REJECTED">("APPROVED");
+  const [note, setNote] = useState("");
+  const [reason, setReason] = useState<CopilotConclusionRejectionCategory | "">(
+    "",
+  );
+  const [revertNote, setRevertNote] = useState("");
+  const canReview =
+    (session?.user.role === "ADJUSTER" || session?.user.role === "ADMIN") &&
+    conclusion &&
+    !latest;
+
+  function save(event: FormEvent) {
+    event.preventDefault();
+    if (!note.trim() || (mode === "REJECTED" && !reason)) return;
+    submit.mutate({
+      status: mode,
+      comment: note.trim(),
+      ...(mode === "REJECTED"
+        ? { reason_category: reason as CopilotConclusionRejectionCategory }
+        : {}),
+    });
+  }
+
+  return (
+    <Card
+      className="rounded-lg border border-slate-200 bg-white shadow-sm"
+      id="humanReview"
+    >
+      <Card.Header className="flex items-center gap-3 border-b border-slate-100 px-6 py-5">
+        <div className="flex size-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
+          <CheckmarkOutline size={20} />
+        </div>
+        <div>
+          <Card.Title className="text-lg text-slate-950">
+            {t("claim.stepHumanReview")}
+          </Card.Title>
+          <Card.Description className="text-sm text-slate-500">
+            {t("humanReview.description")}
+          </Card.Description>
+        </div>
+      </Card.Header>
+      <Card.Content className="grid gap-5 p-6">
+        {!conclusion ? (
+          <p className="text-sm text-slate-500">{t("humanReview.blocked")}</p>
+        ) : null}
+        {canReview ? (
+          <form className="grid gap-4" onSubmit={save}>
+            <div className="flex gap-2">
+              <Button
+                onPress={() => setMode("APPROVED")}
+                variant={mode === "APPROVED" ? "primary" : "outline"}
+              >
+                {t("humanReview.approve")}
+              </Button>
+              <Button
+                onPress={() => setMode("REJECTED")}
+                variant={mode === "REJECTED" ? "danger" : "outline"}
+              >
+                {t("humanReview.reject")}
+              </Button>
+            </div>
+            {mode === "REJECTED" ? (
+              <label className="grid gap-1 text-sm font-medium text-slate-700">
+                {t("humanReview.reason")}
+                <select
+                  aria-label={t("humanReview.reason")}
+                  className="min-h-10 border border-slate-300 bg-white px-3"
+                  onChange={(event) =>
+                    setReason(
+                      event.target.value as CopilotConclusionRejectionCategory,
+                    )
+                  }
+                  value={reason}
+                >
+                  <option value="">{t("humanReview.selectReason")}</option>
+                  {rejectionCategories.map((category) => (
+                    <option key={category} value={category}>
+                      {t(`humanReview.reasons.${category}`)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            <TextField isRequired>
+              <Label>{t("humanReview.note")}</Label>
+              <Input
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+              />
+            </TextField>
+            <Button
+              isDisabled={!note.trim() || (mode === "REJECTED" && !reason)}
+              isPending={submit.isPending}
+              type="submit"
+              variant={mode === "REJECTED" ? "danger" : "primary"}
+            >
+              {t("humanReview.submit")}
+            </Button>
+          </form>
+        ) : null}
+        {latest ? (
+          <div className="grid gap-4">
+            <ReviewHistory history={conclusion.review_history} />
+            {!latest.reverted_at ? (
+              <div className="grid gap-3 border-t border-slate-100 pt-4">
+                <TextField isRequired>
+                  <Label>{t("humanReview.revertNote")}</Label>
+                  <Input
+                    value={revertNote}
+                    onChange={(event) => setRevertNote(event.target.value)}
+                  />
+                </TextField>
+                <Button
+                  isDisabled={!revertNote.trim()}
+                  isPending={revert.isPending}
+                  onPress={() => revert.mutate(revertNote.trim())}
+                  variant="outline"
+                >
+                  <Reset size={17} />
+                  {t("humanReview.revert")}
+                </Button>
+              </div>
+            ) : (
+              <Alert status="warning">
+                <Alert.Title>{t("humanReview.reverted")}</Alert.Title>
+                <Alert.Description>
+                  {t("humanReview.rerunAfterRevert")}
+                </Alert.Description>
+              </Alert>
+            )}
+          </div>
+        ) : null}
+      </Card.Content>
+    </Card>
+  );
+}
+
+export function CopilotReviewHistory({
+  history,
+}: {
+  history: CopilotConclusionReview[];
+}) {
+  const { t } = useTranslation();
+  if (!history.length) return null;
+  return (
+    <section className="grid gap-3 border-y border-slate-200 py-5">
+      <h2 className="text-sm font-semibold text-slate-950">
+        {t("humanReview.history")}
+      </h2>
+      <ReviewHistory history={history} />
+    </section>
+  );
+}
+
+function ReviewHistory({ history }: { history: CopilotConclusionReview[] }) {
+  const { t } = useTranslation();
+  return (
+    <div className="grid gap-3 border-l-2 border-slate-300 pl-3">
+      {history.map((review) => (
+        <div
+          className="grid gap-1 text-sm"
+          key={`${review.conclusion_id}-${review.reviewed_at}`}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <Chip
+              color={review.status === "APPROVED" ? "success" : "danger"}
+              size="sm"
+              variant="soft"
+            >
+              {review.status === "APPROVED"
+                ? t("humanReview.approved")
+                : t("humanReview.rejected")}
+            </Chip>
+            {review.reverted_at ? (
+              <Chip color="warning" size="sm" variant="soft">
+                {t("humanReview.reverted")}
+              </Chip>
+            ) : null}
+            <span className="text-xs text-slate-500">
+              {t("humanReview.reviewedBy", {
+                reviewer: review.reviewer,
+                date: new Date(review.reviewed_at).toLocaleString(),
+              })}
+            </span>
+          </div>
+          {review.reason_category ? (
+            <p className="text-xs text-slate-600">
+              {t("humanReview.reasonValue", {
+                reason: t(`humanReview.reasons.${review.reason_category}`),
+              })}
+            </p>
+          ) : null}
+          {review.comment ? (
+            <p className="text-sm text-slate-700">{review.comment}</p>
+          ) : null}
+          {review.revert_note ? (
+            <p className="text-xs text-amber-800">
+              {t("humanReview.revertValue", { note: review.revert_note })}
+            </p>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function formatLabel(value: string | null) {
+  return value
+    ?.replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+function formatPercent(value: number) {
+  return `${Number.isInteger(value) ? value : value.toFixed(1)}%`;
+}

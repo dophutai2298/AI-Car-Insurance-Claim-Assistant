@@ -1,145 +1,346 @@
-import { Add, Document, Image, TrashCan } from '@carbon/icons-react'
-import { Alert, Button, Card } from '@heroui/react'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import {
+  Add,
+  CheckmarkOutline,
+  Document,
+  Image,
+  TrashCan,
+  WarningAlt,
+} from "@carbon/icons-react";
+import {
+  Alert,
+  Button,
+  Card,
+  Chip,
+  Input,
+  Label,
+  TextField,
+} from "@heroui/react";
+import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
-import { useAuth } from '../auth/AuthProvider'
-import { ClaimsApiError, getEvidenceContent } from './claimsApi'
-import { useUploadEvidence } from './useClaims'
-import type { EvidenceCategory, EvidenceItem, EvidenceUploadItem } from './types'
+import { useAuth } from "../auth/AuthProvider";
+import { ClaimsApiError, getEvidenceContent } from "./claimsApi";
+import { useDeleteEvidence, useUploadEvidence } from "./useClaims";
+import type { EvidenceCategory, EvidenceItem } from "./types";
 
-const categoryLabel: Record<EvidenceCategory, string> = {
-  VEHICLE_DAMAGE_IMAGE: 'Vehicle damage images',
-  ID_CARD: 'ID cards',
-  INSURANCE_POLICY: 'Insurance policies',
-  VEHICLE_REGISTRATION: 'Vehicle registrations',
-  DRIVER_LICENSE: 'Driver licenses',
-  OTHER_DOCUMENT: 'Other documents',
-}
+export const requiredEvidenceCategories: EvidenceCategory[] = [
+  "VEHICLE_DAMAGE_IMAGE",
+  "ID_CARD",
+  "INSURANCE_POLICY",
+  "VEHICLE_REGISTRATION",
+  "DRIVER_LICENSE",
+];
 
-const categories = Object.keys(categoryLabel) as EvidenceCategory[]
+export function EvidencePanel({
+  claimId,
+  evidence,
+  locked = false,
+}: {
+  claimId: string;
+  evidence: EvidenceItem[];
+  locked?: boolean;
+}) {
+  const { t } = useTranslation();
+  const upload = useUploadEvidence(claimId);
+  const remove = useDeleteEvidence(claimId);
+  const [error, setError] = useState("");
+  const [otherLabel, setOtherLabel] = useState("");
+  const [otherFiles, setOtherFiles] = useState<File[]>([]);
 
-type EvidencePanelProps = {
-  claimId: string
-  evidence: EvidenceItem[]
-}
-
-export function EvidencePanel({ claimId, evidence }: EvidencePanelProps) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const uploadEvidence = useUploadEvidence(claimId)
-  const [items, setItems] = useState<EvidenceUploadItem[]>([])
-  const [error, setError] = useState('')
-
-  function addFiles(fileList: FileList | null) {
-    if (!fileList) return
-    setItems((current) => [
-      ...current,
-      ...Array.from(fileList).map((file) => ({ file, category: 'VEHICLE_DAMAGE_IMAGE' as const })),
-    ])
-  }
-
-  function updateCategory(index: number, category: EvidenceCategory) {
-    setItems((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, category } : item)))
-  }
-
-  async function submitUpload(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!items.length) return
-    setError('')
+  async function uploadFiles(
+    category: EvidenceCategory,
+    files: File[],
+    label?: string,
+  ) {
+    if (!files.length) return;
+    setError("");
     try {
-      await uploadEvidence.mutateAsync(items)
-      setItems([])
-      if (inputRef.current) inputRef.current.value = ''
-    } catch (caughtError) {
-      setError(caughtError instanceof ClaimsApiError ? caughtError.message : 'Unable to upload evidence')
+      await upload.mutateAsync({
+        items: files.map((file) => ({ file, category })),
+        otherDocumentLabel: label,
+      });
+      if (category === "OTHER_DOCUMENT") {
+        setOtherLabel("");
+        setOtherFiles([]);
+      }
+    } catch (caught) {
+      setError(
+        caught instanceof ClaimsApiError
+          ? caught.message
+          : t("evidence.uploadFailed"),
+      );
     }
   }
 
+  const otherGroups = groupOtherDocuments(evidence);
+
   return (
-    <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
-      <Card.Header className="flex flex-col gap-4 border-b border-slate-100 px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
+    <Card
+      className="rounded-lg border border-slate-200 bg-white shadow-sm"
+      id="evidence"
+    >
+      <Card.Header className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
         <div className="flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-lg bg-cyan-50 text-cyan-700 ring-1 ring-cyan-100"><Document size={20} /></div>
+          <div className="flex size-10 items-center justify-center rounded-lg bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+            <Document size={20} />
+          </div>
+
           <div>
-            <Card.Title className="text-lg text-slate-950">Evidence</Card.Title>
-            <Card.Description className="text-sm text-slate-500">Damage photos and supporting claim documents.</Card.Description>
+            <Card.Title className="text-lg text-slate-950">
+              {t("claim.stepEvidence")}
+            </Card.Title>
+            <Card.Description className="text-sm text-slate-500">
+              {t("evidence.description")}
+            </Card.Description>
           </div>
         </div>
-        <Button onPress={() => inputRef.current?.click()} variant="outline"><Add size={18} />Select files</Button>
-        <input
-          aria-label="Select evidence files"
-          className="sr-only"
-          multiple
-          onChange={(event) => addFiles(event.target.files)}
-          ref={inputRef}
-          type="file"
-        />
       </Card.Header>
-      <Card.Content className="grid gap-6 p-6">
-        {items.length ? (
-          <form className="grid gap-3 border-b border-slate-100 pb-6" onSubmit={submitUpload}>
-            {error ? <Alert status="danger"><Alert.Title>Upload failed</Alert.Title><Alert.Description>{error}</Alert.Description></Alert> : null}
-            {items.map((item, index) => (
-              <div className="grid gap-3 border border-slate-200 p-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto] sm:items-center" key={`${item.file.name}-${item.file.lastModified}-${index}`}>
-                <div className="min-w-0"><p className="truncate text-sm font-medium text-slate-950">{item.file.name}</p><p className="mt-1 text-xs text-slate-500">{formatFileSize(item.file.size)}</p></div>
-                <label className="grid gap-1 text-xs font-semibold text-slate-600">
-                  Category
-                  <select aria-label={`Category for ${item.file.name}`} className="h-9 border border-slate-300 bg-white px-2 text-sm text-slate-900" onChange={(event) => updateCategory(index, event.target.value as EvidenceCategory)} value={item.category}>
-                    {categories.map((category) => <option key={category} value={category}>{categoryLabel[category]}</option>)}
-                  </select>
-                </label>
-                <Button aria-label={`Remove ${item.file.name}`} onPress={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))} variant="ghost"><TrashCan size={18} /></Button>
-              </div>
-            ))}
-            <div className="flex justify-end"><Button isPending={uploadEvidence.isPending} type="submit" variant="primary">Upload evidence</Button></div>
-          </form>
+      <Card.Content className="grid gap-5 p-6">
+        {error ? (
+          <Alert status="danger">
+            <Alert.Title>{t("evidence.uploadFailed")}</Alert.Title>
+            <Alert.Description>{error}</Alert.Description>
+          </Alert>
         ) : null}
-
-        {evidence.length ? <EvidenceGroups evidence={evidence} /> : <p className="text-sm text-slate-500">No evidence has been uploaded to this claim.</p>}
+        <div className="grid gap-4 xl:grid-cols-2">
+          {requiredEvidenceCategories.map((category) => (
+            <CategorySection
+              category={category}
+              evidence={evidence.filter((item) => item.category === category)}
+              isPending={upload.isPending}
+              key={category}
+              locked={locked}
+              onRemove={(id) => remove.mutate(id)}
+              onUpload={(files) => uploadFiles(category, files)}
+            />
+          ))}
+        </div>
+        <section className="grid gap-4 border-t border-slate-200 pt-5">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-950">
+              {t("evidence.otherDocuments")}
+            </h3>
+            <p className="mt-1 text-sm text-slate-500">
+              {t("evidence.otherDescription")}
+            </p>
+          </div>
+          {[...otherGroups.entries()].map(([groupId, items]) => (
+            <div className="border border-slate-200 p-4" key={groupId}>
+              <p className="text-sm font-semibold text-slate-950">
+                {items[0].group_label}
+              </p>
+              <EvidenceFiles
+                evidence={items}
+                locked={locked}
+                onRemove={(id) => remove.mutate(id)}
+              />
+            </div>
+          ))}
+          {!locked ? (
+            <div className="grid gap-3 border border-dashed border-slate-300 bg-slate-50 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+              <TextField isRequired>
+                <Label>{t("evidence.documentName")}</Label>
+                <Input
+                  value={otherLabel}
+                  onChange={(event) => setOtherLabel(event.target.value)}
+                />
+              </TextField>
+              <label className="grid gap-1 text-sm font-medium text-slate-700">
+                {t("evidence.files")}
+                <input
+                  aria-label={t("evidence.otherFiles")}
+                  className="min-h-10 border border-slate-300 bg-white px-3 py-2 text-sm"
+                  multiple
+                  onChange={(event) =>
+                    setOtherFiles(Array.from(event.target.files ?? []))
+                  }
+                  type="file"
+                />
+              </label>
+              <Button
+                isDisabled={!otherLabel.trim() || !otherFiles.length}
+                isPending={upload.isPending}
+                onPress={() =>
+                  uploadFiles("OTHER_DOCUMENT", otherFiles, otherLabel.trim())
+                }
+                variant="outline"
+              >
+                <Add size={17} />
+                {t("evidence.addOther")}
+              </Button>
+            </div>
+          ) : null}
+        </section>
       </Card.Content>
     </Card>
-  )
+  );
 }
 
-function EvidenceGroups({ evidence }: { evidence: EvidenceItem[] }) {
+function CategorySection({
+  category,
+  evidence,
+  locked,
+  isPending,
+  onUpload,
+  onRemove,
+}: {
+  category: EvidenceCategory;
+  evidence: EvidenceItem[];
+  locked: boolean;
+  isPending: boolean;
+  onUpload: (files: File[]) => void;
+  onRemove: (id: number) => void;
+}) {
+  const { t } = useTranslation();
+  const input = useRef<HTMLInputElement>(null);
+  const complete = evidence.length > 0;
   return (
-    <div className="grid gap-6">
-      {categories.map((category) => {
-        const groupedEvidence = evidence.filter((item) => item.category === category)
-        if (!groupedEvidence.length) return null
-        return <section className="grid gap-3" key={category}><h2 className="text-sm font-semibold text-slate-950">{categoryLabel[category]}</h2><div className="grid gap-3 sm:grid-cols-2">{groupedEvidence.map((item) => <EvidenceItemCard item={item} key={item.id} />)}</div></section>
-      })}
+    <section
+      className={`grid content-start gap-3 border p-4 ${complete ? "border-emerald-200 bg-emerald-50/40" : "border-amber-200 bg-amber-50/40"}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-950">
+            {t(`evidence.categories.${category}`)}
+          </h3>
+          <p className="mt-1 text-xs text-slate-500">
+            {t(`evidence.hints.${category}`)}
+          </p>
+        </div>
+        <Chip color={complete ? "success" : "warning"} size="sm" variant="soft">
+          {complete ? <CheckmarkOutline size={14} /> : <WarningAlt size={14} />}
+          {complete ? t("evidence.uploaded") : t("evidence.required")}
+        </Chip>
+      </div>
+      <EvidenceFiles evidence={evidence} locked={locked} onRemove={onRemove} />
+      {!locked ? (
+        <>
+          <input
+            aria-label={t("evidence.selectFor", {
+              category: t(`evidence.categories.${category}`),
+            })}
+            className="sr-only"
+            multiple
+            onChange={(event) => {
+              onUpload(Array.from(event.target.files ?? []));
+              event.target.value = "";
+            }}
+            ref={input}
+            type="file"
+          />
+          <Button
+            isPending={isPending}
+            onPress={() => input.current?.click()}
+            size="sm"
+            variant="outline"
+          >
+            <Add size={16} />
+            {complete ? t("evidence.addMore") : t("evidence.selectFiles")}
+          </Button>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function EvidenceFiles({
+  evidence,
+  locked,
+  onRemove,
+}: {
+  evidence: EvidenceItem[];
+  locked: boolean;
+  onRemove: (id: number) => void;
+}) {
+  const { t } = useTranslation();
+  if (!evidence.length) return null;
+  return (
+    <div className="grid gap-2">
+      {evidence.map((item) => (
+        <div
+          className="flex min-w-0 items-center gap-3 border border-slate-200 bg-white p-2"
+          key={item.id}
+        >
+          <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded bg-slate-100">
+            {item.content_type?.startsWith("image/") ? (
+              <EvidenceImagePreview
+                className="size-20 object-cover"
+                item={item}
+              />
+            ) : (
+              <Document className="text-slate-500" size={24} />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-slate-950">
+              {item.original_filename}
+            </p>
+            <p className="text-xs text-slate-500">
+              {formatFileSize(item.file_size)}
+            </p>
+          </div>
+          {!locked ? (
+            <Button
+              aria-label={t("evidence.removeFile", {
+                filename: item.original_filename,
+              })}
+              isIconOnly
+              onPress={() => onRemove(item.id)}
+              size="sm"
+              variant="ghost"
+            >
+              <TrashCan size={17} />
+            </Button>
+          ) : null}
+        </div>
+      ))}
     </div>
-  )
+  );
 }
 
-function EvidenceItemCard({ item }: { item: EvidenceItem }) {
-  const isDamageImage = item.category === 'VEHICLE_DAMAGE_IMAGE' && item.content_type?.startsWith('image/')
-  return <article className="overflow-hidden border border-slate-200 bg-slate-50"><div className="flex min-h-28 items-center justify-center bg-slate-100">{isDamageImage ? <EvidenceImagePreview item={item} /> : <Document className="text-slate-500" size={28} />}</div><div className="p-3"><p className="truncate text-sm font-medium text-slate-950">{item.original_filename}</p><p className="mt-1 text-xs text-slate-500">{formatFileSize(item.file_size)}</p></div></article>
-}
-
-export function EvidenceImagePreview({ item }: { item: EvidenceItem }) {
-  const { session } = useAuth()
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-
+export function EvidenceImagePreview({
+  item,
+  className = "h-32 w-full object-cover",
+}: {
+  item: EvidenceItem;
+  className?: string;
+}) {
+  const { session } = useAuth();
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   useEffect(() => {
-    let objectUrl: string | null = null
-    let active = true
+    let objectUrl: string | null = null;
+    let active = true;
     getEvidenceContent(item.content_url, session!.access_token)
       .then((blob) => {
-        objectUrl = URL.createObjectURL(blob)
-        if (active) setPreviewUrl(objectUrl)
+        objectUrl = URL.createObjectURL(blob);
+        if (active) setPreviewUrl(objectUrl);
       })
-      .catch(() => active && setPreviewUrl(null))
+      .catch(() => active && setPreviewUrl(null));
     return () => {
-      active = false
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
-    }
-  }, [item.content_url, session])
-
-  return previewUrl ? <img alt={item.original_filename} className="h-32 w-full object-cover" src={previewUrl} /> : <Image className="text-slate-500" size={28} />
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [item.content_url, session]);
+  return previewUrl ? (
+    <a href={previewUrl} rel="noopener noreferrer" target="_blank">
+      <img alt={item.original_filename} className={className} src={previewUrl} />
+    </a>
+  ) : (
+    <Image className="text-slate-500" size={28} />
+  );
 }
 
-function formatFileSize(fileSize: number) {
-  if (fileSize < 1024) return `${fileSize} B`
-  return `${Math.round(fileSize / 1024)} KB`
+function formatFileSize(size: number) {
+  return size < 1024 ? `${size} B` : `${Math.round(size / 1024)} KB`;
+}
+
+function groupOtherDocuments(evidence: EvidenceItem[]) {
+  const groups = new Map<number, EvidenceItem[]>();
+  for (const item of evidence.filter(
+    (candidate) => candidate.category === "OTHER_DOCUMENT",
+  )) {
+    const key = item.group_id ?? item.id;
+    groups.set(key, [...(groups.get(key) ?? []), item]);
+  }
+  return groups;
 }
