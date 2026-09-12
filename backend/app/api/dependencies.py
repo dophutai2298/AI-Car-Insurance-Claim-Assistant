@@ -39,8 +39,8 @@ def require_admin(current_user: Annotated[User, Depends(get_current_user)]) -> U
 
 
 def require_adjuster(current_user: Annotated[User, Depends(get_current_user)]) -> User:
-    if current_user.role is not UserRole.ADJUSTER:
-        raise HTTPException(status_code=403, detail="Adjuster access required")
+    if current_user.role not in {UserRole.ADJUSTER, UserRole.ADMIN}:
+        raise HTTPException(status_code=403, detail="Adjuster or Admin access required")
     return current_user
 
 

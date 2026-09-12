@@ -40,6 +40,13 @@ class CopilotInput:
     warning: str | None
     findings: list[CopilotStructuredFinding]
     reference_prices: list[CopilotReferencePrice]
+    claim: dict[str, object] | None = None
+    vehicle: dict[str, object] | None = None
+    claimant: dict[str, object] | None = None
+    incident: dict[str, object] | None = None
+    document_analysis: list[dict[str, object]] | None = None
+    warnings: list[str] | None = None
+    evidence_references: list[dict[str, object]] | None = None
 
     def model_context(self) -> dict[str, object]:
         return {
@@ -48,6 +55,13 @@ class CopilotInput:
             "warning": self.warning,
             "findings": [asdict(finding) for finding in self.findings],
             "reference_prices": [asdict(price) for price in self.reference_prices],
+            "claim": self.claim,
+            "vehicle": self.vehicle,
+            "claimant": self.claimant,
+            "incident": self.incident,
+            "document_analysis": self.document_analysis or [],
+            "warnings": self.warnings or [],
+            "evidence_references": self.evidence_references or [],
         }
 
 

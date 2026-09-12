@@ -7,6 +7,7 @@ from app.models import (
     ClaimStatus,
     CopilotConclusion,
     CopilotConclusionReview,
+    CopilotConclusionReviewReversion,
     CopilotConclusionReviewStatus,
     User,
 )
@@ -73,3 +74,38 @@ class CopilotConclusionReviewRepository:
             .order_by(CopilotConclusionReview.reviewed_at.desc())
         )
         return list(self.session.execute(statement).all())
+
+    def find_for_conclusion(self, conclusion_id: int) -> CopilotConclusionReview | None:
+        return self.session.scalar(
+            select(CopilotConclusionReview).where(
+                CopilotConclusionReview.conclusion_id == conclusion_id
+            )
+        )
+
+    def reversion_for_review(
+        self, review_id: int
+    ) -> tuple[CopilotConclusionReviewReversion, str] | None:
+        statement = (
+            select(CopilotConclusionReviewReversion, User.email)
+            .join(User, User.id == CopilotConclusionReviewReversion.reverted_by_user_id)
+            .where(CopilotConclusionReviewReversion.review_id == review_id)
+        )
+        return self.session.execute(statement).first()
+
+    def revert(
+        self,
+        claim: Claim,
+        review: CopilotConclusionReview,
+        reviewer: User,
+        note: str,
+    ) -> CopilotConclusionReviewReversion:
+        reversion = CopilotConclusionReviewReversion(
+            review_id=review.id,
+            reverted_by_user_id=reviewer.id,
+            note=note.strip(),
+        )
+        claim.status = ClaimStatus.REVIEW_REQUIRED
+        self.session.add(reversion)
+        self.session.commit()
+        self.session.refresh(reversion)
+        return reversion

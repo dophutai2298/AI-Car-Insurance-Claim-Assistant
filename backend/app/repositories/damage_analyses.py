@@ -26,6 +26,7 @@ class DamageAnalysisRepository:
         detections: list[DamageModelDetection],
         rules: AssessmentRuleValues,
         reference_prices: list[ReferencePartPriceResult],
+        update_claim_status: bool = True,
     ) -> DamageAnalysis:
         analysis = DamageAnalysis(claim_id=claim.id, assessment=assessment.assessment, warning=assessment.warning)
         self.session.add(analysis)
@@ -71,7 +72,8 @@ class DamageAnalysisRepository:
                 for price in reference_prices
             ]
         )
-        claim.status = ClaimStatus.REVIEW_REQUIRED
+        if update_claim_status:
+            claim.status = ClaimStatus.REVIEW_REQUIRED
         self.session.commit()
         self.session.refresh(analysis)
         return analysis

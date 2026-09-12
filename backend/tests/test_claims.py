@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.core.config import get_settings
 from app.main import create_app
 from app.services.evidence_storage import LocalEvidenceStorage
+from app.services.llm_copilot import LlmCopilotService
 
 
 @pytest.fixture
@@ -103,6 +104,35 @@ def test_adjuster_can_open_claim_detail(client: TestClient):
     assert response.json()["id"] == created_claim["id"]
     assert response.json()["vehicle"]["vin"] == "4T1G11AKXNU123456"
     assert response.json()["status"] == "DRAFT"
+
+
+def test_adjuster_can_persist_and_edit_claim_incident_information(client: TestClient):
+    claim = create_claim(client)
+
+    response = client.patch(
+        f"/api/claims/{claim['id']}/information",
+        headers=adjuster_headers(client),
+        json={
+            "claimant_name": "Mai Nguyen",
+            "vehicle": claim["vehicle"],
+            "incident": {
+                "occurred_at": "2026-09-09T08:30:00+07:00",
+                "location": "Nguyen Huu Canh Street, Ho Chi Minh City",
+                "description": "Rear impact while the vehicle was stopped at a traffic light.",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["incident"] == {
+        "occurred_at": "2026-09-09T01:30:00Z",
+        "location": "Nguyen Huu Canh Street, Ho Chi Minh City",
+        "description": "Rear impact while the vehicle was stopped at a traffic light.",
+    }
+    persisted = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()
+    assert persisted["incident"] == response.json()["incident"]
 
 
 def test_vehicle_manufacturer_catalog_is_seeded_and_admin_can_manage_active_status(client: TestClient):
@@ -251,6 +281,37 @@ def test_evidence_category_mismatch_returns_clear_error_without_metadata_or_file
     assert not (tmp_path / "uploads" / claim["id"]).exists()
 
 
+def test_other_document_groups_keep_their_label_and_evidence_can_be_removed(client: TestClient, tmp_path):
+    claim = create_claim(client)
+
+    upload = client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=adjuster_headers(client),
+        data={
+            "categories": ["OTHER_DOCUMENT", "OTHER_DOCUMENT"],
+            "other_document_label": "Police Accident Report",
+        },
+        files=[
+            ("files", ("report-1.jpg", b"report-one", "image/jpeg")),
+            ("files", ("report-2.jpg", b"report-two", "image/jpeg")),
+        ],
+    )
+
+    assert upload.status_code == 200
+    evidence = upload.json()["evidence"]
+    assert {item["group_label"] for item in evidence} == {"Police Accident Report"}
+    assert len({item["group_id"] for item in evidence}) == 1
+
+    removed = client.delete(
+        f"/api/claims/{claim['id']}/evidence/{evidence[0]['id']}",
+        headers=adjuster_headers(client),
+    )
+
+    assert removed.status_code == 200
+    assert [item["id"] for item in removed.json()["evidence"]] == [evidence[1]["id"]]
+    assert len(list((tmp_path / "uploads" / claim["id"]).glob("*"))) == 1
+
+
 def test_storage_failure_cleans_up_previously_written_files_and_metadata(client: TestClient, tmp_path, monkeypatch):
     claim = create_claim(client)
     original_write_upload = LocalEvidenceStorage._write_upload
@@ -288,6 +349,276 @@ def upload_damage_images(client: TestClient, claim_id: str, filenames: list[str]
     assert response.status_code == 200
 
 
+def prepare_claim_for_workflow_analysis(
+    client: TestClient,
+    *,
+    driver_license_filename: str = "driver-license.jpg",
+) -> dict[str, object]:
+    claim = create_claim(client)
+    information = client.patch(
+        f"/api/claims/{claim['id']}/information",
+        headers=adjuster_headers(client),
+        json={
+            "claimant_name": claim["claimant_name"],
+            "vehicle": claim["vehicle"],
+            "incident": {
+                "occurred_at": "2026-09-09T08:30:00+07:00",
+                "location": "District 1, Ho Chi Minh City",
+                "description": "Rear impact while stopped at a traffic light.",
+            },
+        },
+    )
+    assert information.status_code == 200
+    upload = client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=adjuster_headers(client),
+        data={
+            "categories": [
+                "VEHICLE_DAMAGE_IMAGE",
+                "ID_CARD",
+                "INSURANCE_POLICY",
+                "VEHICLE_REGISTRATION",
+                "DRIVER_LICENSE",
+            ]
+        },
+        files=[
+            ("files", ("repair.jpg", b"damage", "image/jpeg")),
+            ("files", ("id-card.jpg", b"id-card", "image/jpeg")),
+            ("files", ("policy.pdf", b"policy", "application/pdf")),
+            ("files", ("registration.jpg", b"registration", "image/jpeg")),
+            ("files", (driver_license_filename, b"license", "image/jpeg")),
+        ],
+    )
+    assert upload.status_code == 200
+    return claim
+
+
+def test_workflow_analysis_returns_pending_then_persists_grouped_results(client: TestClient):
+    claim = prepare_claim_for_workflow_analysis(client)
+
+    started = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+
+    assert started.status_code == 202
+    assert started.json()["status"] == "PENDING"
+    detail = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()
+    run = detail["latest_analysis_run"]
+    assert run["status"] == "COMPLETED"
+    assert run["damage_status"] == "COMPLETED"
+    assert run["damage_analysis"]["assessment"] == "REPAIR_LIKELY"
+    assert {item["document_type"] for item in run["document_analyses"]} == {
+        "ID_CARD",
+        "INSURANCE_POLICY",
+        "VEHICLE_REGISTRATION",
+        "DRIVER_LICENSE",
+    }
+    registration = next(
+        item for item in run["document_analyses"] if item["document_type"] == "VEHICLE_REGISTRATION"
+    )
+    assert registration["status"] == "COMPLETED"
+    assert {field["key"] for field in registration["fields"]} >= {"owner_name", "license_plate"}
+    assert all(field["original_ai_value"] == field["reviewed_value"] for field in registration["fields"])
+
+
+def test_admin_can_start_workflow_analysis(client: TestClient):
+    claim = prepare_claim_for_workflow_analysis(client)
+
+    started = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=admin_headers(client),
+    )
+
+    assert started.status_code == 202
+
+
+def test_workflow_analysis_preserves_successful_results_when_one_document_fails(client: TestClient):
+    claim = prepare_claim_for_workflow_analysis(client, driver_license_filename="analysis-fail.jpg")
+
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+
+    run = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()[
+        "latest_analysis_run"
+    ]
+    assert run["status"] == "PARTIAL"
+    assert run["damage_status"] == "COMPLETED"
+    failed = next(
+        item for item in run["document_analyses"] if item["document_type"] == "DRIVER_LICENSE"
+    )
+    assert failed["status"] == "FAILED"
+    assert failed["warnings"] == ["Mock document analysis failed for this evidence group."]
+    assert any(item["status"] == "COMPLETED" for item in run["document_analyses"])
+
+
+def test_adjuster_can_correct_document_fields_then_run_structured_ai_review(client: TestClient, monkeypatch):
+    claim = prepare_claim_for_workflow_analysis(client)
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    detail = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()
+    run = detail["latest_analysis_run"]
+    registration = next(
+        item for item in run["document_analyses"] if item["document_type"] == "VEHICLE_REGISTRATION"
+    )
+    plate = next(field for field in registration["fields"] if field["key"] == "license_plate")
+
+    corrected = client.patch(
+        f"/api/claims/{claim['id']}/document-analyses/{registration['id']}/fields/{plate['id']}",
+        headers=adjuster_headers(client),
+        json={"reviewed_value": "51H-999.99"},
+    )
+
+    assert corrected.status_code == 200
+    corrected_plate = next(
+        field
+        for document in corrected.json()["latest_analysis_run"]["document_analyses"]
+        if document["id"] == registration["id"]
+        for field in document["fields"]
+        if field["id"] == plate["id"]
+    )
+    assert corrected_plate["original_ai_value"] == "51H-123.45"
+    assert corrected_plate["reviewed_value"] == "51H-999.99"
+
+    captured_context: dict[str, object] = {}
+    original_generate = LlmCopilotService.generate
+
+    def capture_normalized_input(self, input_data):
+        captured_context.update(input_data.model_context())
+        return original_generate(self, input_data)
+
+    monkeypatch.setattr(LlmCopilotService, "generate", capture_normalized_input)
+
+    reviewed = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=adjuster_headers(client),
+    )
+
+    assert reviewed.status_code == 200
+    conclusion = reviewed.json()["latest_damage_analysis"]["copilot_conclusion"]
+    assert 0 <= conclusion["validity_percentage"] <= 100
+    assert conclusion["review_status"] == "REVIEW_REQUIRED"
+    assert len(conclusion["evidence_references"]) == 5
+    assert conclusion["summary"]
+    assert captured_context["claim"] == {"id": claim["id"], "status": "REVIEW_REQUIRED"}
+    assert captured_context["incident"]["location"] == "District 1, Ho Chi Minh City"
+    registration_payload = next(
+        item
+        for item in captured_context["document_analysis"]
+        if item["document_type"] == "VEHICLE_REGISTRATION"
+    )
+    assert next(
+        field for field in registration_payload["fields"] if field["key"] == "license_plate"
+    )["reviewed_value"] == "51H-999.99"
+
+
+def test_ai_review_rejects_analysis_run_after_claim_inputs_change(client: TestClient):
+    claim = prepare_claim_for_workflow_analysis(client)
+    client.post(f"/api/claims/{claim['id']}/analysis-runs", headers=adjuster_headers(client))
+    detail = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()
+    run = detail["latest_analysis_run"]
+
+    updated = client.patch(
+        f"/api/claims/{claim['id']}/information",
+        headers=adjuster_headers(client),
+        json={
+            "claimant_name": detail["claimant_name"],
+            "vehicle": detail["vehicle"],
+            "incident": {
+                **detail["incident"],
+                "location": "Thu Duc City, Ho Chi Minh City",
+            },
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["latest_analysis_run"]["inputs_changed"] is True
+
+    reviewed = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=adjuster_headers(client),
+    )
+
+    assert reviewed.status_code == 422
+    assert reviewed.json() == {
+        "detail": "Claim information or evidence changed; run analysis again"
+    }
+
+
+def test_human_review_requires_a_note_and_can_be_reverted_without_losing_history(client: TestClient):
+    claim = prepare_claim_for_workflow_analysis(client)
+    client.post(f"/api/claims/{claim['id']}/analysis-runs", headers=adjuster_headers(client))
+    detail = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()
+    run = detail["latest_analysis_run"]
+    reviewed = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=adjuster_headers(client),
+    ).json()
+    conclusion_id = reviewed["latest_damage_analysis"]["copilot_conclusion"]["id"]
+
+    missing_note = client.post(
+        f"/api/claims/{claim['id']}/copilot-conclusions/{conclusion_id}/review",
+        headers=adjuster_headers(client),
+        json={"status": "APPROVED"},
+    )
+    assert missing_note.status_code == 422
+
+    approved = client.post(
+        f"/api/claims/{claim['id']}/copilot-conclusions/{conclusion_id}/review",
+        headers=adjuster_headers(client),
+        json={"status": "APPROVED", "comment": "Evidence is consistent after manual verification."},
+    )
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "AI_APPROVED"
+
+    rerun_before_revert = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    assert rerun_before_revert.status_code == 422
+    assert rerun_before_revert.json() == {
+        "detail": "Revert the human review before running analysis again"
+    }
+
+    evidence_before_revert = approved.json()["evidence"][0]
+    removal_before_revert = client.delete(
+        f"/api/claims/{claim['id']}/evidence/{evidence_before_revert['id']}",
+        headers=adjuster_headers(client),
+    )
+    assert removal_before_revert.status_code == 409
+
+    reverted = client.post(
+        f"/api/claims/{claim['id']}/copilot-conclusions/{conclusion_id}/review/revert",
+        headers=adjuster_headers(client),
+        json={"note": "Correct the registration plate and rerun the review."},
+    )
+
+    assert reverted.status_code == 200
+    assert reverted.json()["status"] == "REVIEW_REQUIRED"
+    history = reverted.json()["copilot_review_history"]
+    assert len(history) == 1
+    assert history[0]["comment"] == "Evidence is consistent after manual verification."
+    assert history[0]["reverted_at"]
+    assert history[0]["reverted_by"] == "adjuster@example.com"
+    assert history[0]["revert_note"] == "Correct the registration plate and rerun the review."
+
+    damage_evidence_id = next(
+        item["id"]
+        for item in reverted.json()["evidence"]
+        if item["category"] == "VEHICLE_DAMAGE_IMAGE"
+    )
+    removed = client.delete(
+        f"/api/claims/{claim['id']}/evidence/{damage_evidence_id}",
+        headers=adjuster_headers(client),
+    )
+    assert removed.status_code == 200
+    assert all(item["id"] != damage_evidence_id for item in removed.json()["evidence"])
+    assert removed.json()["copilot_review_history"][0]["revert_note"]
+
+
 def test_damage_analysis_returns_normalized_repair_fixture_and_persists_it(client: TestClient):
     claim = create_claim(client)
     upload_damage_images(client, claim["id"], ["repair.jpg"])
@@ -311,6 +642,8 @@ def test_damage_analysis_returns_normalized_repair_fixture_and_persists_it(clien
             "file_size": 20,
             "uploaded_at": analysis["detections"][0]["annotated_evidence"]["uploaded_at"],
             "content_url": "/api/claims/CLM-000001/evidence/1/content",
+            "group_id": None,
+            "group_label": None,
         },
     }]
     detail = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()
@@ -571,7 +904,7 @@ def test_adjuster_can_approve_an_ai_conclusion_and_view_persisted_review_history
     response = client.post(
         f"/api/claims/{claim['id']}/copilot-conclusions/{conclusion['id']}/review",
         headers=adjuster_headers(client),
-        json={"status": "APPROVED"},
+        json={"status": "APPROVED", "comment": "The model result matches the submitted evidence."},
     )
 
     assert response.status_code == 200
@@ -581,9 +914,12 @@ def test_adjuster_can_approve_an_ai_conclusion_and_view_persisted_review_history
         "conclusion_id": conclusion["id"],
         "status": "APPROVED",
         "reason_category": None,
-        "comment": None,
+        "comment": "The model result matches the submitted evidence.",
         "reviewer": "adjuster@example.com",
         "reviewed_at": response.json()["latest_damage_analysis"]["copilot_conclusion"]["review_history"][0]["reviewed_at"],
+        "reverted_at": None,
+        "reverted_by": None,
+        "revert_note": None,
     }]
     assert response.json()["copilot_review_history"][0]["conclusion_id"] == conclusion["id"]
 
@@ -615,27 +951,20 @@ def test_rejecting_an_ai_conclusion_requires_a_category_and_comment_at_the_api(c
     assert review["comment"] == "The rear bumper damage area is understated in the annotated image."
 
 
-def test_admin_cannot_review_an_ai_conclusion_and_a_conclusion_cannot_be_reviewed_twice(client: TestClient):
+def test_admin_can_review_an_ai_conclusion_and_a_conclusion_cannot_be_reviewed_twice(client: TestClient):
     claim, conclusion = create_reviewable_conclusion(client)
 
     admin_response = client.post(
         f"/api/claims/{claim['id']}/copilot-conclusions/{conclusion['id']}/review",
         headers=admin_headers(client),
-        json={"status": "APPROVED"},
+        json={"status": "APPROVED", "comment": "Reviewed by administrator."},
     )
-    assert admin_response.status_code == 403
-
-    approved = client.post(
-        f"/api/claims/{claim['id']}/copilot-conclusions/{conclusion['id']}/review",
-        headers=adjuster_headers(client),
-        json={"status": "APPROVED"},
-    )
-    assert approved.status_code == 200
+    assert admin_response.status_code == 200
 
     duplicate = client.post(
         f"/api/claims/{claim['id']}/copilot-conclusions/{conclusion['id']}/review",
         headers=adjuster_headers(client),
-        json={"status": "APPROVED"},
+        json={"status": "APPROVED", "comment": "Duplicate review attempt."},
     )
     assert duplicate.status_code == 409
     assert duplicate.json() == {"detail": "AI conclusion has already been reviewed"}

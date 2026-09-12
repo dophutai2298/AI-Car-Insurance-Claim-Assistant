@@ -46,7 +46,9 @@ uvicorn app.main:app --reload
 ```
 
 The health endpoint is available at `http://localhost:8000/api/health`.
-Interactive Swagger UI is available at `http://localhost:8000/docs`, with the OpenAPI schema at `http://localhost:8000/openapi.json`.
+- Interactive Swagger UI is available at `http://localhost:8000/docs`, 
+- with the OpenAPI schema at `http://localhost:8000/openapi.json`. 
+- ReDoc: `http://localhost:8000/redoc`
 
 The backend creates the required tables and seeds these local demo accounts on startup:
 

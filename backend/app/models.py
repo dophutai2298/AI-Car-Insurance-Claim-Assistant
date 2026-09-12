@@ -84,6 +84,26 @@ class CopilotConclusionReviewStatus(str, Enum):
     REJECTED = "REJECTED"
 
 
+class AnalysisRunStatus(str, Enum):
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    PARTIAL = "PARTIAL"
+    FAILED = "FAILED"
+
+
+class AnalysisResultStatus(str, Enum):
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class DocumentFieldStatus(str, Enum):
+    VALID = "VALID"
+    WARNING = "WARNING"
+
+
 class CopilotConclusionRejectionCategory(str, Enum):
     DOCUMENT_INFORMATION_INCOMPLETE = "DOCUMENT_INFORMATION_INCOMPLETE"
     DOCUMENT_INFORMATION_INCORRECT = "DOCUMENT_INFORMATION_INCORRECT"
@@ -166,6 +186,43 @@ class Evidence(Base):
     )
 
 
+class OtherDocumentGroup(Base):
+    __tablename__ = "other_document_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id"), index=True)
+    label: Mapped[str] = mapped_column(String(160))
+
+
+class OtherDocumentGroupEvidence(Base):
+    __tablename__ = "other_document_group_evidence"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("other_document_groups.id"), index=True)
+    evidence_id: Mapped[int] = mapped_column(ForeignKey("evidence.id"), unique=True, index=True)
+
+
+class EvidenceRemoval(Base):
+    __tablename__ = "evidence_removals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    evidence_id: Mapped[int] = mapped_column(ForeignKey("evidence.id"), unique=True, index=True)
+    removed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class ClaimIncident(Base):
+    __tablename__ = "claim_incidents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id"), unique=True, index=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    location: Mapped[str] = mapped_column(String(240))
+    description: Mapped[str] = mapped_column(Text)
+    input_revision: Mapped[int] = mapped_column(Integer, default=1)
+
+
 class DamageAnalysis(Base):
     __tablename__ = "damage_analyses"
 
@@ -176,6 +233,67 @@ class DamageAnalysis(Base):
     warning: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class WorkflowAnalysisRun(Base):
+    __tablename__ = "workflow_analysis_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id"), index=True)
+    input_revision: Mapped[int] = mapped_column(Integer)
+    status: Mapped[AnalysisRunStatus] = mapped_column(
+        SqlEnum(AnalysisRunStatus, native_enum=False), default=AnalysisRunStatus.PENDING
+    )
+    damage_status: Mapped[AnalysisResultStatus] = mapped_column(
+        SqlEnum(AnalysisResultStatus, native_enum=False), default=AnalysisResultStatus.PENDING
+    )
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WorkflowAnalysisDamage(Base):
+    __tablename__ = "workflow_analysis_damage"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    analysis_run_id: Mapped[int] = mapped_column(
+        ForeignKey("workflow_analysis_runs.id"), unique=True, index=True
+    )
+    damage_analysis_id: Mapped[int] = mapped_column(
+        ForeignKey("damage_analyses.id"), unique=True, index=True
+    )
+
+
+class DocumentAnalysis(Base):
+    __tablename__ = "document_analyses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    analysis_run_id: Mapped[int] = mapped_column(ForeignKey("workflow_analysis_runs.id"), index=True)
+    document_type: Mapped[EvidenceCategory] = mapped_column(
+        SqlEnum(EvidenceCategory, native_enum=False)
+    )
+    status: Mapped[AnalysisResultStatus] = mapped_column(
+        SqlEnum(AnalysisResultStatus, native_enum=False)
+    )
+    warnings_json: Mapped[str] = mapped_column(Text, default="[]")
+
+
+class DocumentAnalysisField(Base):
+    __tablename__ = "document_analysis_fields"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    document_analysis_id: Mapped[int] = mapped_column(ForeignKey("document_analyses.id"), index=True)
+    key: Mapped[str] = mapped_column(String(80))
+    label: Mapped[str] = mapped_column(String(120))
+    original_ai_value: Mapped[str] = mapped_column(Text)
+    reviewed_value: Mapped[str] = mapped_column(Text)
+    confidence: Mapped[float] = mapped_column(Float)
+    status: Mapped[DocumentFieldStatus] = mapped_column(
+        SqlEnum(DocumentFieldStatus, native_enum=False)
     )
 
 
@@ -258,5 +376,35 @@ class CopilotConclusionReview(Base):
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewer_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     reviewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class WorkflowAiReview(Base):
+    __tablename__ = "workflow_ai_reviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    analysis_run_id: Mapped[int] = mapped_column(
+        ForeignKey("workflow_analysis_runs.id"), unique=True, index=True
+    )
+    conclusion_id: Mapped[int] = mapped_column(
+        ForeignKey("copilot_conclusions.id"), unique=True, index=True
+    )
+    validity_percentage: Mapped[int] = mapped_column(Integer)
+    review_status: Mapped[str] = mapped_column(String(64), default="REVIEW_REQUIRED")
+    warnings_json: Mapped[str] = mapped_column(Text, default="[]")
+    evidence_references_json: Mapped[str] = mapped_column(Text, default="[]")
+
+
+class CopilotConclusionReviewReversion(Base):
+    __tablename__ = "copilot_conclusion_review_reversions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    review_id: Mapped[int] = mapped_column(
+        ForeignKey("copilot_conclusion_reviews.id"), unique=True, index=True
+    )
+    reverted_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    note: Mapped[str] = mapped_column(Text)
+    reverted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
