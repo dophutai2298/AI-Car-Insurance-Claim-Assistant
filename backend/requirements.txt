@@ -10,3 +10,4 @@ httpx==0.28.1
 pydantic==2.13.5
 python-multipart==0.0.21
 langchain-openai==1.1.7
+./package/deepdoc_vietocr-0.1.0-py3-none-any.whl
