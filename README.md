@@ -61,6 +61,44 @@ Set the demo credentials before the first database startup through the correspon
 To reseed changed credentials locally, recreate the development Postgres volume.
 Authentication endpoints are available at `POST /api/auth/login` and `GET /api/auth/me`.
 
+### DeepDoc Vietnamese document analysis
+
+This project can use the local `deepdoc_vietocr` package for CPU-optimized document
+processing. DeepDoc supports text OCR, document layout detection, and table
+structure extraction. It integrates VietOCR and ONNX to improve Vietnamese text
+recognition and is designed to be reusable in document-processing and RAG systems.
+
+The wheel is distributed privately and is intentionally not committed to Git.
+Download `deepdoc_vietocr-0.1.0-py3-none-any.whl` from
+[here](https://drive.google.com/file/d/1LBGigUwhSzncbh4uMpkq5kZzU1JETlQz/view?usp=sharing)
+and place it in `backend/package/`.
+
+Install the downloaded wheel in the backend virtual environment:
+
+```bash
+cd backend
+pip install package/deepdoc_vietocr-0.1.0-py3-none-any.whl
+```
+
+Example usage:
+
+```python
+from deepdoc_vietocr import DocumentReader
+
+reader = DocumentReader()
+result = reader.extract("sample.pdf")
+
+print(result.text)
+print(result.markdown)
+
+layouts = reader.detect_layout("sample.pdf")
+tables = reader.extract_tables("sample.pdf")
+```
+
+`result.text` contains the extracted text, while `result.markdown` preserves a
+more structured representation. `detect_layout` returns document layout data and
+`extract_tables` returns detected table structures.
+
 ### 4. Start the frontend
 
 ```bash
@@ -83,3 +121,10 @@ cd ../frontend
 npm test
 npm run build
 ```
+### Third-party licenses
+
+`deepdoc_vietocr` contains components derived from DeepDoc/RAGFlow and VietOCR,
+which are distributed under the Apache License 2.0.
+
+See [`THIRD_PARTY_NOTICES.md`](./backend/package/THIRD_PARTY_NOTICES.md) for attribution and
+third-party license information.
