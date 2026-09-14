@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
@@ -27,8 +27,24 @@ class Settings(BaseSettings):
     )
     damage_model_mode: Literal["mock", "http"] = Field(default="mock", validation_alias="DAMAGE_MODEL_MODE")
     damage_model_url: str | None = Field(default=None, validation_alias="DAMAGE_MODEL_URL")
-    part_search_mode: Literal["mock"] = Field(default="mock", validation_alias="PART_SEARCH_MODE")
+    damage_confidence_threshold: float = Field(
+        default=0.70, ge=0, le=1, validation_alias="DAMAGE_CONFIDENCE_THRESHOLD"
+    )
+    damage_repair_max_percentage: float = Field(
+        default=40, ge=0, le=100, validation_alias="DAMAGE_REPAIR_MAX_PERCENTAGE"
+    )
+    damage_replacement_min_percentage: float = Field(
+        default=60, ge=0, le=100, validation_alias="DAMAGE_REPLACEMENT_MIN_PERCENTAGE"
+    )
+    part_search_mode: Literal["mock", "unavailable"] = Field(
+        default="mock", validation_alias="PART_SEARCH_MODE"
+    )
     llm_mode: Literal["mock", "openai"] = Field(default="mock", validation_alias="LLM_MODE")
+    llm_base_url: str | None = Field(
+        default=None, validation_alias=AliasChoices("LLM_BASE_URL", "URL_MODEL")
+    )
+    openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
+    openai_model: str | None = Field(default=None, validation_alias="OPENAI_MODEL")
     frontend_origin: str = Field(default="http://localhost:5173", validation_alias="FRONTEND_ORIGIN")
     check_database_on_health: bool = Field(default=True, validation_alias="CHECK_DATABASE_ON_HEALTH")
 
@@ -37,6 +53,7 @@ class Settings(BaseSettings):
     def public_runtime(self) -> dict[str, str]:
         return {
             "damage_model_mode": self.damage_model_mode,
+            "damage_confidence_threshold": str(self.damage_confidence_threshold),
             "part_search_mode": self.part_search_mode,
             "llm_mode": self.llm_mode,
             "upload_root": self.upload_root,

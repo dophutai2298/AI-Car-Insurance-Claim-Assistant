@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Claim, ClaimStatus
-from app.schemas.claims import ClaimCreateRequest
+from app.schemas.claims import ClaimCreateRequest, ClaimInformationUpdateRequest
 
 
 class ClaimRepository:
@@ -33,8 +33,20 @@ class ClaimRepository:
     def find_by_claim_number(self, claim_number: str) -> Claim | None:
         return self.session.scalar(select(Claim).where(Claim.claim_number == claim_number))
 
+    def find_by_id(self, claim_id: int) -> Claim | None:
+        return self.session.get(Claim, claim_id)
+
     def update_status(self, claim: Claim, status: ClaimStatus) -> Claim:
         claim.status = status
         self.session.commit()
         self.session.refresh(claim)
+        return claim
+
+    def update_information(self, claim: Claim, data: ClaimInformationUpdateRequest) -> Claim:
+        claim.claimant_name = data.claimant_name.strip()
+        claim.vehicle_make = data.vehicle.make.strip()
+        claim.vehicle_model = data.vehicle.model.strip()
+        claim.vehicle_year = data.vehicle.year
+        claim.license_plate = data.vehicle.license_plate.strip() if data.vehicle.license_plate else None
+        claim.vin = data.vehicle.vin.strip().upper() if data.vehicle.vin else None
         return claim

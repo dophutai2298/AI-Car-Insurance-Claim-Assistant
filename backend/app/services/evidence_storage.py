@@ -29,6 +29,8 @@ class EvidenceStorage(Protocol):
 
     def delete_stored(self, uploads: list[StoredEvidence]) -> None: ...
 
+    def delete(self, relative_path: str) -> None: ...
+
 
 class LocalEvidenceStorage:
     def __init__(self, settings: Settings):
@@ -88,6 +90,9 @@ class LocalEvidenceStorage:
 
     def delete_stored(self, uploads: list[StoredEvidence]) -> None:
         self.delete_paths([self.resolve_path(upload.relative_path) for upload in uploads])
+
+    def delete(self, relative_path: str) -> None:
+        self.delete_paths([self.resolve_path(relative_path)])
 
     @staticmethod
     def delete_paths(paths: list[Path]) -> None:

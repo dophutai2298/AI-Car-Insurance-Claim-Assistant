@@ -1,85 +1,117 @@
-import { ArrowLeft, CarFront, Document } from '@carbon/icons-react'
-import { Alert, Button, Card, Chip, Skeleton } from '@heroui/react'
-import { Link, useParams } from 'react-router'
+import { ArrowLeft, Document } from "@carbon/icons-react";
+import { Alert, Chip, Skeleton } from "@heroui/react";
+import { useTranslation } from "react-i18next";
+import { Link, useParams } from "react-router";
 
-import { lifecycleAction, statusLabel, statusTone } from './statusPresentation'
-import { EvidencePanel } from './EvidencePanel'
-import { useClaim, useTransitionClaim } from './useClaims'
+import { ClaimInformationPanel } from "./ClaimInformationPanel";
+import {
+  ClaimWorkflowStepper,
+  claimWorkflowForClaim,
+  type ClaimStepId,
+} from "./ClaimWorkflowStepper";
+import { EvidencePanel } from "./EvidencePanel";
+import {
+  AiReviewPanel,
+  AnalysisPanel,
+  CopilotReviewHistory,
+  HumanReviewPanel,
+} from "./WorkflowPanels";
+import { statusTone } from "./statusPresentation";
+import { useClaim } from "./useClaims";
 
 export function ClaimDetailPage() {
-  const { claimId } = useParams()
-  const { data: claim, error, isPending } = useClaim(claimId)
-  const transition = useTransitionClaim(claimId)
+  const { claimId } = useParams();
+  const { t } = useTranslation();
+  const { data: claim, error, isPending } = useClaim(claimId);
 
-  if (isPending) {
+  if (isPending)
     return (
-      <div className="mx-auto grid max-w-3xl gap-6 py-2">
-        <div className="mx-auto grid max-w-3xl gap-6"><Skeleton className="h-10 w-40 rounded-lg" /><Skeleton className="h-72 rounded-lg" /></div>
+      <div className="mx-auto grid max-w-[1440px] gap-6 py-2">
+        <Skeleton className="h-10 w-40 rounded-lg" />
+        <Skeleton className="h-72 rounded-lg" />
       </div>
-    )
-  }
+    );
+  if (error || !claim)
+    return (
+      <div className="mx-auto max-w-[1440px] py-2">
+        <Alert status="danger">
+          <Alert.Title>{t("claim.unavailable")}</Alert.Title>
+          <Alert.Description>{t("claim.loadFailed")}</Alert.Description>
+        </Alert>
+        <Link
+          className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-blue-700"
+          to="/claims"
+        >
+          <ArrowLeft size={18} />
+          {t("claim.backToClaims")}
+        </Link>
+      </div>
+    );
 
-  if (error || !claim) {
-    return (
-      <div className="mx-auto max-w-3xl py-2">
-          <Alert status="danger"><Alert.Title>Claim unavailable</Alert.Title><Alert.Description>The claim could not be loaded.</Alert.Description></Alert>
-          <Link className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-blue-700" to="/dashboard"><ArrowLeft size={18} />Back to dashboard</Link>
-      </div>
-    )
+  const workflow = claimWorkflowForClaim(claim);
+  const analysisLocked = ["PENDING", "PROCESSING"].includes(
+    claim.latest_analysis_run?.status ?? "",
+  );
+  const currentConclusion =
+    claim.latest_analysis_run?.damage_analysis?.copilot_conclusion ??
+    (!claim.latest_analysis_run
+      ? claim.latest_damage_analysis?.copilot_conclusion
+      : undefined);
+  const reviewed = currentConclusion?.review_history[0];
+  const evidenceLocked =
+    analysisLocked || Boolean(reviewed && !reviewed.reverted_at);
+
+  function navigateToStep(step: ClaimStepId) {
+    document
+      .getElementById(step)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   return (
-    <div className="mx-auto grid max-w-3xl gap-6 py-2">
-        <Link className="flex w-fit items-center gap-2 text-sm font-semibold text-blue-700" to="/dashboard"><ArrowLeft size={18} />Back to dashboard</Link>
-        <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-slate-500">Claim case</p>
-            <h1 className="mt-2 text-3xl font-semibold text-slate-950">Claim {claim.id}</h1>
-            <p className="mt-2 text-sm text-slate-600">Created for {claim.claimant_name}</p>
-          </div>
-          <Chip color={statusTone[claim.status]} variant="soft">{statusLabel[claim.status]}</Chip>
-        </header>
-
-        <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
-          <Card.Header className="flex items-center gap-3 border-b border-slate-100 px-6 py-5">
-            <div className="flex size-10 items-center justify-center rounded-lg bg-blue-50 text-blue-700 ring-1 ring-blue-100"><CarFront size={20} /></div>
-            <div><Card.Title className="text-lg text-slate-950">Vehicle metadata</Card.Title><Card.Description className="text-sm text-slate-500">Case context for evidence intake and AI review.</Card.Description></div>
-          </Card.Header>
-          <Card.Content className="grid gap-5 p-6 sm:grid-cols-2">
-            <DetailField label="Vehicle" value={`${claim.vehicle.make} ${claim.vehicle.model}`} />
-            <DetailField label="Year" value={String(claim.vehicle.year)} />
-            <DetailField label="License plate" value={claim.vehicle.license_plate ?? 'Not provided'} />
-            <DetailField label="VIN" value={claim.vehicle.vin ?? 'Not provided'} />
-          </Card.Content>
-        </Card>
-
-        <EvidencePanel claimId={claim.id} evidence={claim.evidence ?? []} />
-
-        {lifecycleAction[claim.status] ? (
-          <section className="flex flex-col gap-4 border-y border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-slate-950">Case workflow</p>
-              <p className="mt-1 text-sm text-slate-600">Move this case through the AI review lifecycle.</p>
-            </div>
-            <Button
-              isPending={transition.isPending}
-              onPress={() => transition.mutate(lifecycleAction[claim.status]!.nextStatus)}
-              variant="primary"
-            >
-              {lifecycleAction[claim.status]!.label}
-            </Button>
-          </section>
-        ) : null}
-
-        <Alert status="warning">
-          <Document size={18} />
-          <Alert.Title>AI review lifecycle</Alert.Title>
-          <Alert.Description>Case status tracks the AI conclusion review only. It never represents final insurance claim approval or rejection.</Alert.Description>
-        </Alert>
+    <div className="mx-auto grid max-w-[1440px] gap-6 py-2">
+      <Link
+        className="flex w-fit items-center gap-2 text-sm font-semibold text-blue-700"
+        to="/claims"
+      >
+        <ArrowLeft size={18} />
+        {t("claim.backToClaims")}
+      </Link>
+      <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-slate-500">
+            {t("claim.case")}
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold text-slate-950">
+            {t("claim.claimNumber", { id: claim.id })}
+          </h1>
+          <p className="mt-2 text-sm text-slate-600">
+            {t("claim.createdFor", { name: claim.claimant_name })}
+          </p>
+        </div>
+        <Chip color={statusTone[claim.status]} variant="soft">
+          {t(`claim.status.${claim.status}`)}
+        </Chip>
+      </header>
+      <ClaimWorkflowStepper
+        current={workflow.current}
+        onNavigate={navigateToStep}
+        states={workflow.states}
+      />
+      <ClaimInformationPanel claim={claim} />
+      <EvidencePanel
+        claimId={claim.id}
+        evidence={claim.evidence ?? []}
+        locked={evidenceLocked}
+      />
+      <AnalysisPanel claim={claim} />
+      <AiReviewPanel claim={claim} />
+      <HumanReviewPanel claim={claim} />
+      <CopilotReviewHistory history={claim.copilot_review_history ?? []} />
+      <Alert status="warning">
+        <Document size={18} />
+        <Alert.Title>{t("claim.safetyTitle")}</Alert.Title>
+        <Alert.Description>{t("claim.safetyDescription")}</Alert.Description>
+      </Alert>
     </div>
-  )
-}
-
-function DetailField({ label, value }: { label: string; value: string }) {
-  return <div><div className="text-xs font-semibold uppercase text-slate-500">{label}</div><div className="mt-1 text-sm font-medium text-slate-950">{value}</div></div>
+  );
 }
