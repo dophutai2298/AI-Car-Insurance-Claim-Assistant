@@ -7,6 +7,10 @@ from app.core.config import get_settings
 from app.main import create_app
 from app.api.routes import claims as claim_routes
 from app.services.document_ocr import DocumentOcrError, DocumentOcrResult
+from app.services.document_field_validation import (
+    DeterministicFieldValidationAdapter,
+    FieldValidationSelection,
+)
 from app.services.evidence_storage import LocalEvidenceStorage
 from app.services.llm_copilot import LlmCopilotService
 
@@ -494,6 +498,65 @@ def test_workflow_analysis_uses_injected_ocr_adapter_once_per_supported_document
     assert registration["warning"] == "OCR fixture failure"
     assert id_card["raw_text"] == "OCR text for id-card.jpg"
     assert id_card["adapter_metadata"] == {"fixture": True}
+
+
+def test_workflow_analysis_returns_field_validation_and_claim_consistency_to_ai_review(
+    client: TestClient, monkeypatch
+):
+    class CapturingFieldAdapter:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+            self.delegate = DeterministicFieldValidationAdapter()
+
+        def validate(self, definition, raw_ocr_text, claim_context) -> FieldValidationSelection:
+            self.calls.append(definition.field_key)
+            return self.delegate.validate(definition, raw_ocr_text, claim_context)
+
+    adapter = CapturingFieldAdapter()
+    monkeypatch.setattr(
+        claim_routes, "get_document_field_validation_adapter", lambda settings: adapter
+    )
+    claim = prepare_claim_for_workflow_analysis(client)
+    client.post(f"/api/claims/{claim['id']}/analysis-runs", headers=adjuster_headers(client))
+
+    detail = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()
+    run = detail["latest_analysis_run"]
+    id_card_ocr = next(
+        item for item in run["document_ocr_results"] if item["document_type"] == "ID_CARD"
+    )
+    full_name = next(
+        item for item in id_card_ocr["field_validations"] if item["field_key"] == "full_name"
+    )
+    claimant_check = next(
+        item for item in run["consistency_checks"] if item["field_key"] == "full_name"
+    )
+
+    assert len(adapter.calls) == 9
+    assert full_name["source_evidence_id"] == id_card_ocr["source_evidence_id"]
+    assert full_name["analysis_run_id"] == run["id"]
+    assert full_name["ocr_value"] == "Nguyen Van A"
+    assert full_name["status"] == "VALID"
+    assert full_name["prompt_version"] == "document-fields-v1"
+    assert claimant_check["status"] == "MISMATCH"
+    assert claimant_check["claim_value"] == "Mai Nguyen"
+    assert claimant_check["document_value"] == "Nguyen Van A"
+
+    captured_context: dict[str, object] = {}
+    original_generate = LlmCopilotService.generate
+
+    def capture_input(self, input_data):
+        captured_context.update(input_data.model_context())
+        return original_generate(self, input_data)
+
+    monkeypatch.setattr(LlmCopilotService, "generate", capture_input)
+    reviewed = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=adjuster_headers(client),
+    )
+
+    assert reviewed.status_code == 200
+    assert captured_context["document_analysis"][0]["field_validations"]
+    assert any("manual review" in warning.lower() for warning in captured_context["warnings"])
 
 
 def test_admin_can_start_workflow_analysis(client: TestClient):

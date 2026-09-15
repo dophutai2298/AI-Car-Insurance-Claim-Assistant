@@ -9,6 +9,7 @@ from app.models import (
     AnalysisResultStatus,
     AnalysisRunStatus,
     Claim,
+    DocumentFieldValidation,
     ClaimStatus,
     CopilotConclusionStatus,
     CopilotConclusionReview,
@@ -53,6 +54,8 @@ from app.schemas.claims import (
     DocumentAnalysisFieldUpdateRequest,
     DocumentAnalysisResponse,
     DocumentOcrResultResponse,
+    DocumentFieldValidationResponse,
+    ClaimConsistencyCheckResponse,
     ReferencePartPriceResponse,
     VehicleMetadata,
     WorkflowAnalysisRunResponse,
@@ -72,6 +75,11 @@ from app.services.llm_copilot import (
 from app.services.vehicle_manufacturers import VehicleManufacturerService
 from app.services.document_analysis import DocumentAnalysisAdapter, DocumentAnalysisResult
 from app.services.document_ocr import DocumentOcrAdapter, DocumentOcrError
+from app.services.document_consistency import ClaimConsistencyService, ClaimFacts
+from app.services.document_field_validation import (
+    DocumentFieldValidationService,
+    ValidatedDocumentField,
+)
 
 ALLOWED_LIFECYCLE_TRANSITIONS: dict[ClaimStatus, set[ClaimStatus]] = {
     ClaimStatus.DRAFT: {ClaimStatus.ANALYZING},
@@ -109,6 +117,8 @@ class ClaimService:
         document_analysis: DocumentAnalysisAdapter,
         document_ocr: DocumentOcrAdapter,
         use_mock_document_fields: bool,
+        document_field_validation: DocumentFieldValidationService,
+        claim_consistency: ClaimConsistencyService,
     ):
         self.claims = ClaimRepository(session)
         self.claim_incidents = ClaimIncidentRepository(session)
@@ -128,6 +138,8 @@ class ClaimService:
         self.document_analysis = document_analysis
         self.document_ocr = document_ocr
         self.use_mock_document_fields = use_mock_document_fields
+        self.document_field_validation = document_field_validation
+        self.claim_consistency = claim_consistency
         self.analysis_runs = AnalysisRunRepository(session)
 
     def create_claim(self, data: ClaimCreateRequest, created_by: User) -> ClaimResponse:
@@ -250,7 +262,45 @@ class ClaimService:
         for category in DOCUMENT_EVIDENCE_CATEGORIES:
             self._process_document_ocr_category(run, category, by_category[category])
 
+        self._validate_document_fields(run, claim)
+
         self.analysis_runs.complete(run, claim)
+
+    def _validate_document_fields(
+        self, run: WorkflowAnalysisRun, claim: Claim
+    ) -> None:
+        claim_information = {
+            "claimant_name": claim.claimant_name,
+            "vehicle_make": claim.vehicle_make,
+            "license_plate": claim.license_plate or "",
+        }
+        validated_fields: list[ValidatedDocumentField] = []
+        validation_records: list[DocumentFieldValidation] = []
+        for ocr_result in self.analysis_runs.document_ocr_results(run.id):
+            if ocr_result.status is not AnalysisResultStatus.COMPLETED:
+                continue
+            validations = self.document_field_validation.validate_ocr_result(
+                ocr_result.document_type,
+                ocr_result.evidence_id,
+                ocr_result.raw_text or "",
+                claim_information,
+            )
+            validated_fields.extend(validations)
+            validation_records.extend(
+                self.analysis_runs.save_field_validations(run, ocr_result, validations)
+            )
+
+        consistency_results = self.claim_consistency.compare(
+            ClaimFacts(
+                claimant_name=claim.claimant_name,
+                vehicle_make=claim.vehicle_make,
+                license_plate=claim.license_plate,
+            ),
+            validated_fields,
+        )
+        self.analysis_runs.save_consistency_checks(
+            run, validation_records, consistency_results
+        )
 
     def _process_document_ocr_category(
         self, run: WorkflowAnalysisRun, category: EvidenceCategory, evidence_items: list[Evidence]
@@ -374,11 +424,29 @@ class ClaimService:
         detections = self.damage_analyses.list_detections(damage.id)
         reference_prices = self.damage_analyses.reference_prices(damage.id)
         documents = self.analysis_runs.documents(run.id)
+        ocr_results = self.analysis_runs.document_ocr_results(run.id)
+        ocr_by_id = {item.id: item for item in ocr_results}
+        field_validations = self.analysis_runs.field_validations(run.id)
+        consistency_checks = self.analysis_runs.consistency_checks(run.id)
         document_payload: list[dict[str, object]] = []
         warnings = [damage.warning] if damage.warning else []
+        warnings.extend(
+            check.explanation
+            for check in consistency_checks
+            if check.status.value == "MISMATCH"
+        )
         for document in documents:
             document_warnings = json.loads(document.warnings_json)
             warnings.extend(document_warnings)
+            document_validations = [
+                validation
+                for validation in field_validations
+                if ocr_by_id[validation.document_ocr_result_id].document_type
+                is document.document_type
+            ]
+            for validation in document_validations:
+                warnings.extend(json.loads(validation.warnings_json))
+            validation_ids = {item.id for item in document_validations}
             document_payload.append(
                 {
                     "document_type": document.document_type.value,
@@ -392,6 +460,32 @@ class ClaimService:
                             "status": field.status.value,
                         }
                         for field in self.analysis_runs.fields(document.id)
+                    ],
+                    "field_validations": [
+                        {
+                            "field_key": validation.field_key,
+                            "source_evidence_id": validation.source_evidence_id,
+                            "ocr_value": validation.ocr_value,
+                            "normalized_value": validation.normalized_value,
+                            "status": validation.status.value,
+                            "confidence": validation.confidence,
+                            "summary": validation.summary,
+                            "warnings": json.loads(validation.warnings_json),
+                            "prompt_version": validation.prompt_version,
+                        }
+                        for validation in document_validations
+                    ],
+                    "consistency_checks": [
+                        {
+                            "field_key": check.field_key,
+                            "source_evidence_id": check.source_evidence_id,
+                            "claim_value": check.claim_value,
+                            "document_value": check.document_value,
+                            "status": check.status.value,
+                            "explanation": check.explanation,
+                        }
+                        for check in consistency_checks
+                        if check.field_validation_id in validation_ids
                     ],
                     "warnings": document_warnings,
                 }
@@ -687,8 +781,40 @@ class ClaimService:
                     warning=result.warning,
                     created_at=result.created_at,
                     processed_at=result.processed_at,
+                    field_validations=[
+                        DocumentFieldValidationResponse(
+                            id=validation.id,
+                            analysis_run_id=validation.analysis_run_id,
+                            document_ocr_result_id=validation.document_ocr_result_id,
+                            source_evidence_id=validation.source_evidence_id,
+                            field_key=validation.field_key,
+                            prompt_version=validation.prompt_version,
+                            ocr_value=validation.ocr_value,
+                            normalized_value=validation.normalized_value,
+                            status=validation.status,
+                            confidence=validation.confidence,
+                            summary=validation.summary,
+                            warnings=json.loads(validation.warnings_json),
+                        )
+                        for validation in self.analysis_runs.field_validations_for_ocr(
+                            result.id
+                        )
+                    ],
                 )
                 for result in self.analysis_runs.document_ocr_results(run.id)
+            ],
+            consistency_checks=[
+                ClaimConsistencyCheckResponse(
+                    id=check.id,
+                    field_validation_id=check.field_validation_id,
+                    source_evidence_id=check.source_evidence_id,
+                    field_key=check.field_key,
+                    claim_value=check.claim_value,
+                    document_value=check.document_value,
+                    status=check.status,
+                    explanation=check.explanation,
+                )
+                for check in self.analysis_runs.consistency_checks(run.id)
             ],
             failure_reason=run.failure_reason,
             created_at=run.created_at,

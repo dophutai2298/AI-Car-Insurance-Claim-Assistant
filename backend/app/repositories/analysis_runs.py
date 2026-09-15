@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import json
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -8,10 +11,12 @@ from app.models import (
     AnalysisResultStatus,
     AnalysisRunStatus,
     Claim,
+    ClaimConsistencyCheck,
     ClaimStatus,
     DamageAnalysis,
     DocumentAnalysis,
     DocumentAnalysisField,
+    DocumentFieldValidation,
     DocumentOcrResult,
     Evidence,
     EvidenceCategory,
@@ -19,6 +24,10 @@ from app.models import (
     WorkflowAnalysisRun,
 )
 from app.services.document_analysis import DocumentAnalysisResult
+
+if TYPE_CHECKING:
+    from app.services.document_consistency import ConsistencyResult
+    from app.services.document_field_validation import ValidatedDocumentField
 
 
 class AnalysisRunRepository:
@@ -183,6 +192,97 @@ class AnalysisRunRepository:
                 select(DocumentOcrResult)
                 .where(DocumentOcrResult.analysis_run_id == run_id)
                 .order_by(DocumentOcrResult.id)
+            )
+        )
+
+    def save_field_validations(
+        self,
+        run: WorkflowAnalysisRun,
+        ocr_result: DocumentOcrResult,
+        validations: list[ValidatedDocumentField],
+    ) -> list[DocumentFieldValidation]:
+        records = [
+            DocumentFieldValidation(
+                analysis_run_id=run.id,
+                document_ocr_result_id=ocr_result.id,
+                source_evidence_id=validation.source_evidence_id,
+                field_key=validation.field_key,
+                prompt_version=validation.prompt_version,
+                ocr_value=validation.ocr_value,
+                normalized_value=validation.normalized_value,
+                status=validation.status,
+                confidence=validation.confidence,
+                summary=validation.summary,
+                warnings_json=json.dumps(validation.warnings),
+            )
+            for validation in validations
+        ]
+        self.session.add_all(records)
+        self.session.commit()
+        for record in records:
+            self.session.refresh(record)
+        return records
+
+    def field_validations_for_ocr(
+        self, document_ocr_result_id: int
+    ) -> list[DocumentFieldValidation]:
+        return list(
+            self.session.scalars(
+                select(DocumentFieldValidation)
+                .where(
+                    DocumentFieldValidation.document_ocr_result_id
+                    == document_ocr_result_id
+                )
+                .order_by(DocumentFieldValidation.id)
+            )
+        )
+
+    def field_validations(self, run_id: int) -> list[DocumentFieldValidation]:
+        return list(
+            self.session.scalars(
+                select(DocumentFieldValidation)
+                .where(DocumentFieldValidation.analysis_run_id == run_id)
+                .order_by(DocumentFieldValidation.id)
+            )
+        )
+
+    def save_consistency_checks(
+        self,
+        run: WorkflowAnalysisRun,
+        validation_records: list[DocumentFieldValidation],
+        results: list[ConsistencyResult],
+    ) -> list[ClaimConsistencyCheck]:
+        validation_by_source_and_key = {
+            (record.source_evidence_id, record.field_key): record
+            for record in validation_records
+        }
+        records = [
+            ClaimConsistencyCheck(
+                analysis_run_id=run.id,
+                field_validation_id=validation_by_source_and_key[
+                    (result.source_evidence_id, result.field_key)
+                ].id,
+                source_evidence_id=result.source_evidence_id,
+                field_key=result.field_key,
+                claim_value=result.claim_value,
+                document_value=result.document_value,
+                status=result.status,
+                explanation=result.explanation,
+            )
+            for result in results
+        ]
+        self.session.add_all(records)
+        self.session.commit()
+        for record in records:
+            self.session.refresh(record)
+        return records
+
+    def consistency_checks(self, run_id: int) -> list[ClaimConsistencyCheck]:
+        return list(
+            self.session.scalars(
+                select(ClaimConsistencyCheck)
+                .where(ClaimConsistencyCheck.analysis_run_id == run_id)
+                .order_by(ClaimConsistencyCheck.id)
             )
         )
 

@@ -105,6 +105,19 @@ class DocumentFieldStatus(str, Enum):
     WARNING = "WARNING"
 
 
+class FieldValidationStatus(str, Enum):
+    VALID = "VALID"
+    INVALID = "INVALID"
+    UNCERTAIN = "UNCERTAIN"
+    MISSING = "MISSING"
+    LLM_UNAVAILABLE = "LLM_UNAVAILABLE"
+
+
+class ConsistencyStatus(str, Enum):
+    MATCH = "MATCH"
+    MISMATCH = "MISMATCH"
+
+
 class CopilotConclusionRejectionCategory(str, Enum):
     DOCUMENT_INFORMATION_INCOMPLETE = "DOCUMENT_INFORMATION_INCOMPLETE"
     DOCUMENT_INFORMATION_INCORRECT = "DOCUMENT_INFORMATION_INCORRECT"
@@ -321,6 +334,53 @@ class DocumentOcrResult(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DocumentFieldValidation(Base):
+    __tablename__ = "document_field_validations"
+    __table_args__ = (UniqueConstraint("document_ocr_result_id", "field_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    analysis_run_id: Mapped[int] = mapped_column(ForeignKey("workflow_analysis_runs.id"), index=True)
+    document_ocr_result_id: Mapped[int] = mapped_column(
+        ForeignKey("document_ocr_results.id"), index=True
+    )
+    source_evidence_id: Mapped[int] = mapped_column(ForeignKey("evidence.id"), index=True)
+    field_key: Mapped[str] = mapped_column(String(80))
+    prompt_version: Mapped[str] = mapped_column(String(80))
+    ocr_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    normalized_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[FieldValidationStatus] = mapped_column(
+        SqlEnum(FieldValidationStatus, native_enum=False)
+    )
+    confidence: Mapped[float] = mapped_column(Float)
+    summary: Mapped[str] = mapped_column(Text)
+    warnings_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class ClaimConsistencyCheck(Base):
+    __tablename__ = "claim_consistency_checks"
+    __table_args__ = (UniqueConstraint("analysis_run_id", "field_validation_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    analysis_run_id: Mapped[int] = mapped_column(ForeignKey("workflow_analysis_runs.id"), index=True)
+    field_validation_id: Mapped[int] = mapped_column(
+        ForeignKey("document_field_validations.id"), index=True
+    )
+    source_evidence_id: Mapped[int] = mapped_column(ForeignKey("evidence.id"), index=True)
+    field_key: Mapped[str] = mapped_column(String(80))
+    claim_value: Mapped[str] = mapped_column(Text)
+    document_value: Mapped[str] = mapped_column(Text)
+    status: Mapped[ConsistencyStatus] = mapped_column(
+        SqlEnum(ConsistencyStatus, native_enum=False)
+    )
+    explanation: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
 
 
 class DamageDetection(Base):

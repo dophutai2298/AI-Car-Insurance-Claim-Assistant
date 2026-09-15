@@ -32,6 +32,11 @@ from app.repositories.vehicle_manufacturers import VehicleManufacturerRepository
 from app.services.vehicle_manufacturers import VehicleManufacturerService
 from app.services.document_analysis import MockDocumentAnalysisAdapter
 from app.services.document_ocr import get_document_ocr_adapter
+from app.services.document_consistency import ClaimConsistencyService
+from app.services.document_field_validation import (
+    DocumentFieldValidationService,
+    get_document_field_validation_adapter,
+)
 
 router = APIRouter(prefix="/api/claims", tags=["claims"])
 
@@ -50,6 +55,8 @@ def build_claim_service(session: Session, settings: Settings) -> ClaimService:
         MockDocumentAnalysisAdapter(),
         get_document_ocr_adapter(settings.document_ocr_mode),
         settings.document_ocr_mode == "mock",
+        DocumentFieldValidationService(get_document_field_validation_adapter(settings)),
+        ClaimConsistencyService(),
     )
 
 
