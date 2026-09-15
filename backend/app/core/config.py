@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import AliasChoices, Field
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
@@ -40,9 +40,7 @@ class Settings(BaseSettings):
         default="mock", validation_alias="PART_SEARCH_MODE"
     )
     llm_mode: Literal["mock", "openai"] = Field(default="mock", validation_alias="LLM_MODE")
-    llm_base_url: str | None = Field(
-        default=None, validation_alias=AliasChoices("LLM_BASE_URL", "URL_MODEL")
-    )
+    llm_base_url: str | None = Field(default=None, validation_alias="LLM_BASE_URL")
     openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
     openai_model: str | None = Field(default=None, validation_alias="OPENAI_MODEL")
     frontend_origin: str = Field(default="http://localhost:5173", validation_alias="FRONTEND_ORIGIN")

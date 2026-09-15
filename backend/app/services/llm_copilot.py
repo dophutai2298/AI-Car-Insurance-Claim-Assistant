@@ -120,12 +120,14 @@ class LangChainOpenAiAdapter:
         try:
             from langchain_openai import ChatOpenAI
 
-            model = ChatOpenAI(
-                model=self.model,
-                api_key=self.api_key,
-                base_url=self.base_url,
-                temperature=0,
-            )
+            chat_options = {
+                "model": self.model,
+                "api_key": self.api_key,
+                "temperature": 0,
+            }
+            if self.base_url:
+                chat_options["base_url"] = self.base_url
+            model = ChatOpenAI(**chat_options)
             structured_model = model.with_structured_output(CopilotSelection)
             response = structured_model.invoke(
                 [
