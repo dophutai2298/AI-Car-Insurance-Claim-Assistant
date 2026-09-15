@@ -194,6 +194,7 @@ const en = {
     reviewRequired: "Review required",
     generated: "Generated",
     fallback: "Demo fallback",
+    unavailable: "AI unavailable",
     warnings: "Warnings",
     evidenceReferences: "Evidence references",
   },
@@ -504,6 +505,7 @@ const vi = {
     reviewRequired: "Cần xem xét",
     generated: "Đã tạo",
     fallback: "Dữ liệu dự phòng cho demo",
+    unavailable: "AI không khả dụng",
 
     warnings: "Cảnh báo",
     evidenceReferences: "Bằng chứng tham chiếu",

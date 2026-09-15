@@ -52,6 +52,7 @@ from app.schemas.claims import (
     DocumentAnalysisFieldResponse,
     DocumentAnalysisFieldUpdateRequest,
     DocumentAnalysisResponse,
+    DocumentOcrResultResponse,
     ReferencePartPriceResponse,
     VehicleMetadata,
     WorkflowAnalysisRunResponse,
@@ -69,7 +70,8 @@ from app.services.llm_copilot import (
     LlmCopilotService,
 )
 from app.services.vehicle_manufacturers import VehicleManufacturerService
-from app.services.document_analysis import DocumentAnalysisAdapter
+from app.services.document_analysis import DocumentAnalysisAdapter, DocumentAnalysisResult
+from app.services.document_ocr import DocumentOcrAdapter, DocumentOcrError
 
 ALLOWED_LIFECYCLE_TRANSITIONS: dict[ClaimStatus, set[ClaimStatus]] = {
     ClaimStatus.DRAFT: {ClaimStatus.ANALYZING},
@@ -85,6 +87,7 @@ REQUIRED_EVIDENCE_CATEGORIES = (
     EvidenceCategory.DRIVER_LICENSE,
 )
 DOCUMENT_EVIDENCE_CATEGORIES = REQUIRED_EVIDENCE_CATEGORIES[1:]
+SUPPORTED_DOCUMENT_IMAGE_EXTENSIONS = {".bmp", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
 
 
 class EvidencePersistenceError(Exception):
@@ -104,6 +107,8 @@ class ClaimService:
         llm_model: str | None,
         vehicle_manufacturers: VehicleManufacturerService,
         document_analysis: DocumentAnalysisAdapter,
+        document_ocr: DocumentOcrAdapter,
+        use_mock_document_fields: bool,
     ):
         self.claims = ClaimRepository(session)
         self.claim_incidents = ClaimIncidentRepository(session)
@@ -121,6 +126,8 @@ class ClaimService:
         self.llm_model = llm_model
         self.vehicle_manufacturers = vehicle_manufacturers
         self.document_analysis = document_analysis
+        self.document_ocr = document_ocr
+        self.use_mock_document_fields = use_mock_document_fields
         self.analysis_runs = AnalysisRunRepository(session)
 
     def create_claim(self, data: ClaimCreateRequest, created_by: User) -> ClaimResponse:
@@ -241,20 +248,91 @@ class ClaimService:
             self.analysis_runs.mark_damage_failed(run, str(error) or "Damage analysis failed")
 
         for category in DOCUMENT_EVIDENCE_CATEGORIES:
-            try:
-                result = self.document_analysis.analyze(category, by_category[category])
-                self.analysis_runs.save_document_result(
-                    run, category, AnalysisResultStatus.COMPLETED, result=result
-                )
-            except Exception as error:
-                self.analysis_runs.save_document_result(
-                    run,
-                    category,
-                    AnalysisResultStatus.FAILED,
-                    warning=str(error) or "Document analysis failed",
-                )
+            self._process_document_ocr_category(run, category, by_category[category])
 
         self.analysis_runs.complete(run, claim)
+
+    def _process_document_ocr_category(
+        self, run: WorkflowAnalysisRun, category: EvidenceCategory, evidence_items: list[Evidence]
+    ) -> None:
+        ocr_records = [
+            (item, self.analysis_runs.create_document_ocr_result(run, item))
+            for item in evidence_items
+        ]
+        warnings: list[str] = []
+        statuses: list[AnalysisResultStatus] = []
+
+        for evidence, record in ocr_records:
+            self.analysis_runs.update_document_ocr_result(record, AnalysisResultStatus.PROCESSING)
+            if not self._supports_document_image(evidence):
+                warning = "Only supported image evidence can be processed by OCR; this file was skipped."
+                self.analysis_runs.update_document_ocr_result(
+                    record, AnalysisResultStatus.FAILED, warning=warning
+                )
+                warnings.append(f"{evidence.original_filename}: {warning}")
+                statuses.append(AnalysisResultStatus.FAILED)
+                continue
+            try:
+                extracted = self.document_ocr.extract(
+                    evidence, self.storage.resolve_path(evidence.stored_path)
+                )
+                self.analysis_runs.update_document_ocr_result(
+                    record,
+                    AnalysisResultStatus.COMPLETED,
+                    raw_text=extracted.raw_text,
+                    adapter_name=extracted.adapter_name,
+                    adapter_metadata=extracted.metadata,
+                    warning=extracted.warning,
+                )
+                if extracted.warning:
+                    warnings.append(f"{evidence.original_filename}: {extracted.warning}")
+                statuses.append(AnalysisResultStatus.COMPLETED)
+            except (DocumentOcrError, EvidenceStorageError) as error:
+                warning = str(error) or "OCR processing failed."
+                self.analysis_runs.update_document_ocr_result(
+                    record, AnalysisResultStatus.FAILED, warning=warning
+                )
+                warnings.append(f"{evidence.original_filename}: {warning}")
+                statuses.append(AnalysisResultStatus.FAILED)
+            except Exception:
+                warning = "OCR processing failed unexpectedly."
+                self.analysis_runs.update_document_ocr_result(
+                    record, AnalysisResultStatus.FAILED, warning=warning
+                )
+                warnings.append(f"{evidence.original_filename}: {warning}")
+                statuses.append(AnalysisResultStatus.FAILED)
+
+        category_status = self._document_category_status(statuses)
+        fallback_result: DocumentAnalysisResult | None = None
+        if self.use_mock_document_fields and category_status is not AnalysisResultStatus.FAILED:
+            try:
+                fallback_result = self.document_analysis.analyze(category, evidence_items)
+            except Exception as error:
+                warnings.append(str(error) or "Mock document analysis failed.")
+
+        self.analysis_runs.save_document_result(
+            run,
+            category,
+            category_status,
+            result=fallback_result,
+            warning="; ".join(warnings) if warnings else None,
+        )
+
+    @staticmethod
+    def _document_category_status(statuses: list[AnalysisResultStatus]) -> AnalysisResultStatus:
+        if statuses and all(status is AnalysisResultStatus.COMPLETED for status in statuses):
+            return AnalysisResultStatus.COMPLETED
+        if any(status is AnalysisResultStatus.COMPLETED for status in statuses):
+            return AnalysisResultStatus.PARTIAL
+        return AnalysisResultStatus.FAILED
+
+    @staticmethod
+    def _supports_document_image(evidence: Evidence) -> bool:
+        suffix = Path(evidence.original_filename).suffix.lower()
+        content_type = (evidence.content_type or "").lower()
+        return suffix in SUPPORTED_DOCUMENT_IMAGE_EXTENSIONS and (
+            not content_type or content_type.startswith("image/")
+        )
 
     def update_document_analysis_field(
         self,
@@ -594,6 +672,23 @@ class ClaimService:
                     warnings=json.loads(document.warnings_json),
                 )
                 for document in self.analysis_runs.documents(run.id)
+            ],
+            document_ocr_results=[
+                DocumentOcrResultResponse(
+                    id=result.id,
+                    source_evidence_id=result.evidence_id,
+                    document_type=result.document_type,
+                    original_filename=result.original_filename,
+                    content_type=result.content_type,
+                    status=result.status,
+                    raw_text=result.raw_text,
+                    adapter_name=result.adapter_name,
+                    adapter_metadata=json.loads(result.adapter_metadata_json),
+                    warning=result.warning,
+                    created_at=result.created_at,
+                    processed_at=result.processed_at,
+                )
+                for result in self.analysis_runs.document_ocr_results(run.id)
             ],
             failure_reason=run.failure_reason,
             created_at=run.created_at,

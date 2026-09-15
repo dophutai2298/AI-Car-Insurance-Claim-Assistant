@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     part_search_mode: Literal["mock", "unavailable"] = Field(
         default="mock", validation_alias="PART_SEARCH_MODE"
     )
+    document_ocr_mode: Literal["deepdoc", "mock"] = Field(
+        default="deepdoc", validation_alias="DOCUMENT_OCR_MODE"
+    )
     llm_mode: Literal["mock", "openai"] = Field(default="mock", validation_alias="LLM_MODE")
     llm_base_url: str | None = Field(default=None, validation_alias="LLM_BASE_URL")
     openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
@@ -53,7 +56,9 @@ class Settings(BaseSettings):
             "damage_model_mode": self.damage_model_mode,
             "damage_confidence_threshold": str(self.damage_confidence_threshold),
             "part_search_mode": self.part_search_mode,
+            "document_ocr_mode": self.document_ocr_mode,
             "llm_mode": self.llm_mode,
+            "llm_model": self.openai_model or "",
             "upload_root": self.upload_root,
         }
 

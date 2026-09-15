@@ -19,6 +19,8 @@ def test_health_endpoint_reports_service_and_runtime_config(monkeypatch):
     monkeypatch.setenv("JWT_SECRET", "test-secret-that-is-long-enough-for-health-tests")
     monkeypatch.setenv("CHECK_DATABASE_ON_HEALTH", "false")
     monkeypatch.setenv("LLM_MODE", "mock")
+    monkeypatch.setenv("OPENAI_MODEL", "")
+    monkeypatch.setenv("DOCUMENT_OCR_MODE", "mock")
     get_settings.cache_clear()
 
     response = call_registered_route("/api/health")
@@ -28,10 +30,12 @@ def test_health_endpoint_reports_service_and_runtime_config(monkeypatch):
         "service": "ai-car-claim-assistant-api",
         "database": {"status": "not_checked"},
         "runtime": {
-                "damage_model_mode": "mock",
-                "damage_confidence_threshold": "0.7",
-                "part_search_mode": "mock",
+            "damage_model_mode": "mock",
+            "damage_confidence_threshold": "0.7",
+            "part_search_mode": "mock",
+            "document_ocr_mode": "mock",
             "llm_mode": "mock",
+            "llm_model": "",
             "upload_root": "uploads",
         },
     }

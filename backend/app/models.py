@@ -2,7 +2,7 @@ from enum import Enum
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum as SqlEnum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum as SqlEnum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -96,6 +96,7 @@ class AnalysisResultStatus(str, Enum):
     PENDING = "PENDING"
     PROCESSING = "PROCESSING"
     COMPLETED = "COMPLETED"
+    PARTIAL = "PARTIAL"
     FAILED = "FAILED"
 
 
@@ -295,6 +296,31 @@ class DocumentAnalysisField(Base):
     status: Mapped[DocumentFieldStatus] = mapped_column(
         SqlEnum(DocumentFieldStatus, native_enum=False)
     )
+
+
+class DocumentOcrResult(Base):
+    __tablename__ = "document_ocr_results"
+    __table_args__ = (UniqueConstraint("analysis_run_id", "evidence_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    analysis_run_id: Mapped[int] = mapped_column(ForeignKey("workflow_analysis_runs.id"), index=True)
+    evidence_id: Mapped[int] = mapped_column(ForeignKey("evidence.id"), index=True)
+    document_type: Mapped[EvidenceCategory] = mapped_column(
+        SqlEnum(EvidenceCategory, native_enum=False)
+    )
+    original_filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[AnalysisResultStatus] = mapped_column(
+        SqlEnum(AnalysisResultStatus, native_enum=False), default=AnalysisResultStatus.PENDING
+    )
+    raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    adapter_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    adapter_metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    warning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class DamageDetection(Base):

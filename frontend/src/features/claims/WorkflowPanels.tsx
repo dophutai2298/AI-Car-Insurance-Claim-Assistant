@@ -479,12 +479,20 @@ function AiReviewResult({ conclusion }: { conclusion: CopilotConclusion }) {
               {conclusion.review_status ?? t("aiReview.reviewRequired")}
             </Chip>
             <Chip
-              color={conclusion.status === "GENERATED" ? "success" : "default"}
+              color={
+                conclusion.status === "GENERATED"
+                  ? "success"
+                  : conclusion.status === "LLM_UNAVAILABLE"
+                    ? "danger"
+                    : "default"
+              }
               variant="soft"
             >
               {conclusion.status === "GENERATED"
                 ? t("aiReview.generated")
-                : t("aiReview.fallback")}
+                : conclusion.status === "LLM_UNAVAILABLE"
+                  ? t("aiReview.unavailable")
+                  : t("aiReview.fallback")}
             </Chip>
           </div>
           <p className="mt-4 text-sm leading-6 text-slate-700">
@@ -492,6 +500,14 @@ function AiReviewResult({ conclusion }: { conclusion: CopilotConclusion }) {
           </p>
         </div>
       </div>
+      {conclusion.status === "LLM_UNAVAILABLE" ? (
+        <Alert status="danger">
+          <Alert.Title>{t("aiReview.unavailable")}</Alert.Title>
+          <Alert.Description>
+            {conclusion.failure_reason ?? t("aiReview.failed")}
+          </Alert.Description>
+        </Alert>
+      ) : null}
       {conclusion.warnings.length ? (
         <Alert status="warning">
           <WarningAlt size={18} />

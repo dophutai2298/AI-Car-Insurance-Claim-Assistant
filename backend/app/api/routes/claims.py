@@ -31,6 +31,7 @@ from app.services.llm_copilot import LlmCopilotService, get_llm_copilot_adapter
 from app.repositories.vehicle_manufacturers import VehicleManufacturerRepository
 from app.services.vehicle_manufacturers import VehicleManufacturerService
 from app.services.document_analysis import MockDocumentAnalysisAdapter
+from app.services.document_ocr import get_document_ocr_adapter
 
 router = APIRouter(prefix="/api/claims", tags=["claims"])
 
@@ -47,6 +48,8 @@ def build_claim_service(session: Session, settings: Settings) -> ClaimService:
         settings.openai_model,
         VehicleManufacturerService(VehicleManufacturerRepository(session)),
         MockDocumentAnalysisAdapter(),
+        get_document_ocr_adapter(settings.document_ocr_mode),
+        settings.document_ocr_mode == "mock",
     )
 
 

@@ -128,12 +128,28 @@ class DocumentAnalysisResponse(BaseModel):
     warnings: list[str]
 
 
+class DocumentOcrResultResponse(BaseModel):
+    id: int
+    source_evidence_id: int
+    document_type: EvidenceCategory
+    original_filename: str
+    content_type: str | None
+    status: AnalysisResultStatus
+    raw_text: str | None
+    adapter_name: str | None
+    adapter_metadata: dict[str, object]
+    warning: str | None
+    created_at: datetime
+    processed_at: datetime | None
+
+
 class WorkflowAnalysisRunResponse(BaseModel):
     id: int
     status: AnalysisRunStatus
     damage_status: AnalysisResultStatus
     damage_analysis: DamageAnalysisResponse | None = None
     document_analyses: list[DocumentAnalysisResponse] = Field(default_factory=list)
+    document_ocr_results: list[DocumentOcrResultResponse] = Field(default_factory=list)
     failure_reason: str | None = None
     created_at: datetime
     started_at: datetime | None = None

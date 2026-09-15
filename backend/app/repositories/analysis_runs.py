@@ -12,6 +12,8 @@ from app.models import (
     DamageAnalysis,
     DocumentAnalysis,
     DocumentAnalysisField,
+    DocumentOcrResult,
+    Evidence,
     EvidenceCategory,
     WorkflowAnalysisDamage,
     WorkflowAnalysisRun,
@@ -105,6 +107,46 @@ class AnalysisRunRepository:
         self.session.refresh(analysis)
         return analysis
 
+    def create_document_ocr_result(
+        self, run: WorkflowAnalysisRun, evidence: Evidence
+    ) -> DocumentOcrResult:
+        result = DocumentOcrResult(
+            analysis_run_id=run.id,
+            evidence_id=evidence.id,
+            document_type=evidence.category,
+            original_filename=evidence.original_filename,
+            content_type=evidence.content_type,
+            status=AnalysisResultStatus.PENDING,
+        )
+        self.session.add(result)
+        self.session.commit()
+        self.session.refresh(result)
+        return result
+
+    def update_document_ocr_result(
+        self,
+        result: DocumentOcrResult,
+        status: AnalysisResultStatus,
+        *,
+        raw_text: str | None = None,
+        adapter_name: str | None = None,
+        adapter_metadata: dict[str, object] | None = None,
+        warning: str | None = None,
+    ) -> DocumentOcrResult:
+        result.status = status
+        if raw_text is not None:
+            result.raw_text = raw_text
+        if adapter_name is not None:
+            result.adapter_name = adapter_name
+        if adapter_metadata is not None:
+            result.adapter_metadata_json = json.dumps(adapter_metadata)
+        result.warning = warning
+        if status in {AnalysisResultStatus.COMPLETED, AnalysisResultStatus.FAILED}:
+            result.processed_at = datetime.now(timezone.utc)
+        self.session.commit()
+        self.session.refresh(result)
+        return result
+
     def complete(self, run: WorkflowAnalysisRun, claim: Claim) -> None:
         result_statuses = [run.damage_status] + [item.status for item in self.documents(run.id)]
         successful = sum(status is AnalysisResultStatus.COMPLETED for status in result_statuses)
@@ -132,6 +174,15 @@ class AnalysisRunRepository:
                 select(DocumentAnalysis)
                 .where(DocumentAnalysis.analysis_run_id == run_id)
                 .order_by(DocumentAnalysis.id)
+            )
+        )
+
+    def document_ocr_results(self, run_id: int) -> list[DocumentOcrResult]:
+        return list(
+            self.session.scalars(
+                select(DocumentOcrResult)
+                .where(DocumentOcrResult.analysis_run_id == run_id)
+                .order_by(DocumentOcrResult.id)
             )
         )
 

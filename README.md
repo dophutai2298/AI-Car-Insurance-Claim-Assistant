@@ -13,6 +13,9 @@
 
 Copy `.env.example` to `.env` and adjust values if needed. The defaults run the PoC in mock mode for the damage model, part search, and LLM.
 
+Document OCR defaults to the locally installed `deepdoc_vietocr` package. Set
+`DOCUMENT_OCR_MODE=mock` only for deterministic local demos and automated tests.
+
 To use OpenAI, set `LLM_MODE=openai` and configure the following values in `.env`:
 
 ```text

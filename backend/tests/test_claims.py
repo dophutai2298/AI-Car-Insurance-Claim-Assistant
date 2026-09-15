@@ -5,6 +5,8 @@ from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
 from app.main import create_app
+from app.api.routes import claims as claim_routes
+from app.services.document_ocr import DocumentOcrError, DocumentOcrResult
 from app.services.evidence_storage import LocalEvidenceStorage
 from app.services.llm_copilot import LlmCopilotService
 
@@ -21,6 +23,7 @@ def client(tmp_path, monkeypatch) -> Iterator[TestClient]:
     monkeypatch.setenv("CHECK_DATABASE_ON_HEALTH", "false")
     monkeypatch.setenv("UPLOAD_ROOT", str(tmp_path / "uploads"))
     monkeypatch.setenv("LLM_MODE", "mock")
+    monkeypatch.setenv("DOCUMENT_OCR_MODE", "mock")
     get_settings.cache_clear()
 
     with TestClient(create_app()) as test_client:
@@ -405,7 +408,7 @@ def test_workflow_analysis_returns_pending_then_persists_grouped_results(client:
     assert started.json()["status"] == "PENDING"
     detail = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()
     run = detail["latest_analysis_run"]
-    assert run["status"] == "COMPLETED"
+    assert run["status"] == "PARTIAL"
     assert run["damage_status"] == "COMPLETED"
     assert run["damage_analysis"]["assessment"] == "REPAIR_LIKELY"
     assert {item["document_type"] for item in run["document_analyses"]} == {
@@ -420,6 +423,77 @@ def test_workflow_analysis_returns_pending_then_persists_grouped_results(client:
     assert registration["status"] == "COMPLETED"
     assert {field["key"] for field in registration["fields"]} >= {"owner_name", "license_plate"}
     assert all(field["original_ai_value"] == field["reviewed_value"] for field in registration["fields"])
+    policy = next(
+        item for item in run["document_ocr_results"] if item["document_type"] == "INSURANCE_POLICY"
+    )
+    assert policy["status"] == "FAILED"
+
+
+def test_workflow_analysis_persists_ocr_results_per_image_and_marks_unsupported_files(client: TestClient):
+    claim = prepare_claim_for_workflow_analysis(client)
+    second_id_card = client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=adjuster_headers(client),
+        data={"categories": ["ID_CARD"]},
+        files=[("files", ("id-card-back.png", b"id-card-back", "image/png"))],
+    )
+    assert second_id_card.status_code == 200
+
+    started = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    assert started.status_code == 202
+
+    run = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()[
+        "latest_analysis_run"
+    ]
+    ocr_results = run["document_ocr_results"]
+    id_card_results = [item for item in ocr_results if item["document_type"] == "ID_CARD"]
+    policy_result = next(item for item in ocr_results if item["document_type"] == "INSURANCE_POLICY")
+
+    assert len(id_card_results) == 2
+    assert all(item["status"] == "COMPLETED" and item["raw_text"] for item in id_card_results)
+    assert policy_result["status"] == "FAILED"
+    assert "supported image" in policy_result["warning"].lower()
+    assert run["status"] == "PARTIAL"
+
+
+def test_workflow_analysis_uses_injected_ocr_adapter_once_per_supported_document_image(
+    client: TestClient, monkeypatch
+):
+    class FakeOcrAdapter:
+        def __init__(self) -> None:
+            self.calls: list[int] = []
+
+        def extract(self, evidence, source_path):
+            self.calls.append(evidence.id)
+            if evidence.original_filename == "registration.jpg":
+                raise DocumentOcrError("OCR fixture failure")
+            return DocumentOcrResult(
+                raw_text=f"OCR text for {evidence.original_filename}",
+                adapter_name="fake-ocr",
+                metadata={"fixture": True},
+            )
+
+    adapter = FakeOcrAdapter()
+    monkeypatch.setattr(claim_routes, "get_document_ocr_adapter", lambda mode: adapter)
+    claim = prepare_claim_for_workflow_analysis(client)
+
+    client.post(f"/api/claims/{claim['id']}/analysis-runs", headers=adjuster_headers(client))
+
+    run = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()[
+        "latest_analysis_run"
+    ]
+    ocr_results = run["document_ocr_results"]
+    assert len(adapter.calls) == 3
+    assert len(adapter.calls) == len(set(adapter.calls))
+    registration = next(item for item in ocr_results if item["original_filename"] == "registration.jpg")
+    id_card = next(item for item in ocr_results if item["original_filename"] == "id-card.jpg")
+    assert registration["status"] == "FAILED"
+    assert registration["warning"] == "OCR fixture failure"
+    assert id_card["raw_text"] == "OCR text for id-card.jpg"
+    assert id_card["adapter_metadata"] == {"fixture": True}
 
 
 def test_admin_can_start_workflow_analysis(client: TestClient):
@@ -450,7 +524,7 @@ def test_workflow_analysis_preserves_successful_results_when_one_document_fails(
         item for item in run["document_analyses"] if item["document_type"] == "DRIVER_LICENSE"
     )
     assert failed["status"] == "FAILED"
-    assert failed["warnings"] == ["Mock document analysis failed for this evidence group."]
+    assert failed["warnings"] == ["analysis-fail.jpg: Mock OCR failed for this evidence image."]
     assert any(item["status"] == "COMPLETED" for item in run["document_analyses"])
 
 
