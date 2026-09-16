@@ -18,6 +18,7 @@ from app.schemas.claims import (
     CopilotConclusionReviewRevertRequest,
     DamageAnalysisResponse,
     DocumentAnalysisFieldUpdateRequest,
+    DocumentFieldValidationUpdateRequest,
     WorkflowAnalysisRunResponse,
 )
 from app.services.claims import ClaimService, EvidencePersistenceError
@@ -278,6 +279,31 @@ def update_document_analysis_field(
     try:
         claim = service.update_document_analysis_field(
             claim_number, document_analysis_id, field_id, request
+        )
+    except LookupError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+    if claim is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
+    return claim
+
+
+@router.patch(
+    "/{claim_number}/analysis-runs/{run_id}/field-validations/{field_validation_id}",
+    response_model=ClaimResponse,
+)
+def update_document_field_validation(
+    claim_number: str,
+    run_id: int,
+    field_validation_id: int,
+    request: DocumentFieldValidationUpdateRequest,
+    _current_user: AdjusterUser,
+    service: ClaimServiceDependency,
+) -> ClaimResponse:
+    try:
+        claim = service.update_document_field_validation(
+            claim_number, run_id, field_validation_id, request
         )
     except LookupError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error

@@ -559,6 +559,60 @@ def test_workflow_analysis_returns_field_validation_and_claim_consistency_to_ai_
     assert any("manual review" in warning.lower() for warning in captured_context["warnings"])
 
 
+def test_adjuster_can_review_image_field_without_changing_ocr_value_and_edit_locks_after_ai_review(
+    client: TestClient,
+):
+    claim = prepare_claim_for_workflow_analysis(client)
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    detail = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()
+    run = detail["latest_analysis_run"]
+    registration = next(
+        item
+        for item in run["document_ocr_results"]
+        if item["document_type"] == "VEHICLE_REGISTRATION"
+    )
+    plate = next(
+        item
+        for item in registration["field_validations"]
+        if item["field_key"] == "license_plate"
+    )
+
+    corrected = client.patch(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/field-validations/{plate['id']}",
+        headers=adjuster_headers(client),
+        json={"reviewed_value": "51H-999.99"},
+    )
+
+    assert corrected.status_code == 200
+    corrected_plate = next(
+        field
+        for result in corrected.json()["latest_analysis_run"]["document_ocr_results"]
+        if result["id"] == registration["id"]
+        for field in result["field_validations"]
+        if field["id"] == plate["id"]
+    )
+    assert corrected_plate["ocr_value"] == "51H-123.45"
+    assert corrected_plate["normalized_value"] == "51H-999.99"
+
+    reviewed = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=adjuster_headers(client),
+    )
+    assert reviewed.status_code == 200
+
+    locked = client.patch(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/field-validations/{plate['id']}",
+        headers=adjuster_headers(client),
+        json={"reviewed_value": "51H-000.00"},
+    )
+    assert locked.status_code == 409
+
+
 def test_admin_can_start_workflow_analysis(client: TestClient):
     claim = prepare_claim_for_workflow_analysis(client)
 

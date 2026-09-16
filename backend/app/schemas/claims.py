@@ -122,6 +122,10 @@ class DocumentAnalysisFieldUpdateRequest(BaseModel):
     reviewed_value: str = Field(min_length=1, max_length=2000)
 
 
+class DocumentFieldValidationUpdateRequest(BaseModel):
+    reviewed_value: str = Field(min_length=1, max_length=2000)
+
+
 class DocumentAnalysisResponse(BaseModel):
     id: int
     document_type: EvidenceCategory

@@ -246,6 +246,62 @@ class AnalysisRunRepository:
             )
         )
 
+    def find_field_validation_for_claim(
+        self,
+        claim_id: int,
+        run_id: int,
+        field_validation_id: int,
+    ) -> DocumentFieldValidation | None:
+        return self.session.scalar(
+            select(DocumentFieldValidation)
+            .join(
+                WorkflowAnalysisRun,
+                WorkflowAnalysisRun.id == DocumentFieldValidation.analysis_run_id,
+            )
+            .where(
+                WorkflowAnalysisRun.claim_id == claim_id,
+                WorkflowAnalysisRun.id == run_id,
+                DocumentFieldValidation.id == field_validation_id,
+            )
+        )
+
+    def update_field_validation(
+        self, validation: DocumentFieldValidation, reviewed_value: str
+    ) -> DocumentFieldValidation:
+        validation.normalized_value = reviewed_value.strip()
+        self.session.commit()
+        self.session.refresh(validation)
+        return validation
+
+    def update_consistency_check(
+        self,
+        validation: DocumentFieldValidation,
+        result: ConsistencyResult,
+    ) -> None:
+        check = self.session.scalar(
+            select(ClaimConsistencyCheck).where(
+                ClaimConsistencyCheck.field_validation_id == validation.id
+            )
+        )
+        if check is None:
+            check = ClaimConsistencyCheck(
+                analysis_run_id=validation.analysis_run_id,
+                field_validation_id=validation.id,
+                source_evidence_id=validation.source_evidence_id,
+                field_key=validation.field_key,
+                claim_value=result.claim_value,
+                document_value=result.document_value,
+                status=result.status,
+                explanation=result.explanation,
+            )
+            self.session.add(check)
+        else:
+            check.claim_value = result.claim_value
+            check.document_value = result.document_value
+            check.status = result.status
+            check.explanation = result.explanation
+        self.session.commit()
+
     def save_consistency_checks(
         self,
         run: WorkflowAnalysisRun,

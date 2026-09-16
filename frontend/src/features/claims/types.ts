@@ -57,7 +57,54 @@ export type EvidenceUploadItem = { file: File; category: EvidenceCategory };
 export type AnalysisRunStatus =
   "PENDING" | "PROCESSING" | "COMPLETED" | "PARTIAL" | "FAILED";
 export type AnalysisResultStatus =
-  "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+  "PENDING" | "PROCESSING" | "COMPLETED" | "PARTIAL" | "FAILED";
+
+export type FieldValidationStatus =
+  "VALID" | "INVALID" | "UNCERTAIN" | "MISSING" | "LLM_UNAVAILABLE";
+
+export type ConsistencyStatus = "MATCH" | "MISMATCH";
+
+export type DocumentFieldValidation = {
+  id: number;
+  analysis_run_id: number;
+  document_ocr_result_id: number;
+  source_evidence_id: number;
+  field_key: string;
+  prompt_version: string;
+  ocr_value: string | null;
+  normalized_value: string | null;
+  status: FieldValidationStatus;
+  confidence: number;
+  summary: string;
+  warnings: string[];
+};
+
+export type DocumentOcrResult = {
+  id: number;
+  source_evidence_id: number;
+  document_type: EvidenceCategory;
+  original_filename: string;
+  content_type: string | null;
+  status: AnalysisResultStatus;
+  raw_text: string | null;
+  adapter_name: string | null;
+  adapter_metadata: Record<string, unknown>;
+  warning: string | null;
+  created_at: string;
+  processed_at: string | null;
+  field_validations: DocumentFieldValidation[];
+};
+
+export type ClaimConsistencyCheck = {
+  id: number;
+  field_validation_id: number;
+  source_evidence_id: number;
+  field_key: string;
+  claim_value: string;
+  document_value: string;
+  status: ConsistencyStatus;
+  explanation: string;
+};
 
 export type DocumentAnalysisField = {
   id: number;
@@ -83,6 +130,8 @@ export type WorkflowAnalysisRun = {
   damage_status: AnalysisResultStatus;
   damage_analysis: DamageAnalysis | null;
   document_analyses: DocumentAnalysis[];
+  document_ocr_results?: DocumentOcrResult[];
+  consistency_checks?: ClaimConsistencyCheck[];
   failure_reason: string | null;
   created_at: string;
   started_at: string | null;

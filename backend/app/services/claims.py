@@ -55,6 +55,7 @@ from app.schemas.claims import (
     DocumentAnalysisResponse,
     DocumentOcrResultResponse,
     DocumentFieldValidationResponse,
+    DocumentFieldValidationUpdateRequest,
     ClaimConsistencyCheckResponse,
     ReferencePartPriceResponse,
     VehicleMetadata,
@@ -401,6 +402,51 @@ class ClaimService:
             raise ValueError("Re-run analysis before changing fields after AI review")
         if self.analysis_runs.update_field(document, field_id, request.reviewed_value) is None:
             raise LookupError("Document analysis field not found")
+        return self._to_response(claim)
+
+    def update_document_field_validation(
+        self,
+        claim_number: str,
+        run_id: int,
+        field_validation_id: int,
+        request: DocumentFieldValidationUpdateRequest,
+    ) -> ClaimResponse | None:
+        claim = self.claims.find_by_claim_number(claim_number)
+        if claim is None:
+            return None
+        validation = self.analysis_runs.find_field_validation_for_claim(
+            claim.id, run_id, field_validation_id
+        )
+        if validation is None:
+            raise LookupError("Document field validation not found")
+        if self.workflow_ai_reviews.find_for_run(run_id):
+            raise ValueError("Re-run analysis before changing fields after AI review")
+
+        validation = self.analysis_runs.update_field_validation(
+            validation, request.reviewed_value
+        )
+        consistency = self.claim_consistency.compare(
+            ClaimFacts(
+                claimant_name=claim.claimant_name,
+                vehicle_make=claim.vehicle_make,
+                license_plate=claim.license_plate,
+            ),
+            [
+                ValidatedDocumentField(
+                    field_key=validation.field_key,
+                    source_evidence_id=validation.source_evidence_id,
+                    ocr_value=validation.ocr_value,
+                    normalized_value=validation.normalized_value,
+                    status=validation.status,
+                    confidence=validation.confidence,
+                    summary=validation.summary,
+                    warnings=json.loads(validation.warnings_json),
+                    prompt_version=validation.prompt_version,
+                )
+            ],
+        )
+        if consistency:
+            self.analysis_runs.update_consistency_check(validation, consistency[0])
         return self._to_response(claim)
 
     def run_workflow_ai_review(self, claim_number: str, run_id: int) -> ClaimResponse | None:
