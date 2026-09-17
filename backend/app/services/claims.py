@@ -269,17 +269,12 @@ class ClaimService:
         for category in DOCUMENT_EVIDENCE_CATEGORIES:
             self._process_document_ocr_category(run, category, by_category[category])
 
-        self._extract_document_fields(run, claim)
+        self._extract_document_fields(run)
         self._validate_document_fields(run, claim)
 
         self.analysis_runs.complete(run, claim)
 
-    def _extract_document_fields(self, run: WorkflowAnalysisRun, claim: Claim) -> None:
-        claim_context = {
-            "claimant_name": claim.claimant_name,
-            "vehicle_make": claim.vehicle_make,
-            "license_plate": claim.license_plate or "",
-        }
+    def _extract_document_fields(self, run: WorkflowAnalysisRun) -> None:
         for ocr_result in self.analysis_runs.document_ocr_results(run.id):
             if (
                 ocr_result.status is not AnalysisResultStatus.COMPLETED
@@ -289,7 +284,6 @@ class ClaimService:
             outcome = self.document_extraction.extract(
                 ocr_result.document_type,
                 ocr_result.raw_text or "",
-                claim_context,
             )
             self.analysis_runs.save_document_extraction(run, ocr_result, outcome)
 

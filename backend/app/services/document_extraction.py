@@ -156,7 +156,6 @@ class DocumentExtractionAdapter(Protocol):
         self,
         definition: DocumentExtractionDefinition,
         raw_ocr_text: str,
-        claim_context: dict[str, str],
     ) -> BaseModel: ...
 
 
@@ -174,7 +173,6 @@ class DeterministicDocumentExtractionAdapter:
         self,
         definition: DocumentExtractionDefinition,
         raw_ocr_text: str,
-        claim_context: dict[str, str],
     ) -> BaseModel:
         if definition.category is EvidenceCategory.ID_CARD:
             return IdentityCardExtraction(
@@ -243,7 +241,6 @@ class UnavailableDocumentExtractionAdapter:
         self,
         definition: DocumentExtractionDefinition,
         raw_ocr_text: str,
-        claim_context: dict[str, str],
     ) -> BaseModel:
         raise DocumentExtractionError(self.reason)
 
@@ -267,7 +264,6 @@ class LangChainOpenAiDocumentExtractionAdapter:
         self,
         definition: DocumentExtractionDefinition,
         raw_ocr_text: str,
-        claim_context: dict[str, str],
     ) -> BaseModel:
         try:
             from langchain.messages import HumanMessage, SystemMessage
@@ -280,10 +276,7 @@ class LangChainOpenAiDocumentExtractionAdapter:
                     SystemMessage(content=definition.system_prompt),
                     HumanMessage(
                         content=json.dumps(
-                            {
-                                "raw_ocr_text": raw_ocr_text,
-                                "claim_context": claim_context,
-                            },
+                            {"raw_ocr_text": raw_ocr_text},
                             ensure_ascii=False,
                         )
                     ),
@@ -325,7 +318,6 @@ class DocumentExtractionService:
         self,
         category: EvidenceCategory,
         raw_ocr_text: str,
-        claim_context: dict[str, str],
     ) -> DocumentExtractionOutcome:
         schema = self._schema_by_category.get(category)
         if schema is None:
@@ -336,7 +328,7 @@ class DocumentExtractionService:
                 system_prompt=self.prompt_resolver.resolve(category),
                 output_schema=schema,
             )
-            extracted = self.adapter.extract(definition, raw_ocr_text, claim_context)
+            extracted = self.adapter.extract(definition, raw_ocr_text)
             validated = schema.model_validate(extracted)
             fields = [
                 ExtractedFieldValue(field_key=field_key, value=value)

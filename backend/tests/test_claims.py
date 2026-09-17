@@ -630,7 +630,7 @@ def test_document_extraction_selects_category_prompt_and_isolates_malformed_outp
             self.calls: list[tuple[str, str]] = []
             self.delegate = DeterministicDocumentExtractionAdapter()
 
-        def extract(self, definition, raw_ocr_text, claim_context):
+        def extract(self, definition, raw_ocr_text):
             self.calls.append((definition.category.value, definition.system_prompt))
             if definition.category.value == "INSURANCE_POLICY":
                 return {"unexpected": "malformed"}
@@ -642,7 +642,7 @@ def test_document_extraction_selects_category_prompt_and_isolates_malformed_outp
                     place_of_origin=None,
                     expiry_date=None,
                 )
-            return self.delegate.extract(definition, raw_ocr_text, claim_context)
+            return self.delegate.extract(definition, raw_ocr_text)
 
     adapter = CapturingExtractionAdapter()
     monkeypatch.setattr(

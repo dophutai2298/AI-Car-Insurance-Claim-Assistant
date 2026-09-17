@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from langchain.messages import HumanMessage, SystemMessage
@@ -50,7 +51,6 @@ def test_langchain_adapter_sends_system_and_human_messages_with_structured_schem
     result = adapter.extract(
         definition,
         "Identity number: 000123456789",
-        {"claimant_name": "Mai Nguyen"},
     )
 
     messages = captured["messages"]
@@ -58,7 +58,10 @@ def test_langchain_adapter_sends_system_and_human_messages_with_structured_schem
     assert isinstance(messages[0], SystemMessage)
     assert messages[0].content == "Extract identity fields only."
     assert isinstance(messages[1], HumanMessage)
-    assert "000123456789" in str(messages[1].content)
+    assert json.loads(str(messages[1].content)) == {
+        "raw_ocr_text": "Identity number: 000123456789"
+    }
+    assert "Mai Nguyen" not in str(messages[1].content)
     assert captured["schema"] is IdentityCardExtraction
     assert captured["method"] == "json_schema"
     assert result.identity_number == "000123456789"
@@ -76,7 +79,6 @@ def test_missing_openai_credentials_produce_an_isolated_failed_extraction():
     outcome = service.extract(
         EvidenceCategory.ID_CARD,
         "Identity number: 000123456789",
-        {"claimant_name": "Mai Nguyen"},
     )
 
     assert outcome.status.value == "FAILED"
@@ -109,7 +111,6 @@ def test_missing_prompt_resource_is_reported_as_an_extraction_failure(tmp_path: 
     outcome = service.extract(
         EvidenceCategory.ID_CARD,
         "Identity number: 000123456789",
-        {},
     )
 
     assert outcome.status.value == "FAILED"

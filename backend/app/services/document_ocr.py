@@ -1,8 +1,12 @@
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
 from app.models import Evidence, EvidenceCategory
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -67,6 +71,11 @@ class DeepDocOcrAdapter:
                 self.reader = self.reader_type()
             result = self.reader.extract(str(source_path))
         except Exception as error:
+            logger.exception(
+                "DeepDoc OCR provider failed for evidence_id=%s error_type=%s",
+                getattr(evidence, "id", None),
+                type(error).__name__,
+            )
             raise DocumentOcrError("DeepDoc OCR could not process this evidence image.") from error
         raw_text = str(getattr(result, "text", "") or "").strip()
         return DocumentOcrResult(
