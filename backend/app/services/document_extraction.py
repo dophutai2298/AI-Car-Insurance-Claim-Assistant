@@ -6,6 +6,7 @@ import json
 import logging
 from pathlib import Path
 import re
+from time import perf_counter
 from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -246,14 +247,22 @@ class UnavailableDocumentExtractionAdapter:
 
 
 class LangChainOpenAiDocumentExtractionAdapter:
-    def __init__(self, base_url: str | None, api_key: str, model: str) -> None:
+    def __init__(
+        self,
+        base_url: str | None,
+        api_key: str,
+        model: str,
+        request_timeout_seconds: float = 60.0,
+        max_retries: int = 0,
+    ) -> None:
         from langchain_openai import ChatOpenAI
 
         options: dict[str, object] = {
             "model": model,
             "api_key": api_key,
             "temperature": 0,
-            "reasoning_effort": "medium",
+            "timeout": request_timeout_seconds,
+            "max_retries": max_retries,
         }
         if base_url:
             options["base_url"] = base_url
@@ -265,6 +274,7 @@ class LangChainOpenAiDocumentExtractionAdapter:
         definition: DocumentExtractionDefinition,
         raw_ocr_text: str,
     ) -> BaseModel:
+        started_at = perf_counter()
         try:
             from langchain.messages import HumanMessage, SystemMessage
 
@@ -282,12 +292,19 @@ class LangChainOpenAiDocumentExtractionAdapter:
                     ),
                 ]
             )
+            logger.info(
+                "Document extraction completed for %s using %s in %.2fs",
+                definition.category.value,
+                self.model_name,
+                perf_counter() - started_at,
+            )
             return definition.output_schema.model_validate(response)
         except Exception as error:
             logger.warning(
-                "OpenAI document extraction failed for %s using %s (%s)",
+                "OpenAI document extraction failed for %s using %s after %.2fs (%s)",
                 definition.category.value,
                 self.model_name,
+                perf_counter() - started_at,
                 type(error).__name__,
             )
             raise DocumentExtractionError(
@@ -372,4 +389,6 @@ def get_document_extraction_adapter(settings: Settings) -> DocumentExtractionAda
         settings.llm_base_url,
         settings.openai_api_key,
         settings.openai_model,
+        settings.llm_request_timeout_seconds,
+        settings.llm_max_retries,
     )

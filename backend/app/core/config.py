@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     llm_base_url: str | None = Field(default=None, validation_alias="LLM_BASE_URL")
     openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
     openai_model: str | None = Field(default=None, validation_alias="OPENAI_MODEL")
+    llm_request_timeout_seconds: float = Field(
+        default=60.0, gt=0, validation_alias="LLM_REQUEST_TIMEOUT_SECONDS"
+    )
+    llm_max_retries: int = Field(default=0, ge=0, validation_alias="LLM_MAX_RETRIES")
     frontend_origin: str = Field(default="http://localhost:5173", validation_alias="FRONTEND_ORIGIN")
     check_database_on_health: bool = Field(default=True, validation_alias="CHECK_DATABASE_ON_HEALTH")
 

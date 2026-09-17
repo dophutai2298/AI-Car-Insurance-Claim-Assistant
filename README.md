@@ -21,11 +21,16 @@ To use OpenAI, set `LLM_MODE=openai` and configure the following values in `.env
 ```text
 OPENAI_API_KEY=your-openai-api-key
 OPENAI_MODEL=gpt-5.6-luna
+LLM_REQUEST_TIMEOUT_SECONDS=60
+LLM_MAX_RETRIES=0
 ```
 
 Do not set `LLM_BASE_URL` for the official OpenAI API; LangChain uses its default
 OpenAI endpoint. `LLM_BASE_URL` is reserved for an explicitly configured,
 OpenAI-compatible provider. The legacy `URL_MODEL` variable is not supported.
+Use a fixed model with structured-output support for document extraction. Dynamic
+router models can vary in latency and schema support between requests. The timeout
+and retry settings keep one failed document from blocking the remaining workflow.
 Do not commit API keys.
 
 ### 2. Start Postgres

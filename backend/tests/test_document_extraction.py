@@ -42,6 +42,13 @@ def test_langchain_adapter_sends_system_and_human_messages_with_structured_schem
 
     monkeypatch.setattr("langchain_openai.ChatOpenAI", FakeChatOpenAI)
     adapter = LangChainOpenAiDocumentExtractionAdapter(None, "test-key", "test-model")
+    assert captured["options"] == {
+        "model": "test-model",
+        "api_key": "test-key",
+        "temperature": 0,
+        "timeout": 60.0,
+        "max_retries": 0,
+    }
     definition = DocumentExtractionDefinition(
         category=EvidenceCategory.ID_CARD,
         system_prompt="Extract identity fields only.",
