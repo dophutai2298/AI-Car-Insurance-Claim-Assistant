@@ -16,6 +16,8 @@ from app.models import (
     DamageAnalysis,
     DocumentAnalysis,
     DocumentAnalysisField,
+    DocumentExtractedField,
+    DocumentExtractionResult,
     DocumentFieldValidation,
     DocumentOcrResult,
     Evidence,
@@ -27,6 +29,7 @@ from app.services.document_analysis import DocumentAnalysisResult
 
 if TYPE_CHECKING:
     from app.services.document_consistency import ConsistencyResult
+    from app.services.document_extraction import DocumentExtractionOutcome
     from app.services.document_field_validation import ValidatedDocumentField
 
 
@@ -194,6 +197,91 @@ class AnalysisRunRepository:
                 .order_by(DocumentOcrResult.id)
             )
         )
+
+    def save_document_extraction(
+        self,
+        run: WorkflowAnalysisRun,
+        ocr_result: DocumentOcrResult,
+        outcome: DocumentExtractionOutcome,
+    ) -> DocumentExtractionResult:
+        extraction = DocumentExtractionResult(
+            analysis_run_id=run.id,
+            document_ocr_result_id=ocr_result.id,
+            source_evidence_id=ocr_result.evidence_id,
+            document_type=ocr_result.document_type,
+            status=outcome.status,
+            prompt_version=outcome.prompt_version,
+            schema_version=outcome.schema_version,
+            warning=outcome.warning,
+            processed_at=datetime.now(timezone.utc),
+        )
+        self.session.add(extraction)
+        self.session.flush()
+        self.session.add_all(
+            [
+                DocumentExtractedField(
+                    analysis_run_id=run.id,
+                    extraction_result_id=extraction.id,
+                    source_evidence_id=ocr_result.evidence_id,
+                    field_key=field.field_key,
+                    ai_extracted_value=field.value,
+                    confirmed_value=field.value,
+                    prompt_version=outcome.prompt_version,
+                    schema_version=outcome.schema_version,
+                )
+                for field in outcome.fields
+            ]
+        )
+        self.session.commit()
+        self.session.refresh(extraction)
+        return extraction
+
+    def document_extraction_for_ocr(
+        self, document_ocr_result_id: int
+    ) -> DocumentExtractionResult | None:
+        return self.session.scalar(
+            select(DocumentExtractionResult).where(
+                DocumentExtractionResult.document_ocr_result_id == document_ocr_result_id
+            )
+        )
+
+    def extracted_fields_for_result(
+        self, extraction_result_id: int
+    ) -> list[DocumentExtractedField]:
+        return list(
+            self.session.scalars(
+                select(DocumentExtractedField)
+                .where(DocumentExtractedField.extraction_result_id == extraction_result_id)
+                .order_by(DocumentExtractedField.id)
+            )
+        )
+
+    def find_extracted_field_for_claim(
+        self,
+        claim_id: int,
+        run_id: int,
+        extracted_field_id: int,
+    ) -> DocumentExtractedField | None:
+        return self.session.scalar(
+            select(DocumentExtractedField)
+            .join(
+                WorkflowAnalysisRun,
+                WorkflowAnalysisRun.id == DocumentExtractedField.analysis_run_id,
+            )
+            .where(
+                WorkflowAnalysisRun.claim_id == claim_id,
+                WorkflowAnalysisRun.id == run_id,
+                DocumentExtractedField.id == extracted_field_id,
+            )
+        )
+
+    def update_extracted_field(
+        self, field: DocumentExtractedField, confirmed_value: str | None
+    ) -> DocumentExtractedField:
+        field.confirmed_value = confirmed_value.strip() if confirmed_value else None
+        self.session.commit()
+        self.session.refresh(field)
+        return field
 
     def save_field_validations(
         self,

@@ -13,6 +13,7 @@ import {
   startWorkflowAnalysis,
   transitionClaimStatus,
   updateClaimInformation,
+  updateDocumentExtractedField,
   updateDocumentField,
   updateDocumentFieldValidation,
   uploadEvidence,
@@ -184,6 +185,31 @@ export function useUpdateDocumentFieldValidation(
         runId,
         fieldValidationId,
         reviewedValue,
+        session!.access_token,
+      ),
+    onSuccess: cache,
+  });
+}
+
+export function useUpdateDocumentExtractedField(
+  claimId: string | undefined,
+  runId: number,
+) {
+  const { session } = useAuth();
+  const cache = useClaimCache();
+  return useMutation({
+    mutationFn: ({
+      extractedFieldId,
+      confirmedValue,
+    }: {
+      extractedFieldId: number;
+      confirmedValue: string | null;
+    }) =>
+      updateDocumentExtractedField(
+        claimId!,
+        runId,
+        extractedFieldId,
+        confirmedValue,
         session!.access_token,
       ),
     onSuccess: cache,

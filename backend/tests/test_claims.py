@@ -11,6 +11,7 @@ from app.services.document_field_validation import (
     DeterministicFieldValidationAdapter,
     FieldValidationSelection,
 )
+from app.services.document_extraction import IdentityCardExtraction
 from app.services.evidence_storage import LocalEvidenceStorage
 from app.services.llm_copilot import LlmCopilotService
 
@@ -463,6 +464,175 @@ def test_workflow_analysis_persists_ocr_results_per_image_and_marks_unsupported_
     assert run["status"] == "PARTIAL"
 
 
+def test_identity_and_policy_extraction_persists_structured_fields_and_confirmed_edits(
+    client: TestClient,
+):
+    claim = prepare_claim_for_workflow_analysis(client)
+    policy_image = client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=adjuster_headers(client),
+        data={"categories": ["INSURANCE_POLICY"]},
+        files=[("files", ("policy-card.jpg", b"policy-card", "image/jpeg"))],
+    )
+    assert policy_image.status_code == 200
+
+    started = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    assert started.status_code == 202
+
+    detail = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()
+    run = detail["latest_analysis_run"]
+    id_card = next(
+        item
+        for item in run["document_ocr_results"]
+        if item["original_filename"] == "id-card.jpg"
+    )
+    policy = next(
+        item
+        for item in run["document_ocr_results"]
+        if item["original_filename"] == "policy-card.jpg"
+    )
+
+    assert id_card["raw_text"]
+    assert id_card["extraction"]["status"] == "COMPLETED"
+    assert id_card["extraction"]["prompt_version"] == "document-extraction-v1"
+    identity_fields = {
+        field["field_key"]: field for field in id_card["extraction"]["fields"]
+    }
+    assert set(identity_fields) == {
+        "full_name",
+        "identity_number",
+        "date_of_birth",
+        "place_of_origin",
+        "expiry_date",
+    }
+    assert identity_fields["identity_number"]["ai_extracted_value"] == "079203001234"
+    assert identity_fields["identity_number"]["confirmed_value"] == "079203001234"
+    assert "confidence" not in identity_fields["identity_number"]
+
+    policy_fields = {
+        field["field_key"]: field for field in policy["extraction"]["fields"]
+    }
+    assert set(policy_fields) == {"vehicle_owner", "vehicle_brand"}
+    assert policy_fields["vehicle_owner"]["ai_extracted_value"] == "Nguyen Van A"
+    assert policy_fields["vehicle_brand"]["ai_extracted_value"] == "Toyota"
+
+    raw_ocr_before_edit = id_card["raw_text"]
+    full_name = identity_fields["full_name"]
+    corrected = client.patch(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields/{full_name['id']}",
+        headers=adjuster_headers(client),
+        json={"confirmed_value": "Mai Nguyen"},
+    )
+    assert corrected.status_code == 200
+
+    refreshed = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+    refreshed_id_card = next(
+        item
+        for item in refreshed["document_ocr_results"]
+        if item["original_filename"] == "id-card.jpg"
+    )
+    refreshed_name = next(
+        field
+        for field in refreshed_id_card["extraction"]["fields"]
+        if field["field_key"] == "full_name"
+    )
+    assert refreshed_id_card["raw_text"] == raw_ocr_before_edit
+    assert refreshed_name["ai_extracted_value"] == "Nguyen Van A"
+    assert refreshed_name["confirmed_value"] == "Mai Nguyen"
+
+    reviewed = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=adjuster_headers(client),
+    )
+    assert reviewed.status_code == 200
+    locked_edit = client.patch(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields/{full_name['id']}",
+        headers=adjuster_headers(client),
+        json={"confirmed_value": "Another Name"},
+    )
+    assert locked_edit.status_code == 409
+
+
+def test_document_extraction_selects_category_prompt_and_isolates_malformed_output(
+    client: TestClient, monkeypatch
+):
+    class CapturingExtractionAdapter:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str]] = []
+
+        def extract(self, definition, raw_ocr_text, claim_context):
+            self.calls.append((definition.category.value, definition.system_prompt))
+            if definition.category.value == "INSURANCE_POLICY":
+                return {"unexpected": "malformed"}
+            return IdentityCardExtraction(
+                full_name="Nguyen Van A",
+                identity_number="000123456789",
+                date_of_birth=None,
+                place_of_origin=None,
+                expiry_date=None,
+            )
+
+    adapter = CapturingExtractionAdapter()
+    monkeypatch.setattr(
+        claim_routes, "get_document_extraction_adapter", lambda settings: adapter
+    )
+    claim = prepare_claim_for_workflow_analysis(client)
+    uploaded = client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=adjuster_headers(client),
+        data={"categories": ["INSURANCE_POLICY"]},
+        files=[("files", ("policy-card.jpg", b"policy-card", "image/jpeg"))],
+    )
+    assert uploaded.status_code == 200
+
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+
+    id_call = next(item for item in adapter.calls if item[0] == "ID_CARD")
+    policy_call = next(item for item in adapter.calls if item[0] == "INSURANCE_POLICY")
+    assert "Citizen Identity Card" in id_call[1]
+    assert "`full_name`" in id_call[1]
+    assert "Insurance Policy" in policy_call[1]
+
+    id_card = next(
+        item
+        for item in run["document_ocr_results"]
+        if item["original_filename"] == "id-card.jpg"
+    )
+    policy = next(
+        item
+        for item in run["document_ocr_results"]
+        if item["original_filename"] == "policy-card.jpg"
+    )
+    identity_number = next(
+        field
+        for field in id_card["extraction"]["fields"]
+        if field["field_key"] == "identity_number"
+    )
+    assert identity_number["ai_extracted_value"] == "000123456789"
+    assert next(
+        field
+        for field in id_card["extraction"]["fields"]
+        if field["field_key"] == "date_of_birth"
+    )["ai_extracted_value"] is None
+    assert policy["raw_text"]
+    assert policy["extraction"]["status"] == "FAILED"
+    assert policy["extraction"]["fields"] == []
+    assert "ValidationError" in policy["extraction"]["warning"]
+
+
 def test_workflow_analysis_uses_injected_ocr_adapter_once_per_supported_document_image(
     client: TestClient, monkeypatch
 ):
@@ -521,25 +691,29 @@ def test_workflow_analysis_returns_field_validation_and_claim_consistency_to_ai_
 
     detail = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()
     run = detail["latest_analysis_run"]
-    id_card_ocr = next(
-        item for item in run["document_ocr_results"] if item["document_type"] == "ID_CARD"
+    registration_ocr = next(
+        item
+        for item in run["document_ocr_results"]
+        if item["document_type"] == "VEHICLE_REGISTRATION"
     )
-    full_name = next(
-        item for item in id_card_ocr["field_validations"] if item["field_key"] == "full_name"
+    vehicle_make = next(
+        item
+        for item in registration_ocr["field_validations"]
+        if item["field_key"] == "vehicle_make"
     )
-    claimant_check = next(
-        item for item in run["consistency_checks"] if item["field_key"] == "full_name"
+    make_check = next(
+        item for item in run["consistency_checks"] if item["field_key"] == "vehicle_make"
     )
 
-    assert len(adapter.calls) == 9
-    assert full_name["source_evidence_id"] == id_card_ocr["source_evidence_id"]
-    assert full_name["analysis_run_id"] == run["id"]
-    assert full_name["ocr_value"] == "Nguyen Van A"
-    assert full_name["status"] == "VALID"
-    assert full_name["prompt_version"] == "document-fields-v1"
-    assert claimant_check["status"] == "MISMATCH"
-    assert claimant_check["claim_value"] == "Mai Nguyen"
-    assert claimant_check["document_value"] == "Nguyen Van A"
+    assert len(adapter.calls) == 6
+    assert vehicle_make["source_evidence_id"] == registration_ocr["source_evidence_id"]
+    assert vehicle_make["analysis_run_id"] == run["id"]
+    assert vehicle_make["ocr_value"] == "Toyota"
+    assert vehicle_make["status"] == "VALID"
+    assert vehicle_make["prompt_version"] == "document-fields-v1"
+    assert make_check["status"] == "MATCH"
+    assert make_check["claim_value"] == "Toyota"
+    assert make_check["document_value"] == "Toyota"
 
     captured_context: dict[str, object] = {}
     original_generate = LlmCopilotService.generate
@@ -555,7 +729,12 @@ def test_workflow_analysis_returns_field_validation_and_claim_consistency_to_ai_
     )
 
     assert reviewed.status_code == 200
-    assert captured_context["document_analysis"][0]["field_validations"]
+    registration_context = next(
+        item
+        for item in captured_context["document_analysis"]
+        if item["document_type"] == "VEHICLE_REGISTRATION"
+    )
+    assert registration_context["field_validations"]
     assert any("manual review" in warning.lower() for warning in captured_context["warnings"])
 
 

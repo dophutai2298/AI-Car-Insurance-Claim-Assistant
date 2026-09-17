@@ -108,6 +108,21 @@ export const updateDocumentFieldValidation = (
       body: JSON.stringify({ reviewed_value: reviewedValue }),
     },
   );
+export const updateDocumentExtractedField = (
+  claimId: string,
+  runId: number,
+  extractedFieldId: number,
+  confirmedValue: string | null,
+  accessToken: string,
+) =>
+  request<ClaimDetail>(
+    `/api/claims/${claimId}/analysis-runs/${runId}/extraction-fields/${extractedFieldId}`,
+    accessToken,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ confirmed_value: confirmedValue }),
+    },
+  );
 export const runWorkflowAiReview = (
   claimId: string,
   runId: number,

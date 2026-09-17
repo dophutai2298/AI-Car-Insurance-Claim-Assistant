@@ -873,7 +873,7 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
   });
 });
 
-test("adjuster can review a field on its source image before AI review", async () => {
+test("adjuster reviews persisted identity extraction without a confidence score", async () => {
   const evidence: EvidenceItem = {
     id: 2,
     category: "ID_CARD",
@@ -886,16 +886,15 @@ test("adjuster can review a field on its source image before AI review", async (
   const field = {
     id: 202,
     analysis_run_id: 9,
-    document_ocr_result_id: 102,
+    extraction_result_id: 302,
     source_evidence_id: 2,
     field_key: "full_name",
-    prompt_version: "document-fields-v1",
-    ocr_value: "Nguyen Van A",
-    normalized_value: "Nguyen Van A",
-    status: "VALID",
-    confidence: 0.97,
-    summary: "The holder name is readable.",
-    warnings: [],
+    ai_extracted_value: "Nguyen Van A",
+    confirmed_value: "Nguyen Van A",
+    prompt_version: "document-extraction-v1",
+    schema_version: "document-extraction-schema-v1",
+    created_at: "2026-09-08T00:00:02Z",
+    updated_at: "2026-09-08T00:00:02Z",
   };
   const claim = {
     id: "CLM-000082",
@@ -937,7 +936,21 @@ test("adjuster can review a field on its source image before AI review", async (
           warning: null,
           created_at: "2026-09-08T00:00:01Z",
           processed_at: "2026-09-08T00:00:02Z",
-          field_validations: [field],
+          extraction: {
+            id: 302,
+            analysis_run_id: 9,
+            document_ocr_result_id: 102,
+            source_evidence_id: 2,
+            document_type: "ID_CARD",
+            status: "COMPLETED",
+            prompt_version: "document-extraction-v1",
+            schema_version: "document-extraction-schema-v1",
+            warning: null,
+            created_at: "2026-09-08T00:00:02Z",
+            processed_at: "2026-09-08T00:00:02Z",
+            fields: [field],
+          },
+          field_validations: [],
         },
       ],
       consistency_checks: [],
@@ -955,11 +968,11 @@ test("adjuster can review a field on its source image before AI review", async (
       return new Response(JSON.stringify(adjusterSession.user));
     if (path.endsWith("/content"))
       return new Response(new Blob(["image"], { type: "image/jpeg" }));
-    if (path.includes("/field-validations/202") && init?.method === "PATCH") {
+    if (path.includes("/extraction-fields/202") && init?.method === "PATCH") {
       submittedField = JSON.parse(init.body as string);
-      field.normalized_value = (
-        submittedField as { reviewed_value: string }
-      ).reviewed_value;
+      field.confirmed_value = (
+        submittedField as { confirmed_value: string }
+      ).confirmed_value;
     }
     return new Response(JSON.stringify(claim));
   });
@@ -971,14 +984,16 @@ test("adjuster can review a field on its source image before AI review", async (
   renderRoute("/claims/CLM-000082");
 
   const card = await screen.findByRole("article", { name: "claimant-id.jpg" });
-  const input = within(card).getByLabelText("Full name normalized value");
+  const input = within(card).getByLabelText("Full name confirmed value");
+  expect(within(card).getByText("Nguyen Van A")).toBeVisible();
+  expect(within(card).queryByText("97%")).not.toBeInTheDocument();
   await user.clear(input);
   await user.type(input, "Mai Nguyen");
   await user.click(
     within(card).getByRole("button", { name: "Save Full name" }),
   );
 
-  expect(submittedField).toEqual({ reviewed_value: "Mai Nguyen" });
+  expect(submittedField).toEqual({ confirmed_value: "Mai Nguyen" });
   expect(input).toHaveValue("Mai Nguyen");
 });
 

@@ -23,8 +23,16 @@ class DocumentOcrAdapter(Protocol):
 
 class MockDocumentOcrAdapter:
     _text_by_category = {
-        EvidenceCategory.ID_CARD: "Full name: Nguyen Van A\nIdentity number: 079203001234",
-        EvidenceCategory.INSURANCE_POLICY: "Policy number: POL-VN-2026-00421\nInsured name: Nguyen Van A",
+        EvidenceCategory.ID_CARD: (
+            "Full name: Nguyen Van A\n"
+            "Identity number: 079203001234\n"
+            "Date of birth: 18/04/2003\n"
+            "Place of origin: Ho Chi Minh City\n"
+            "Date of expiry: 18/04/2033"
+        ),
+        EvidenceCategory.INSURANCE_POLICY: (
+            "Vehicle owner: Nguyen Van A\nVehicle brand: Toyota"
+        ),
         EvidenceCategory.VEHICLE_REGISTRATION: "License plate: 51H-123.45\nVehicle make: Toyota",
         EvidenceCategory.DRIVER_LICENSE: "License number: 790123456789\nLicense class: B2",
     }

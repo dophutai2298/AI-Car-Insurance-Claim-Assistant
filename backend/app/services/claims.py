@@ -53,6 +53,9 @@ from app.schemas.claims import (
     DocumentAnalysisFieldResponse,
     DocumentAnalysisFieldUpdateRequest,
     DocumentAnalysisResponse,
+    DocumentExtractedFieldResponse,
+    DocumentExtractedFieldUpdateRequest,
+    DocumentExtractionResultResponse,
     DocumentOcrResultResponse,
     DocumentFieldValidationResponse,
     DocumentFieldValidationUpdateRequest,
@@ -77,6 +80,7 @@ from app.services.vehicle_manufacturers import VehicleManufacturerService
 from app.services.document_analysis import DocumentAnalysisAdapter, DocumentAnalysisResult
 from app.services.document_ocr import DocumentOcrAdapter, DocumentOcrError
 from app.services.document_consistency import ClaimConsistencyService, ClaimFacts
+from app.services.document_extraction import DocumentExtractionService
 from app.services.document_field_validation import (
     DocumentFieldValidationService,
     ValidatedDocumentField,
@@ -118,6 +122,7 @@ class ClaimService:
         document_analysis: DocumentAnalysisAdapter,
         document_ocr: DocumentOcrAdapter,
         use_mock_document_fields: bool,
+        document_extraction: DocumentExtractionService,
         document_field_validation: DocumentFieldValidationService,
         claim_consistency: ClaimConsistencyService,
     ):
@@ -139,6 +144,7 @@ class ClaimService:
         self.document_analysis = document_analysis
         self.document_ocr = document_ocr
         self.use_mock_document_fields = use_mock_document_fields
+        self.document_extraction = document_extraction
         self.document_field_validation = document_field_validation
         self.claim_consistency = claim_consistency
         self.analysis_runs = AnalysisRunRepository(session)
@@ -263,9 +269,29 @@ class ClaimService:
         for category in DOCUMENT_EVIDENCE_CATEGORIES:
             self._process_document_ocr_category(run, category, by_category[category])
 
+        self._extract_document_fields(run, claim)
         self._validate_document_fields(run, claim)
 
         self.analysis_runs.complete(run, claim)
+
+    def _extract_document_fields(self, run: WorkflowAnalysisRun, claim: Claim) -> None:
+        claim_context = {
+            "claimant_name": claim.claimant_name,
+            "vehicle_make": claim.vehicle_make,
+            "license_plate": claim.license_plate or "",
+        }
+        for ocr_result in self.analysis_runs.document_ocr_results(run.id):
+            if (
+                ocr_result.status is not AnalysisResultStatus.COMPLETED
+                or not self.document_extraction.supports(ocr_result.document_type)
+            ):
+                continue
+            outcome = self.document_extraction.extract(
+                ocr_result.document_type,
+                ocr_result.raw_text or "",
+                claim_context,
+            )
+            self.analysis_runs.save_document_extraction(run, ocr_result, outcome)
 
     def _validate_document_fields(
         self, run: WorkflowAnalysisRun, claim: Claim
@@ -278,7 +304,10 @@ class ClaimService:
         validated_fields: list[ValidatedDocumentField] = []
         validation_records: list[DocumentFieldValidation] = []
         for ocr_result in self.analysis_runs.document_ocr_results(run.id):
-            if ocr_result.status is not AnalysisResultStatus.COMPLETED:
+            if (
+                ocr_result.status is not AnalysisResultStatus.COMPLETED
+                or self.document_extraction.supports(ocr_result.document_type)
+            ):
                 continue
             validations = self.document_field_validation.validate_ocr_result(
                 ocr_result.document_type,
@@ -447,6 +476,26 @@ class ClaimService:
         )
         if consistency:
             self.analysis_runs.update_consistency_check(validation, consistency[0])
+        return self._to_response(claim)
+
+    def update_document_extracted_field(
+        self,
+        claim_number: str,
+        run_id: int,
+        extracted_field_id: int,
+        request: DocumentExtractedFieldUpdateRequest,
+    ) -> ClaimResponse | None:
+        claim = self.claims.find_by_claim_number(claim_number)
+        if claim is None:
+            return None
+        field = self.analysis_runs.find_extracted_field_for_claim(
+            claim.id, run_id, extracted_field_id
+        )
+        if field is None:
+            raise LookupError("Document extracted field not found")
+        if self.workflow_ai_reviews.find_for_run(run_id):
+            raise ValueError("Re-run analysis before changing fields after AI review")
+        self.analysis_runs.update_extracted_field(field, request.confirmed_value)
         return self._to_response(claim)
 
     def run_workflow_ai_review(self, claim_number: str, run_id: int) -> ClaimResponse | None:
@@ -827,6 +876,7 @@ class ClaimService:
                     warning=result.warning,
                     created_at=result.created_at,
                     processed_at=result.processed_at,
+                    extraction=self._document_extraction_response(result.id),
                     field_validations=[
                         DocumentFieldValidationResponse(
                             id=validation.id,
@@ -867,6 +917,42 @@ class ClaimService:
             started_at=run.started_at,
             completed_at=run.completed_at,
             inputs_changed=incident is None or incident.input_revision != run.input_revision,
+        )
+
+    def _document_extraction_response(
+        self, document_ocr_result_id: int
+    ) -> DocumentExtractionResultResponse | None:
+        extraction = self.analysis_runs.document_extraction_for_ocr(document_ocr_result_id)
+        if extraction is None:
+            return None
+        return DocumentExtractionResultResponse(
+            id=extraction.id,
+            analysis_run_id=extraction.analysis_run_id,
+            document_ocr_result_id=extraction.document_ocr_result_id,
+            source_evidence_id=extraction.source_evidence_id,
+            document_type=extraction.document_type,
+            status=extraction.status,
+            prompt_version=extraction.prompt_version,
+            schema_version=extraction.schema_version,
+            warning=extraction.warning,
+            created_at=extraction.created_at,
+            processed_at=extraction.processed_at,
+            fields=[
+                DocumentExtractedFieldResponse(
+                    id=field.id,
+                    analysis_run_id=field.analysis_run_id,
+                    extraction_result_id=field.extraction_result_id,
+                    source_evidence_id=field.source_evidence_id,
+                    field_key=field.field_key,
+                    ai_extracted_value=field.ai_extracted_value,
+                    confirmed_value=field.confirmed_value,
+                    prompt_version=field.prompt_version,
+                    schema_version=field.schema_version,
+                    created_at=field.created_at,
+                    updated_at=field.updated_at,
+                )
+                for field in self.analysis_runs.extracted_fields_for_result(extraction.id)
+            ],
         )
 
     def _incident_response(self, claim_id: int) -> IncidentInformation | None:

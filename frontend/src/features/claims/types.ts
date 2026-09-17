@@ -79,6 +79,35 @@ export type DocumentFieldValidation = {
   warnings: string[];
 };
 
+export type DocumentExtractedField = {
+  id: number;
+  analysis_run_id: number;
+  extraction_result_id: number;
+  source_evidence_id: number;
+  field_key: string;
+  ai_extracted_value: string | null;
+  confirmed_value: string | null;
+  prompt_version: string;
+  schema_version: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type DocumentExtractionResult = {
+  id: number;
+  analysis_run_id: number;
+  document_ocr_result_id: number;
+  source_evidence_id: number;
+  document_type: EvidenceCategory;
+  status: AnalysisResultStatus;
+  prompt_version: string;
+  schema_version: string;
+  warning: string | null;
+  created_at: string;
+  processed_at: string | null;
+  fields: DocumentExtractedField[];
+};
+
 export type DocumentOcrResult = {
   id: number;
   source_evidence_id: number;
@@ -92,6 +121,7 @@ export type DocumentOcrResult = {
   warning: string | null;
   created_at: string;
   processed_at: string | null;
+  extraction?: DocumentExtractionResult | null;
   field_validations: DocumentFieldValidation[];
 };
 

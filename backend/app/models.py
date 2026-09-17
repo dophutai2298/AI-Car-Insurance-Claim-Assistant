@@ -336,6 +336,56 @@ class DocumentOcrResult(Base):
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class DocumentExtractionResult(Base):
+    __tablename__ = "document_extraction_results"
+    __table_args__ = (UniqueConstraint("document_ocr_result_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    analysis_run_id: Mapped[int] = mapped_column(ForeignKey("workflow_analysis_runs.id"), index=True)
+    document_ocr_result_id: Mapped[int] = mapped_column(
+        ForeignKey("document_ocr_results.id"), unique=True, index=True
+    )
+    source_evidence_id: Mapped[int] = mapped_column(ForeignKey("evidence.id"), index=True)
+    document_type: Mapped[EvidenceCategory] = mapped_column(
+        SqlEnum(EvidenceCategory, native_enum=False)
+    )
+    status: Mapped[AnalysisResultStatus] = mapped_column(
+        SqlEnum(AnalysisResultStatus, native_enum=False)
+    )
+    prompt_version: Mapped[str] = mapped_column(String(80))
+    schema_version: Mapped[str] = mapped_column(String(80))
+    warning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DocumentExtractedField(Base):
+    __tablename__ = "document_extracted_fields"
+    __table_args__ = (UniqueConstraint("extraction_result_id", "field_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    analysis_run_id: Mapped[int] = mapped_column(ForeignKey("workflow_analysis_runs.id"), index=True)
+    extraction_result_id: Mapped[int] = mapped_column(
+        ForeignKey("document_extraction_results.id"), index=True
+    )
+    source_evidence_id: Mapped[int] = mapped_column(ForeignKey("evidence.id"), index=True)
+    field_key: Mapped[str] = mapped_column(String(80))
+    ai_extracted_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confirmed_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prompt_version: Mapped[str] = mapped_column(String(80))
+    schema_version: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
 class DocumentFieldValidation(Base):
     __tablename__ = "document_field_validations"
     __table_args__ = (UniqueConstraint("document_ocr_result_id", "field_key"),)

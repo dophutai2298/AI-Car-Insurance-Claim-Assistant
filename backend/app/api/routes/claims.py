@@ -18,6 +18,7 @@ from app.schemas.claims import (
     CopilotConclusionReviewRevertRequest,
     DamageAnalysisResponse,
     DocumentAnalysisFieldUpdateRequest,
+    DocumentExtractedFieldUpdateRequest,
     DocumentFieldValidationUpdateRequest,
     WorkflowAnalysisRunResponse,
 )
@@ -34,6 +35,11 @@ from app.services.vehicle_manufacturers import VehicleManufacturerService
 from app.services.document_analysis import MockDocumentAnalysisAdapter
 from app.services.document_ocr import get_document_ocr_adapter
 from app.services.document_consistency import ClaimConsistencyService
+from app.services.document_extraction import (
+    DocumentExtractionService,
+    DocumentPromptResolver,
+    get_document_extraction_adapter,
+)
 from app.services.document_field_validation import (
     DocumentFieldValidationService,
     get_document_field_validation_adapter,
@@ -56,6 +62,9 @@ def build_claim_service(session: Session, settings: Settings) -> ClaimService:
         MockDocumentAnalysisAdapter(),
         get_document_ocr_adapter(settings.document_ocr_mode),
         settings.document_ocr_mode == "mock",
+        DocumentExtractionService(
+            get_document_extraction_adapter(settings), DocumentPromptResolver()
+        ),
         DocumentFieldValidationService(get_document_field_validation_adapter(settings)),
         ClaimConsistencyService(),
     )
@@ -304,6 +313,31 @@ def update_document_field_validation(
     try:
         claim = service.update_document_field_validation(
             claim_number, run_id, field_validation_id, request
+        )
+    except LookupError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+    if claim is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
+    return claim
+
+
+@router.patch(
+    "/{claim_number}/analysis-runs/{run_id}/extraction-fields/{extracted_field_id}",
+    response_model=ClaimResponse,
+)
+def update_document_extracted_field(
+    claim_number: str,
+    run_id: int,
+    extracted_field_id: int,
+    request: DocumentExtractedFieldUpdateRequest,
+    _current_user: AdjusterUser,
+    service: ClaimServiceDependency,
+) -> ClaimResponse:
+    try:
+        claim = service.update_document_extracted_field(
+            claim_number, run_id, extracted_field_id, request
         )
     except LookupError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error

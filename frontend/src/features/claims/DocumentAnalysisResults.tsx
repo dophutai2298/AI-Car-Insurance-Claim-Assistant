@@ -10,10 +10,14 @@ import { useTranslation } from "react-i18next";
 
 import { EvidenceImagePreview } from "./EvidencePanel";
 import { ClaimsApiError } from "./claimsApi";
-import { useUpdateDocumentFieldValidation } from "./useClaims";
+import {
+  useUpdateDocumentExtractedField,
+  useUpdateDocumentFieldValidation,
+} from "./useClaims";
 import type {
   ClaimConsistencyCheck,
   ClaimDetail,
+  DocumentExtractedField,
   DocumentFieldValidation,
   DocumentOcrResult,
   EvidenceCategory,
@@ -253,6 +257,13 @@ function DocumentImageResult({
             </pre>
           </details>
         ) : null}
+        {result?.extraction ? (
+          <ExtractionResult
+            claimId={claimId}
+            editable={editable}
+            extraction={result.extraction}
+          />
+        ) : null}
         {result?.field_validations.length ? (
           <div className="grid gap-3">
             {result.field_validations.map((field) => (
@@ -265,7 +276,7 @@ function DocumentImageResult({
               />
             ))}
           </div>
-        ) : result?.status === "COMPLETED" ? (
+        ) : result?.status === "COMPLETED" && !result.extraction ? (
           <EmptyResultState message={t("documents.noFields")} />
         ) : null}
         {result?.status === "FAILED" ? (
@@ -273,6 +284,134 @@ function DocumentImageResult({
         ) : null}
       </div>
     </article>
+  );
+}
+
+function ExtractionResult({
+  extraction,
+  claimId,
+  editable,
+}: {
+  extraction: NonNullable<DocumentOcrResult["extraction"]>;
+  claimId: string;
+  editable: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <section className="grid gap-3 border-t border-slate-100 pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h5 className="text-xs font-semibold text-slate-800">
+            {t("documents.structuredExtraction")}
+          </h5>
+          <p className="mt-1 text-xs text-slate-500">
+            {t("documents.extractionProvenance", {
+              prompt: extraction.prompt_version,
+              schema: extraction.schema_version,
+            })}
+          </p>
+        </div>
+        <StatusChip status={extraction.status} />
+      </div>
+      {extraction.warning ? (
+        <Alert status="danger">
+          <WarningAlt size={17} />
+          <Alert.Description>{extraction.warning}</Alert.Description>
+        </Alert>
+      ) : null}
+      {extraction.fields.length ? (
+        <div className="grid gap-3">
+          {extraction.fields.map((field) => (
+            <ExtractedFieldEditor
+              claimId={claimId}
+              editable={editable}
+              field={field}
+              key={field.id}
+            />
+          ))}
+        </div>
+      ) : extraction.status === "COMPLETED" ? (
+        <EmptyResultState message={t("documents.noExtractedFields")} />
+      ) : null}
+    </section>
+  );
+}
+
+function ExtractedFieldEditor({
+  field,
+  claimId,
+  editable,
+}: {
+  field: DocumentExtractedField;
+  claimId: string;
+  editable: boolean;
+}) {
+  const { t } = useTranslation();
+  const update = useUpdateDocumentExtractedField(
+    claimId,
+    field.analysis_run_id,
+  );
+  const [value, setValue] = useState(field.confirmed_value ?? "");
+  useEffect(
+    () => setValue(field.confirmed_value ?? ""),
+    [field.confirmed_value],
+  );
+  const label = t(`documents.fields.${field.field_key}`, {
+    defaultValue: field.field_key,
+  });
+  const normalizedValue = value.trim();
+  const changed = normalizedValue !== (field.confirmed_value ?? "");
+
+  return (
+    <div className="grid gap-3 border-t border-slate-100 pt-3 first:border-t-0 first:pt-0">
+      <h6 className="text-xs font-semibold text-slate-800">{label}</h6>
+      <dl className="grid gap-3 text-xs sm:grid-cols-2">
+        <ValueItem
+          label={t("documents.aiExtractedValue")}
+          value={field.ai_extracted_value}
+        />
+        <div className="min-w-0">
+          <dt className="text-slate-500">{t("documents.confirmedValue")}</dt>
+          <dd className="mt-1 flex gap-2">
+            <Label className="sr-only">
+              {t("documents.confirmedValueLabel", { field: label })}
+            </Label>
+            <Input
+              aria-label={t("documents.confirmedValueLabel", { field: label })}
+              disabled={!editable}
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+            />
+            <Button
+              aria-label={t("documents.saveField", { field: label })}
+              isDisabled={!editable || !changed}
+              isIconOnly
+              isPending={update.isPending}
+              onPress={() =>
+                update.mutate({
+                  extractedFieldId: field.id,
+                  confirmedValue: normalizedValue || null,
+                })
+              }
+              size="sm"
+              variant="outline"
+            >
+              <CheckmarkOutline size={15} />
+            </Button>
+          </dd>
+        </div>
+      </dl>
+      {update.error ? (
+        <div
+          className="border-l-2 border-red-500 bg-red-50 px-3 py-2 text-xs text-red-900"
+          role="alert"
+        >
+          {update.error instanceof ClaimsApiError
+            ? update.error.message
+            : t("documents.saveFailed")}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

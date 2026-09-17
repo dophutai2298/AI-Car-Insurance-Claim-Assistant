@@ -126,6 +126,10 @@ class DocumentFieldValidationUpdateRequest(BaseModel):
     reviewed_value: str = Field(min_length=1, max_length=2000)
 
 
+class DocumentExtractedFieldUpdateRequest(BaseModel):
+    confirmed_value: str | None = Field(default=None, max_length=2000)
+
+
 class DocumentAnalysisResponse(BaseModel):
     id: int
     document_type: EvidenceCategory
@@ -147,7 +151,37 @@ class DocumentOcrResultResponse(BaseModel):
     warning: str | None
     created_at: datetime
     processed_at: datetime | None
+    extraction: "DocumentExtractionResultResponse | None" = None
     field_validations: list["DocumentFieldValidationResponse"] = Field(default_factory=list)
+
+
+class DocumentExtractedFieldResponse(BaseModel):
+    id: int
+    analysis_run_id: int
+    extraction_result_id: int
+    source_evidence_id: int
+    field_key: str
+    ai_extracted_value: str | None
+    confirmed_value: str | None
+    prompt_version: str
+    schema_version: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class DocumentExtractionResultResponse(BaseModel):
+    id: int
+    analysis_run_id: int
+    document_ocr_result_id: int
+    source_evidence_id: int
+    document_type: EvidenceCategory
+    status: AnalysisResultStatus
+    prompt_version: str
+    schema_version: str
+    warning: str | None
+    created_at: datetime
+    processed_at: datetime | None
+    fields: list[DocumentExtractedFieldResponse] = Field(default_factory=list)
 
 
 class DocumentFieldValidationResponse(BaseModel):
