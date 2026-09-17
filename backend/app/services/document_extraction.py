@@ -20,56 +20,73 @@ PROMPT_RESOURCE = Path(__file__).resolve().parents[1] / "prompts" / "systempromp
 SUPPORTED_EXTRACTION_CATEGORIES = {
     EvidenceCategory.ID_CARD,
     EvidenceCategory.INSURANCE_POLICY,
+    EvidenceCategory.VEHICLE_REGISTRATION,
+    EvidenceCategory.DRIVER_LICENSE,
 }
 logger = logging.getLogger(__name__)
 
 
-class IdentityCardExtraction(BaseModel):
+def _normalize_document_date(value: object) -> object:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return value
+    normalized = value.strip()
+    if not normalized:
+        return None
+    for date_format in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(normalized, date_format).strftime("%d/%m/%Y")
+        except ValueError:
+            continue
+    return None
+
+
+class NormalizedExtractionModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    @field_validator("*", mode="before", check_fields=False)
+    @classmethod
+    def normalize_optional_text(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+
+class IdentityCardExtraction(NormalizedExtractionModel):
     full_name: str | None = None
     identity_number: str | None = None
     date_of_birth: str | None = None
     place_of_origin: str | None = None
     expiry_date: str | None = None
 
-    @field_validator("full_name", "identity_number", "place_of_origin", mode="before")
-    @classmethod
-    def normalize_optional_text(cls, value: object) -> object:
-        if isinstance(value, str):
-            return value.strip() or None
-        return value
-
     @field_validator("date_of_birth", "expiry_date", mode="before")
     @classmethod
     def normalize_date(cls, value: object) -> object:
-        if value is None:
-            return None
-        if not isinstance(value, str):
-            return value
-        normalized = value.strip()
-        if not normalized:
-            return None
-        for date_format in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
-            try:
-                return datetime.strptime(normalized, date_format).strftime("%d/%m/%Y")
-            except ValueError:
-                continue
-        return None
+        return _normalize_document_date(value)
 
 
-class InsurancePolicyExtraction(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class InsurancePolicyExtraction(NormalizedExtractionModel):
     vehicle_owner: str | None = None
     vehicle_brand: str | None = None
 
-    @field_validator("vehicle_owner", "vehicle_brand", mode="before")
+
+class VehicleRegistrationExtraction(NormalizedExtractionModel):
+    vehicle_owner: str | None = None
+    vehicle_brand: str | None = None
+    vehicle_type: str | None = None
+    license_plate: str | None = None
+
+
+class DriverLicenseExtraction(NormalizedExtractionModel):
+    license_number: str | None = None
+    full_name: str | None = None
+    expiry_date: str | None = None
+
+    @field_validator("expiry_date", mode="before")
     @classmethod
-    def normalize_optional_text(cls, value: object) -> object:
-        if isinstance(value, str):
-            return value.strip() or None
-        return value
+    def normalize_date(cls, value: object) -> object:
+        return _normalize_document_date(value)
 
 
 @dataclass(frozen=True)
@@ -105,6 +122,8 @@ class DocumentPromptResolver:
     _section_number = {
         EvidenceCategory.ID_CARD: 1,
         EvidenceCategory.INSURANCE_POLICY: 2,
+        EvidenceCategory.VEHICLE_REGISTRATION: 3,
+        EvidenceCategory.DRIVER_LICENSE: 4,
     }
 
     def __init__(self, resource_path: Path = PROMPT_RESOURCE) -> None:
@@ -180,6 +199,35 @@ class DeterministicDocumentExtractionAdapter:
                 ),
                 vehicle_brand=_labeled_value(
                     raw_ocr_text, ("vehicle brand", "brand", "make", "hiệu xe", "hieu xe")
+                ),
+            )
+        if definition.category is EvidenceCategory.VEHICLE_REGISTRATION:
+            return VehicleRegistrationExtraction(
+                vehicle_owner=_labeled_value(
+                    raw_ocr_text, ("vehicle owner", "owner name", "tên chủ xe", "ten chu xe")
+                ),
+                vehicle_brand=_labeled_value(
+                    raw_ocr_text,
+                    ("vehicle brand", "vehicle make", "brand", "make", "nhãn hiệu", "nhan hieu"),
+                ),
+                vehicle_type=_labeled_value(
+                    raw_ocr_text, ("vehicle type", "type", "loại xe", "loai xe")
+                ),
+                license_plate=_labeled_value(
+                    raw_ocr_text,
+                    ("license plate", "number plate", "biển số đăng ký", "bien so dang ky"),
+                ),
+            )
+        if definition.category is EvidenceCategory.DRIVER_LICENSE:
+            return DriverLicenseExtraction(
+                license_number=_labeled_value(
+                    raw_ocr_text,
+                    ("license number", "số giấy phép lái xe", "so giay phep lai xe", "số gplx", "so gplx"),
+                ),
+                full_name=_labeled_value(raw_ocr_text, ("full name", "họ và tên", "ho va ten")),
+                expiry_date=_labeled_value(
+                    raw_ocr_text,
+                    ("expiry date", "expires", "có giá trị đến", "co gia tri den"),
                 ),
             )
         raise DocumentExtractionError(
@@ -258,6 +306,8 @@ class DocumentExtractionService:
     _schema_by_category: dict[EvidenceCategory, type[BaseModel]] = {
         EvidenceCategory.ID_CARD: IdentityCardExtraction,
         EvidenceCategory.INSURANCE_POLICY: InsurancePolicyExtraction,
+        EvidenceCategory.VEHICLE_REGISTRATION: VehicleRegistrationExtraction,
+        EvidenceCategory.DRIVER_LICENSE: DriverLicenseExtraction,
     }
 
     def __init__(

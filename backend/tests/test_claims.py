@@ -7,11 +7,10 @@ from app.core.config import get_settings
 from app.main import create_app
 from app.api.routes import claims as claim_routes
 from app.services.document_ocr import DocumentOcrError, DocumentOcrResult
-from app.services.document_field_validation import (
-    DeterministicFieldValidationAdapter,
-    FieldValidationSelection,
+from app.services.document_extraction import (
+    DeterministicDocumentExtractionAdapter,
+    IdentityCardExtraction,
 )
-from app.services.document_extraction import IdentityCardExtraction
 from app.services.evidence_storage import LocalEvidenceStorage
 from app.services.llm_copilot import LlmCopilotService
 
@@ -560,24 +559,90 @@ def test_identity_and_policy_extraction_persists_structured_fields_and_confirmed
     assert locked_edit.status_code == 409
 
 
+def test_registration_and_driver_license_extraction_supports_multiple_images_and_null_fields(
+    client: TestClient,
+):
+    claim = prepare_claim_for_workflow_analysis(client)
+    second_registration = client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=adjuster_headers(client),
+        data={"categories": ["VEHICLE_REGISTRATION"]},
+        files=[("files", ("registration-back.jpg", b"registration-back", "image/jpeg"))],
+    )
+    assert second_registration.status_code == 200
+
+    started = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    assert started.status_code == 202
+
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+    registrations = [
+        result
+        for result in run["document_ocr_results"]
+        if result["document_type"] == "VEHICLE_REGISTRATION"
+    ]
+    driver_license = next(
+        result
+        for result in run["document_ocr_results"]
+        if result["document_type"] == "DRIVER_LICENSE"
+    )
+
+    assert len(registrations) == 2
+    for registration in registrations:
+        extraction = registration["extraction"]
+        fields = {field["field_key"]: field for field in extraction["fields"]}
+        assert extraction["source_evidence_id"] == registration["source_evidence_id"]
+        assert extraction["document_type"] == "VEHICLE_REGISTRATION"
+        assert set(fields) == {
+            "vehicle_owner",
+            "vehicle_brand",
+            "vehicle_type",
+            "license_plate",
+        }
+        assert fields["vehicle_owner"]["ai_extracted_value"] == "Nguyen Van A"
+        assert fields["vehicle_brand"]["ai_extracted_value"] == "Toyota"
+        assert fields["vehicle_type"]["ai_extracted_value"] == "Ô tô con"
+        assert fields["license_plate"]["ai_extracted_value"] == "51H-123.45"
+        assert all(field["source_evidence_id"] == registration["source_evidence_id"] for field in fields.values())
+        assert all("confidence" not in field for field in fields.values())
+        assert registration["field_validations"] == []
+
+    driver_fields = {
+        field["field_key"]: field
+        for field in driver_license["extraction"]["fields"]
+    }
+    assert set(driver_fields) == {"license_number", "full_name", "expiry_date"}
+    assert driver_fields["license_number"]["ai_extracted_value"] == "079012345678"
+    assert driver_fields["full_name"]["ai_extracted_value"] is None
+    assert driver_fields["expiry_date"]["ai_extracted_value"] is None
+    assert driver_license["field_validations"] == []
+
+
 def test_document_extraction_selects_category_prompt_and_isolates_malformed_output(
     client: TestClient, monkeypatch
 ):
     class CapturingExtractionAdapter:
         def __init__(self) -> None:
             self.calls: list[tuple[str, str]] = []
+            self.delegate = DeterministicDocumentExtractionAdapter()
 
         def extract(self, definition, raw_ocr_text, claim_context):
             self.calls.append((definition.category.value, definition.system_prompt))
             if definition.category.value == "INSURANCE_POLICY":
                 return {"unexpected": "malformed"}
-            return IdentityCardExtraction(
-                full_name="Nguyen Van A",
-                identity_number="000123456789",
-                date_of_birth=None,
-                place_of_origin=None,
-                expiry_date=None,
-            )
+            if definition.category.value == "ID_CARD":
+                return IdentityCardExtraction(
+                    full_name="Nguyen Van A",
+                    identity_number="000123456789",
+                    date_of_birth=None,
+                    place_of_origin=None,
+                    expiry_date=None,
+                )
+            return self.delegate.extract(definition, raw_ocr_text, claim_context)
 
     adapter = CapturingExtractionAdapter()
     monkeypatch.setattr(
@@ -631,6 +696,11 @@ def test_document_extraction_selects_category_prompt_and_isolates_malformed_outp
     assert policy["extraction"]["status"] == "FAILED"
     assert policy["extraction"]["fields"] == []
     assert "ValidationError" in policy["extraction"]["warning"]
+    assert all(
+        item["extraction"]["status"] == "COMPLETED"
+        for item in run["document_ocr_results"]
+        if item["status"] == "COMPLETED" and item["document_type"] != "INSURANCE_POLICY"
+    )
 
 
 def test_workflow_analysis_uses_injected_ocr_adapter_once_per_supported_document_image(
@@ -670,21 +740,17 @@ def test_workflow_analysis_uses_injected_ocr_adapter_once_per_supported_document
     assert id_card["adapter_metadata"] == {"fixture": True}
 
 
-def test_workflow_analysis_returns_field_validation_and_claim_consistency_to_ai_review(
+def test_shared_extraction_replaces_legacy_field_validation_without_blocking_ai_review(
     client: TestClient, monkeypatch
 ):
-    class CapturingFieldAdapter:
-        def __init__(self) -> None:
-            self.calls: list[str] = []
-            self.delegate = DeterministicFieldValidationAdapter()
+    class UnexpectedLegacyFieldAdapter:
+        def validate(self, definition, raw_ocr_text, claim_context):
+            raise AssertionError("Legacy field validation must not run for extracted documents")
 
-        def validate(self, definition, raw_ocr_text, claim_context) -> FieldValidationSelection:
-            self.calls.append(definition.field_key)
-            return self.delegate.validate(definition, raw_ocr_text, claim_context)
-
-    adapter = CapturingFieldAdapter()
     monkeypatch.setattr(
-        claim_routes, "get_document_field_validation_adapter", lambda settings: adapter
+        claim_routes,
+        "get_document_field_validation_adapter",
+        lambda settings: UnexpectedLegacyFieldAdapter(),
     )
     claim = prepare_claim_for_workflow_analysis(client)
     client.post(f"/api/claims/{claim['id']}/analysis-runs", headers=adjuster_headers(client))
@@ -696,24 +762,13 @@ def test_workflow_analysis_returns_field_validation_and_claim_consistency_to_ai_
         for item in run["document_ocr_results"]
         if item["document_type"] == "VEHICLE_REGISTRATION"
     )
-    vehicle_make = next(
-        item
-        for item in registration_ocr["field_validations"]
-        if item["field_key"] == "vehicle_make"
-    )
-    make_check = next(
-        item for item in run["consistency_checks"] if item["field_key"] == "vehicle_make"
-    )
-
-    assert len(adapter.calls) == 6
-    assert vehicle_make["source_evidence_id"] == registration_ocr["source_evidence_id"]
-    assert vehicle_make["analysis_run_id"] == run["id"]
-    assert vehicle_make["ocr_value"] == "Toyota"
-    assert vehicle_make["status"] == "VALID"
-    assert vehicle_make["prompt_version"] == "document-fields-v1"
-    assert make_check["status"] == "MATCH"
-    assert make_check["claim_value"] == "Toyota"
-    assert make_check["document_value"] == "Toyota"
+    registration_fields = {
+        item["field_key"]: item for item in registration_ocr["extraction"]["fields"]
+    }
+    assert registration_ocr["field_validations"] == []
+    assert run["consistency_checks"] == []
+    assert registration_fields["vehicle_brand"]["ai_extracted_value"] == "Toyota"
+    assert registration_fields["license_plate"]["ai_extracted_value"] == "51H-123.45"
 
     captured_context: dict[str, object] = {}
     original_generate = LlmCopilotService.generate
@@ -734,11 +789,11 @@ def test_workflow_analysis_returns_field_validation_and_claim_consistency_to_ai_
         for item in captured_context["document_analysis"]
         if item["document_type"] == "VEHICLE_REGISTRATION"
     )
-    assert registration_context["field_validations"]
-    assert any("manual review" in warning.lower() for warning in captured_context["warnings"])
+    assert registration_context["field_validations"] == []
+    assert registration_context["fields"]
 
 
-def test_adjuster_can_review_image_field_without_changing_ocr_value_and_edit_locks_after_ai_review(
+def test_adjuster_can_confirm_registration_field_without_changing_ai_or_ocr_values(
     client: TestClient,
 ):
     claim = prepare_claim_for_workflow_analysis(client)
@@ -757,14 +812,15 @@ def test_adjuster_can_review_image_field_without_changing_ocr_value_and_edit_loc
     )
     plate = next(
         item
-        for item in registration["field_validations"]
+        for item in registration["extraction"]["fields"]
         if item["field_key"] == "license_plate"
     )
+    raw_ocr = registration["raw_text"]
 
     corrected = client.patch(
-        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/field-validations/{plate['id']}",
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields/{plate['id']}",
         headers=adjuster_headers(client),
-        json={"reviewed_value": "51H-999.99"},
+        json={"confirmed_value": "51H-999.99"},
     )
 
     assert corrected.status_code == 200
@@ -772,11 +828,17 @@ def test_adjuster_can_review_image_field_without_changing_ocr_value_and_edit_loc
         field
         for result in corrected.json()["latest_analysis_run"]["document_ocr_results"]
         if result["id"] == registration["id"]
-        for field in result["field_validations"]
+        for field in result["extraction"]["fields"]
         if field["id"] == plate["id"]
     )
-    assert corrected_plate["ocr_value"] == "51H-123.45"
-    assert corrected_plate["normalized_value"] == "51H-999.99"
+    corrected_registration = next(
+        result
+        for result in corrected.json()["latest_analysis_run"]["document_ocr_results"]
+        if result["id"] == registration["id"]
+    )
+    assert corrected_registration["raw_text"] == raw_ocr
+    assert corrected_plate["ai_extracted_value"] == "51H-123.45"
+    assert corrected_plate["confirmed_value"] == "51H-999.99"
 
     reviewed = client.post(
         f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
@@ -785,9 +847,9 @@ def test_adjuster_can_review_image_field_without_changing_ocr_value_and_edit_loc
     assert reviewed.status_code == 200
 
     locked = client.patch(
-        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/field-validations/{plate['id']}",
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields/{plate['id']}",
         headers=adjuster_headers(client),
-        json={"reviewed_value": "51H-000.00"},
+        json={"confirmed_value": "51H-000.00"},
     )
     assert locked.status_code == 409
 

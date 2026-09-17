@@ -218,6 +218,7 @@ const en = {
       coverage_end: "Coverage end",
       vehicle_owner: "Vehicle owner",
       vehicle_brand: "Vehicle brand",
+      vehicle_type: "Vehicle type",
       owner_name: "Owner name",
       license_plate: "License plate",
       vehicle_make: "Vehicle make",
@@ -565,6 +566,7 @@ const vi = {
       coverage_end: "Ngày hết hạn bảo hiểm",
       vehicle_owner: "Chủ xe",
       vehicle_brand: "Hãng xe",
+      vehicle_type: "Loại xe",
 
       owner_name: "Tên chủ sở hữu",
       license_plate: "Biển số xe",

@@ -33,8 +33,13 @@ class MockDocumentOcrAdapter:
         EvidenceCategory.INSURANCE_POLICY: (
             "Vehicle owner: Nguyen Van A\nVehicle brand: Toyota"
         ),
-        EvidenceCategory.VEHICLE_REGISTRATION: "License plate: 51H-123.45\nVehicle make: Toyota",
-        EvidenceCategory.DRIVER_LICENSE: "License number: 790123456789\nLicense class: B2",
+        EvidenceCategory.VEHICLE_REGISTRATION: (
+            "Vehicle owner: Nguyen Van A\n"
+            "Vehicle make: Toyota\n"
+            "Vehicle type: Ô tô con\n"
+            "License plate: 51H-123.45"
+        ),
+        EvidenceCategory.DRIVER_LICENSE: "License number: 079012345678\nLicense class: B2",
     }
 
     def extract(self, evidence: Evidence, source_path: Path) -> DocumentOcrResult:

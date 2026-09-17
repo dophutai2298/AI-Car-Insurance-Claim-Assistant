@@ -997,6 +997,169 @@ test("adjuster reviews persisted identity extraction without a confidence score"
   expect(input).toHaveValue("Mai Nguyen");
 });
 
+test("adjuster reviews registration and driver license extraction fields", async () => {
+  const registrationEvidence: EvidenceItem = {
+    id: 3,
+    category: "VEHICLE_REGISTRATION",
+    original_filename: "registration.jpg",
+    content_type: "image/jpeg",
+    file_size: 20,
+    uploaded_at: "2026-09-08T00:00:00Z",
+    content_url: "/api/claims/CLM-000083/evidence/3/content",
+  };
+  const driverEvidence: EvidenceItem = {
+    ...registrationEvidence,
+    id: 4,
+    category: "DRIVER_LICENSE",
+    original_filename: "driver-license.jpg",
+    content_url: "/api/claims/CLM-000083/evidence/4/content",
+  };
+  const extractedField = (
+    id: number,
+    sourceEvidenceId: number,
+    fieldKey: string,
+    value: string | null,
+  ) => ({
+    id,
+    analysis_run_id: 10,
+    extraction_result_id: sourceEvidenceId + 300,
+    source_evidence_id: sourceEvidenceId,
+    field_key: fieldKey,
+    ai_extracted_value: value,
+    confirmed_value: value,
+    prompt_version: "document-extraction-v1",
+    schema_version: "document-extraction-schema-v1",
+    created_at: "2026-09-08T00:00:02Z",
+    updated_at: "2026-09-08T00:00:02Z",
+  });
+  const registrationFields = [
+    extractedField(301, 3, "vehicle_owner", "Nguyen Van A"),
+    extractedField(302, 3, "vehicle_brand", "Toyota"),
+    extractedField(303, 3, "vehicle_type", "Ô tô con"),
+    extractedField(304, 3, "license_plate", "51H-123.45"),
+  ];
+  const driverFields = [
+    extractedField(401, 4, "license_number", "079012345678"),
+    extractedField(402, 4, "full_name", null),
+    extractedField(403, 4, "expiry_date", null),
+  ];
+  const ocrResult = (
+    id: number,
+    evidence: EvidenceItem,
+    fields: ReturnType<typeof extractedField>[],
+  ) => ({
+    id,
+    source_evidence_id: evidence.id,
+    document_type: evidence.category,
+    original_filename: evidence.original_filename,
+    content_type: evidence.content_type,
+    status: "COMPLETED" as const,
+    raw_text: `OCR for ${evidence.original_filename}`,
+    adapter_name: "deepdoc-vietocr",
+    adapter_metadata: {},
+    warning: null,
+    created_at: "2026-09-08T00:00:01Z",
+    processed_at: "2026-09-08T00:00:02Z",
+    extraction: {
+      id: evidence.id + 300,
+      analysis_run_id: 10,
+      document_ocr_result_id: id,
+      source_evidence_id: evidence.id,
+      document_type: evidence.category,
+      status: "COMPLETED" as const,
+      prompt_version: "document-extraction-v1",
+      schema_version: "document-extraction-schema-v1",
+      warning: null,
+      created_at: "2026-09-08T00:00:02Z",
+      processed_at: "2026-09-08T00:00:02Z",
+      fields,
+    },
+    field_validations: [],
+  });
+  const claim = {
+    id: "CLM-000083",
+    claimant_name: "Mai Nguyen",
+    vehicle: {
+      make: "Toyota",
+      model: "Camry",
+      year: 2022,
+      license_plate: "51H-123.45",
+      vin: null,
+    },
+    incident: {
+      occurred_at: "2026-09-08T00:00:00Z",
+      location: "District 1",
+      description: "Rear impact.",
+    },
+    status: "REVIEW_REQUIRED",
+    created_at: "2026-09-08T00:00:00Z",
+    updated_at: "2026-09-08T00:01:00Z",
+    evidence: [registrationEvidence, driverEvidence],
+    latest_damage_analysis: null,
+    latest_analysis_run: {
+      id: 10,
+      status: "COMPLETED",
+      damage_status: "FAILED",
+      damage_analysis: null,
+      document_analyses: [],
+      document_ocr_results: [
+        ocrResult(103, registrationEvidence, registrationFields),
+        ocrResult(104, driverEvidence, driverFields),
+      ],
+      consistency_checks: [],
+      failure_reason: null,
+      created_at: "2026-09-08T00:00:00Z",
+      started_at: "2026-09-08T00:00:01Z",
+      completed_at: "2026-09-08T00:00:02Z",
+    },
+    copilot_review_history: [],
+  } as unknown as ClaimDetail;
+  let submittedField: unknown = null;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const path = String(input);
+    if (path.endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adjusterSession.user));
+    if (path.endsWith("/content"))
+      return new Response(new Blob(["image"], { type: "image/jpeg" }));
+    if (path.includes("/extraction-fields/304") && init?.method === "PATCH") {
+      submittedField = JSON.parse(init.body as string);
+      registrationFields[3].confirmed_value = (
+        submittedField as { confirmed_value: string }
+      ).confirmed_value;
+    }
+    return new Response(JSON.stringify(claim));
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  const user = userEvent.setup();
+  renderRoute("/claims/CLM-000083");
+
+  const registration = await screen.findByRole("article", {
+    name: "registration.jpg",
+  });
+  const driver = screen.getByRole("article", { name: "driver-license.jpg" });
+  expect(
+    within(registration).getByLabelText("Vehicle type confirmed value"),
+  ).toHaveValue("Ô tô con");
+  const plate = within(registration).getByLabelText(
+    "License plate confirmed value",
+  );
+  expect(
+    within(driver).getByLabelText("License number confirmed value"),
+  ).toHaveValue("079012345678");
+  expect(within(driver).getAllByText("Not provided")).toHaveLength(2);
+  expect(within(registration).queryByText(/%/)).not.toBeInTheDocument();
+
+  await user.clear(plate);
+  await user.type(plate, "51H-999.99");
+  await user.click(
+    within(registration).getByRole("button", { name: "Save License plate" }),
+  );
+  expect(submittedField).toEqual({ confirmed_value: "51H-999.99" });
+});
+
 test("admin can update global assessment rules from the configuration page", async () => {
   let configuration: AssessmentRuleConfiguration = {
     values: {

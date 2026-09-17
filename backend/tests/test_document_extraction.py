@@ -8,6 +8,7 @@ from app.services.document_extraction import (
     DocumentExtractionService,
     DocumentExtractionDefinition,
     DocumentPromptResolver,
+    DriverLicenseExtraction,
     IdentityCardExtraction,
     LangChainOpenAiDocumentExtractionAdapter,
     get_document_extraction_adapter,
@@ -114,3 +115,29 @@ def test_missing_prompt_resource_is_reported_as_an_extraction_failure(tmp_path: 
     assert outcome.status.value == "FAILED"
     assert outcome.fields == []
     assert outcome.warning == "Document extraction prompt resource is unavailable"
+
+
+def test_prompt_resolver_selects_registration_and_driver_license_sections():
+    resolver = DocumentPromptResolver()
+
+    registration_prompt = resolver.resolve(EvidenceCategory.VEHICLE_REGISTRATION)
+    driver_prompt = resolver.resolve(EvidenceCategory.DRIVER_LICENSE)
+
+    assert "Vehicle Registration Certificate" in registration_prompt
+    assert "`vehicle_owner`" in registration_prompt
+    assert "`license_plate`" in registration_prompt
+    assert "Driver License" in driver_prompt
+    assert "`license_number`" in driver_prompt
+    assert "`expiry_date`" in driver_prompt
+
+
+def test_driver_license_schema_normalizes_expiry_and_keeps_leading_zeroes():
+    extraction = DriverLicenseExtraction(
+        license_number="001234567890",
+        full_name="  Nguyen Van A  ",
+        expiry_date="2030-12-31",
+    )
+
+    assert extraction.license_number == "001234567890"
+    assert extraction.full_name == "Nguyen Van A"
+    assert extraction.expiry_date == "31/12/2030"
