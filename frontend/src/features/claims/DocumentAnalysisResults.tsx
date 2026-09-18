@@ -128,6 +128,7 @@ function DocumentCategoryResults({
   const orphanResults = results.filter(
     (result) => !evidence.some((item) => item.id === result.source_evidence_id),
   );
+  const extraction = results.find((result) => result.extraction)?.extraction;
 
   return (
     <section aria-label={t(`evidence.categories.${category}`)}>
@@ -143,28 +144,37 @@ function DocumentCategoryResults({
         </span>
       </div>
       {evidence.length || orphanResults.length ? (
-        <div className="grid gap-4 xl:grid-cols-2">
-          {evidence.map((item) => (
-            <DocumentImageResult
-              checks={checks}
+        <div className="grid gap-4 border-b border-slate-100 pb-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {evidence.map((item) => (
+              <DocumentImageResult
+                checks={checks}
+                claimId={claimId}
+                editable={editable}
+                evidence={item}
+                isRunActive={isRunActive}
+                key={item.id}
+                result={resultsByEvidence.get(item.id)}
+              />
+            ))}
+            {orphanResults.map((result) => (
+              <DocumentImageResult
+                checks={checks}
+                claimId={claimId}
+                editable={editable}
+                isRunActive={isRunActive}
+                key={result.id}
+                result={result}
+              />
+            ))}
+          </div>
+          {extraction ? (
+            <ExtractionResult
               claimId={claimId}
               editable={editable}
-              evidence={item}
-              isRunActive={isRunActive}
-              key={item.id}
-              result={resultsByEvidence.get(item.id)}
+              extraction={extraction}
             />
-          ))}
-          {orphanResults.map((result) => (
-            <DocumentImageResult
-              checks={checks}
-              claimId={claimId}
-              editable={editable}
-              isRunActive={isRunActive}
-              key={result.id}
-              result={result}
-            />
-          ))}
+          ) : null}
         </div>
       ) : (
         <div className="border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
@@ -256,13 +266,6 @@ function DocumentImageResult({
               {result.raw_text}
             </pre>
           </details>
-        ) : null}
-        {result?.extraction ? (
-          <ExtractionResult
-            claimId={claimId}
-            editable={editable}
-            extraction={result.extraction}
-          />
         ) : null}
         {result?.field_validations.length ? (
           <div className="grid gap-3">

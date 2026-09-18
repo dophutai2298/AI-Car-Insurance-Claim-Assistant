@@ -98,6 +98,11 @@ const en = {
     selectFiles: "Select files",
     selectFor: "Select files for {{category}}",
     removeFile: "Remove {{filename}}",
+    deleteAction: "Delete",
+    deleteFailed: "Evidence could not be deleted",
+    confirmDeleteTitle: "Delete evidence?",
+    confirmDeleteDescription:
+      "Delete {{filename}} from the current claim evidence? Previous analysis history will be preserved.",
     categories: {
       VEHICLE_DAMAGE_IMAGE: "Vehicle damage images",
       ID_CARD: "ID cards",
@@ -416,6 +421,11 @@ const vi = {
     selectFiles: "Chọn tệp",
     selectFor: "Chọn tệp cho {{category}}",
     removeFile: "Xóa {{filename}}",
+    deleteAction: "Xóa",
+    deleteFailed: "Không thể xóa bằng chứng",
+    confirmDeleteTitle: "Xóa bằng chứng?",
+    confirmDeleteDescription:
+      "Xóa {{filename}} khỏi bằng chứng hiện tại? Lịch sử phân tích trước đó vẫn được giữ lại.",
 
     categories: {
       VEHICLE_DAMAGE_IMAGE: "Hình ảnh hư hỏng xe",

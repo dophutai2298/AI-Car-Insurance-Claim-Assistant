@@ -2,6 +2,7 @@ from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 from app.core.config import get_settings
 from app.main import create_app
@@ -463,6 +464,156 @@ def test_workflow_analysis_persists_ocr_results_per_image_and_marks_unsupported_
     assert run["status"] == "PARTIAL"
 
 
+def test_document_evidence_can_be_removed_after_analysis_without_deleting_history(
+    client: TestClient,
+):
+    with client.app.state.session_factory() as session:
+        session.execute(text("PRAGMA foreign_keys=ON"))
+
+    claim = prepare_claim_for_workflow_analysis(client)
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    analyzed = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()
+    policy = next(
+        item
+        for item in analyzed["evidence"]
+        if item["category"] == "INSURANCE_POLICY"
+    )
+
+    removed = client.delete(
+        f"/api/claims/{claim['id']}/evidence/{policy['id']}",
+        headers=adjuster_headers(client),
+    )
+
+    assert removed.status_code == 200
+    assert all(item["id"] != policy["id"] for item in removed.json()["evidence"])
+    assert any(
+        item["source_evidence_id"] == policy["id"]
+        for item in removed.json()["latest_analysis_run"]["document_ocr_results"]
+    )
+
+
+def test_document_analysis_aggregates_each_category_and_only_reprocesses_changes(
+    client: TestClient,
+    monkeypatch,
+):
+    class CountingOcrAdapter:
+        def __init__(self):
+            self.calls: list[int] = []
+
+        def extract(self, evidence, source_path):
+            self.calls.append(evidence.id)
+            return DocumentOcrResult(
+                raw_text=(
+                    f"Source file: {evidence.original_filename}\n"
+                    "Full name: Nguyen Van A\n"
+                    "Identity number: 000123456789\n"
+                    "Vehicle owner: Nguyen Van A\n"
+                    "Vehicle brand: Toyota\n"
+                    "Vehicle type: Sedan\n"
+                    "License plate: 51H-123.45\n"
+                    "License number: 001234567890\n"
+                    "Expiry date: 2030-12-31"
+                ),
+                adapter_name="counting-ocr",
+                metadata={},
+            )
+
+    class CountingExtractionAdapter:
+        def __init__(self):
+            self.calls: list[tuple[str, str]] = []
+            self.delegate = DeterministicDocumentExtractionAdapter()
+
+        def extract(self, definition, raw_ocr_text):
+            self.calls.append((definition.category.value, raw_ocr_text))
+            return self.delegate.extract(definition, raw_ocr_text)
+
+    ocr_adapter = CountingOcrAdapter()
+    extraction_adapter = CountingExtractionAdapter()
+    monkeypatch.setattr(
+        claim_routes, "get_document_ocr_adapter", lambda settings: ocr_adapter
+    )
+    monkeypatch.setattr(
+        claim_routes,
+        "get_document_extraction_adapter",
+        lambda settings: extraction_adapter,
+    )
+
+    claim = prepare_claim_for_workflow_analysis(client)
+    initial = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()
+    policy_pdf = next(
+        item for item in initial["evidence"] if item["category"] == "INSURANCE_POLICY"
+    )
+    assert client.delete(
+        f"/api/claims/{claim['id']}/evidence/{policy_pdf['id']}",
+        headers=adjuster_headers(client),
+    ).status_code == 200
+    first_upload = client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=adjuster_headers(client),
+        data={"categories": ["ID_CARD", "INSURANCE_POLICY"]},
+        files=[
+            ("files", ("id-card-back.jpg", b"id-card-back", "image/jpeg")),
+            ("files", ("policy-front.jpg", b"policy-front", "image/jpeg")),
+        ],
+    )
+    assert first_upload.status_code == 200
+
+    assert client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    ).status_code == 202
+    assert len(ocr_adapter.calls) == 5
+    assert len(extraction_adapter.calls) == 4
+    identity_calls = [
+        raw_text
+        for category, raw_text in extraction_adapter.calls
+        if category == "ID_CARD"
+    ]
+    assert len(identity_calls) == 1
+    assert "id-card.jpg" in identity_calls[0]
+    assert "id-card-back.jpg" in identity_calls[0]
+
+    assert client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    ).status_code == 202
+    assert len(ocr_adapter.calls) == 5
+    assert len(extraction_adapter.calls) == 4
+
+    current = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()
+    policy_image = next(
+        item for item in current["evidence"] if item["category"] == "INSURANCE_POLICY"
+    )
+    assert client.delete(
+        f"/api/claims/{claim['id']}/evidence/{policy_image['id']}",
+        headers=adjuster_headers(client),
+    ).status_code == 200
+    replacement = client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=adjuster_headers(client),
+        data={"categories": ["INSURANCE_POLICY"]},
+        files=[("files", ("policy-replacement.jpg", b"replacement", "image/jpeg"))],
+    )
+    assert replacement.status_code == 200
+
+    assert client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    ).status_code == 202
+    assert len(ocr_adapter.calls) == 6
+    assert len(extraction_adapter.calls) == 5
+    assert extraction_adapter.calls[-1][0] == "INSURANCE_POLICY"
+
+
 def test_identity_and_policy_extraction_persists_structured_fields_and_confirmed_edits(
     client: TestClient,
 ):
@@ -592,24 +743,31 @@ def test_registration_and_driver_license_extraction_supports_multiple_images_and
     )
 
     assert len(registrations) == 2
-    for registration in registrations:
-        extraction = registration["extraction"]
-        fields = {field["field_key"]: field for field in extraction["fields"]}
-        assert extraction["source_evidence_id"] == registration["source_evidence_id"]
-        assert extraction["document_type"] == "VEHICLE_REGISTRATION"
-        assert set(fields) == {
-            "vehicle_owner",
-            "vehicle_brand",
-            "vehicle_type",
-            "license_plate",
-        }
-        assert fields["vehicle_owner"]["ai_extracted_value"] == "Nguyen Van A"
-        assert fields["vehicle_brand"]["ai_extracted_value"] == "Toyota"
-        assert fields["vehicle_type"]["ai_extracted_value"] == "Ô tô con"
-        assert fields["license_plate"]["ai_extracted_value"] == "51H-123.45"
-        assert all(field["source_evidence_id"] == registration["source_evidence_id"] for field in fields.values())
-        assert all("confidence" not in field for field in fields.values())
-        assert registration["field_validations"] == []
+    registration_with_extraction = [
+        registration for registration in registrations if registration["extraction"]
+    ]
+    assert len(registration_with_extraction) == 1
+    registration = registration_with_extraction[0]
+    extraction = registration["extraction"]
+    fields = {field["field_key"]: field for field in extraction["fields"]}
+    assert extraction["source_evidence_id"] == registration["source_evidence_id"]
+    assert extraction["document_type"] == "VEHICLE_REGISTRATION"
+    assert set(fields) == {
+        "vehicle_owner",
+        "vehicle_brand",
+        "vehicle_type",
+        "license_plate",
+    }
+    assert fields["vehicle_owner"]["ai_extracted_value"] == "Nguyen Van A"
+    assert fields["vehicle_brand"]["ai_extracted_value"] == "Toyota"
+    assert fields["vehicle_type"]["ai_extracted_value"] == "Ô tô con"
+    assert fields["license_plate"]["ai_extracted_value"] == "51H-123.45"
+    assert all(
+        field["source_evidence_id"] == registration["source_evidence_id"]
+        for field in fields.values()
+    )
+    assert all("confidence" not in field for field in fields.values())
+    assert all(registration["field_validations"] == [] for registration in registrations)
 
     driver_fields = {
         field["field_key"]: field

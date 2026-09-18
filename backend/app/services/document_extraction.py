@@ -16,7 +16,7 @@ from app.models import AnalysisResultStatus, EvidenceCategory
 
 
 PROMPT_VERSION = "document-extraction-v1"
-SCHEMA_VERSION = "document-extraction-schema-v1"
+SCHEMA_VERSION = "document-extraction-schema-v2-aggregated"
 PROMPT_RESOURCE = Path(__file__).resolve().parents[1] / "prompts" / "systemprompt_document.md"
 SUPPORTED_EXTRACTION_CATEGORIES = {
     EvidenceCategory.ID_CARD,

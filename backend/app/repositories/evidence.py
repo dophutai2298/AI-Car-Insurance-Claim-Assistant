@@ -10,6 +10,7 @@ from app.models import (
     EvidenceCategory,
     EvidenceRemoval,
     DamageDetection,
+    DocumentOcrResult,
     OtherDocumentGroup,
     OtherDocumentGroupEvidence,
 )
@@ -40,7 +41,15 @@ class EvidenceRepository:
         return list(self.session.scalars(statement))
 
     def find_for_claim(self, claim_id: int, evidence_id: int) -> Evidence | None:
-        statement = select(Evidence).where(Evidence.claim_id == claim_id, Evidence.id == evidence_id)
+        statement = (
+            select(Evidence)
+            .outerjoin(EvidenceRemoval, EvidenceRemoval.evidence_id == Evidence.id)
+            .where(
+                Evidence.claim_id == claim_id,
+                Evidence.id == evidence_id,
+                EvidenceRemoval.id.is_(None),
+            )
+        )
         return self.session.scalar(statement)
 
     def find_any_for_claim(self, claim_id: int, evidence_id: int) -> Evidence | None:
@@ -121,7 +130,12 @@ class EvidenceRepository:
                     self.session.delete(group)
         self.session.commit()
 
-    def is_referenced_by_damage_analysis(self, evidence_id: int) -> bool:
+    def is_referenced_by_analysis(self, evidence_id: int) -> bool:
+        document_reference = self.session.scalar(
+            select(DocumentOcrResult.id).where(DocumentOcrResult.evidence_id == evidence_id)
+        )
+        if document_reference is not None:
+            return True
         statement = select(DamageDetection.id).where(
             (DamageDetection.source_evidence_id == evidence_id)
             | (DamageDetection.annotated_evidence_id == evidence_id)

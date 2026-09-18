@@ -495,6 +495,62 @@ test("evidence cards render a constrained thumbnail for uploaded images", async 
   expect(preview.closest("a")).toHaveAttribute("rel", "noopener noreferrer");
 });
 
+test("deleting evidence requires confirmation", async () => {
+  const evidence: EvidenceItem = {
+    id: 1,
+    category: "ID_CARD",
+    original_filename: "claimant-id.jpg",
+    content_type: "image/jpeg",
+    file_size: 20,
+    uploaded_at: "2026-09-08T00:00:00Z",
+    content_url: "/api/claims/CLM-000063/evidence/1/content",
+  };
+  let deleted = false;
+  let claim = {
+    id: "CLM-000063",
+    claimant_name: "Mai Nguyen",
+    vehicle: { make: "Toyota", model: "Camry", year: 2022 },
+    incident: null,
+    status: "DRAFT",
+    created_at: "2026-09-08T00:00:00Z",
+    updated_at: "2026-09-08T00:00:00Z",
+    evidence: [evidence],
+    latest_damage_analysis: null,
+    latest_analysis_run: null,
+    copilot_review_history: [],
+  } as unknown as ClaimDetail;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const path = String(input);
+    if (path.endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adjusterSession.user));
+    if (path.endsWith("/content"))
+      return new Response(new Blob(["image"], { type: "image/jpeg" }));
+    if (path.endsWith("/evidence/1") && init?.method === "DELETE") {
+      deleted = true;
+      claim = { ...claim, evidence: [] };
+    }
+    return new Response(JSON.stringify(claim));
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  const user = userEvent.setup();
+  renderRoute("/claims/CLM-000063");
+
+  await user.click(
+    await screen.findByRole("button", { name: "Remove claimant-id.jpg" }),
+  );
+  const dialog = await screen.findByRole("dialog");
+  expect(within(dialog).getByText("Delete evidence?")).toBeVisible();
+  expect(within(dialog).getByText(/claimant-id\.jpg/)).toBeVisible();
+  expect(deleted).toBe(false);
+
+  await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+  expect(deleted).toBe(true);
+  expect(screen.queryByText("claimant-id.jpg")).not.toBeInTheDocument();
+});
+
 test("legacy claim data remains readable and requests the missing workflow information", async () => {
   const damageImage: EvidenceItem = {
     id: 1,
@@ -983,14 +1039,17 @@ test("adjuster reviews persisted identity extraction without a confidence score"
   const user = userEvent.setup();
   renderRoute("/claims/CLM-000082");
 
-  const card = await screen.findByRole("article", { name: "claimant-id.jpg" });
-  const input = within(card).getByLabelText("Full name confirmed value");
-  expect(within(card).getByText("Nguyen Van A")).toBeVisible();
-  expect(within(card).queryByText("97%")).not.toBeInTheDocument();
+  await screen.findByRole("article", { name: "claimant-id.jpg" });
+  const identitySection = screen.getByRole("region", { name: "ID cards" });
+  const input = within(identitySection).getByLabelText(
+    "Full name confirmed value",
+  );
+  expect(within(identitySection).getByText("Nguyen Van A")).toBeVisible();
+  expect(within(identitySection).queryByText("97%")).not.toBeInTheDocument();
   await user.clear(input);
   await user.type(input, "Mai Nguyen");
   await user.click(
-    within(card).getByRole("button", { name: "Save Full name" }),
+    within(identitySection).getByRole("button", { name: "Save Full name" }),
   );
 
   expect(submittedField).toEqual({ confirmed_value: "Mai Nguyen" });
@@ -1136,10 +1195,11 @@ test("adjuster reviews registration and driver license extraction fields", async
   const user = userEvent.setup();
   renderRoute("/claims/CLM-000083");
 
-  const registration = await screen.findByRole("article", {
-    name: "registration.jpg",
+  await screen.findByRole("article", { name: "registration.jpg" });
+  const registration = screen.getByRole("region", {
+    name: "Vehicle registrations",
   });
-  const driver = screen.getByRole("article", { name: "driver-license.jpg" });
+  const driver = screen.getByRole("region", { name: "Driver licenses" });
   expect(
     within(registration).getByLabelText("Vehicle type confirmed value"),
   ).toHaveValue("Ô tô con");

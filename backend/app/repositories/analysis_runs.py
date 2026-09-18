@@ -56,6 +56,17 @@ class AnalysisRunRepository:
         )
         return self.session.scalar(statement)
 
+    def latest_before(self, claim_id: int, run_id: int) -> WorkflowAnalysisRun | None:
+        statement = (
+            select(WorkflowAnalysisRun)
+            .where(
+                WorkflowAnalysisRun.claim_id == claim_id,
+                WorkflowAnalysisRun.id < run_id,
+            )
+            .order_by(WorkflowAnalysisRun.id.desc())
+        )
+        return self.session.scalar(statement)
+
     def mark_processing(self, run: WorkflowAnalysisRun) -> None:
         run.status = AnalysisRunStatus.PROCESSING
         run.damage_status = AnalysisResultStatus.PROCESSING
@@ -198,6 +209,36 @@ class AnalysisRunRepository:
             )
         )
 
+    def latest_document_ocr_for_evidence(
+        self, evidence_id: int, before_run_id: int
+    ) -> DocumentOcrResult | None:
+        statement = (
+            select(DocumentOcrResult)
+            .where(
+                DocumentOcrResult.evidence_id == evidence_id,
+                DocumentOcrResult.analysis_run_id < before_run_id,
+                DocumentOcrResult.status.in_(
+                    [AnalysisResultStatus.COMPLETED, AnalysisResultStatus.FAILED]
+                ),
+            )
+            .order_by(DocumentOcrResult.analysis_run_id.desc(), DocumentOcrResult.id.desc())
+        )
+        return self.session.scalar(statement)
+
+    def copy_document_ocr_result(
+        self,
+        target: DocumentOcrResult,
+        source: DocumentOcrResult,
+    ) -> DocumentOcrResult:
+        return self.update_document_ocr_result(
+            target,
+            source.status,
+            raw_text=source.raw_text,
+            adapter_name=source.adapter_name,
+            adapter_metadata=json.loads(source.adapter_metadata_json),
+            warning=source.warning,
+        )
+
     def save_document_extraction(
         self,
         run: WorkflowAnalysisRun,
@@ -244,6 +285,60 @@ class AnalysisRunRepository:
                 DocumentExtractionResult.document_ocr_result_id == document_ocr_result_id
             )
         )
+
+    def document_extraction_for_category(
+        self,
+        run_id: int,
+        category: EvidenceCategory,
+        schema_version: str,
+    ) -> DocumentExtractionResult | None:
+        return self.session.scalar(
+            select(DocumentExtractionResult)
+            .where(
+                DocumentExtractionResult.analysis_run_id == run_id,
+                DocumentExtractionResult.document_type == category,
+                DocumentExtractionResult.schema_version == schema_version,
+            )
+            .order_by(DocumentExtractionResult.id)
+        )
+
+    def copy_document_extraction(
+        self,
+        run: WorkflowAnalysisRun,
+        ocr_result: DocumentOcrResult,
+        source: DocumentExtractionResult,
+    ) -> DocumentExtractionResult:
+        extraction = DocumentExtractionResult(
+            analysis_run_id=run.id,
+            document_ocr_result_id=ocr_result.id,
+            source_evidence_id=ocr_result.evidence_id,
+            document_type=ocr_result.document_type,
+            status=source.status,
+            prompt_version=source.prompt_version,
+            schema_version=source.schema_version,
+            warning=source.warning,
+            processed_at=datetime.now(timezone.utc),
+        )
+        self.session.add(extraction)
+        self.session.flush()
+        self.session.add_all(
+            [
+                DocumentExtractedField(
+                    analysis_run_id=run.id,
+                    extraction_result_id=extraction.id,
+                    source_evidence_id=ocr_result.evidence_id,
+                    field_key=field.field_key,
+                    ai_extracted_value=field.ai_extracted_value,
+                    confirmed_value=field.confirmed_value,
+                    prompt_version=field.prompt_version,
+                    schema_version=field.schema_version,
+                )
+                for field in self.extracted_fields_for_result(source.id)
+            ]
+        )
+        self.session.commit()
+        self.session.refresh(extraction)
+        return extraction
 
     def extracted_fields_for_result(
         self, extraction_result_id: int

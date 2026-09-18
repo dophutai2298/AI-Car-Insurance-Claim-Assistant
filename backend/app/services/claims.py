@@ -15,6 +15,7 @@ from app.models import (
     CopilotConclusionReview,
     DamageAssessment,
     DamageAnalysis,
+    DocumentOcrResult,
     Evidence,
     EvidenceCategory,
     CopilotConclusion,
@@ -81,6 +82,7 @@ from app.services.document_analysis import DocumentAnalysisAdapter, DocumentAnal
 from app.services.document_ocr import DocumentOcrAdapter, DocumentOcrError
 from app.services.document_consistency import ClaimConsistencyService, ClaimFacts
 from app.services.document_extraction import DocumentExtractionService
+from app.services.document_extraction import SCHEMA_VERSION as DOCUMENT_EXTRACTION_SCHEMA_VERSION
 from app.services.document_field_validation import (
     DocumentFieldValidationService,
     ValidatedDocumentField,
@@ -266,26 +268,69 @@ class ClaimService:
         except Exception as error:
             self.analysis_runs.mark_damage_failed(run, str(error) or "Damage analysis failed")
 
-        for category in DOCUMENT_EVIDENCE_CATEGORIES:
-            self._process_document_ocr_category(run, category, by_category[category])
+        previous_run = self.analysis_runs.latest_before(claim.id, run.id)
+        ocr_by_category = {
+            category: self._process_document_ocr_category(
+                run, category, by_category[category]
+            )
+            for category in DOCUMENT_EVIDENCE_CATEGORIES
+        }
 
-        self._extract_document_fields(run)
+        self._extract_document_fields(run, previous_run, ocr_by_category)
         self._validate_document_fields(run, claim)
 
         self.analysis_runs.complete(run, claim)
 
-    def _extract_document_fields(self, run: WorkflowAnalysisRun) -> None:
-        for ocr_result in self.analysis_runs.document_ocr_results(run.id):
-            if (
-                ocr_result.status is not AnalysisResultStatus.COMPLETED
-                or not self.document_extraction.supports(ocr_result.document_type)
-            ):
+    def _extract_document_fields(
+        self,
+        run: WorkflowAnalysisRun,
+        previous_run: WorkflowAnalysisRun | None,
+        ocr_by_category: dict[EvidenceCategory, list[DocumentOcrResult]],
+    ) -> None:
+        for category, ocr_results in ocr_by_category.items():
+            completed = [
+                result
+                for result in ocr_results
+                if result.status is AnalysisResultStatus.COMPLETED and result.raw_text
+            ]
+            if not completed or not self.document_extraction.supports(category):
                 continue
-            outcome = self.document_extraction.extract(
-                ocr_result.document_type,
-                ocr_result.raw_text or "",
+            previous_ocr = (
+                [
+                    result
+                    for result in self.analysis_runs.document_ocr_results(previous_run.id)
+                    if result.document_type is category
+                ]
+                if previous_run
+                else []
             )
-            self.analysis_runs.save_document_extraction(run, ocr_result, outcome)
+            unchanged = {result.evidence_id for result in previous_ocr} == {
+                result.evidence_id for result in ocr_results
+            }
+            previous_extraction = (
+                self.analysis_runs.document_extraction_for_category(
+                    previous_run.id,
+                    category,
+                    DOCUMENT_EXTRACTION_SCHEMA_VERSION,
+                )
+                if previous_run and unchanged
+                else None
+            )
+            representative = completed[0]
+            if previous_extraction is not None:
+                self.analysis_runs.copy_document_extraction(
+                    run, representative, previous_extraction
+                )
+                continue
+            combined_ocr = "\n\n".join(
+                f"--- SOURCE: {result.original_filename} ---\n{result.raw_text}"
+                for result in completed
+            )
+            outcome = self.document_extraction.extract(
+                category,
+                combined_ocr,
+            )
+            self.analysis_runs.save_document_extraction(run, representative, outcome)
 
     def _validate_document_fields(
         self, run: WorkflowAnalysisRun, claim: Claim
@@ -328,7 +373,7 @@ class ClaimService:
 
     def _process_document_ocr_category(
         self, run: WorkflowAnalysisRun, category: EvidenceCategory, evidence_items: list[Evidence]
-    ) -> None:
+    ) -> list[DocumentOcrResult]:
         ocr_records = [
             (item, self.analysis_runs.create_document_ocr_result(run, item))
             for item in evidence_items
@@ -337,6 +382,15 @@ class ClaimService:
         statuses: list[AnalysisResultStatus] = []
 
         for evidence, record in ocr_records:
+            reusable = self.analysis_runs.latest_document_ocr_for_evidence(
+                evidence.id, run.id
+            )
+            if reusable is not None:
+                self.analysis_runs.copy_document_ocr_result(record, reusable)
+                if reusable.warning:
+                    warnings.append(f"{evidence.original_filename}: {reusable.warning}")
+                statuses.append(reusable.status)
+                continue
             self.analysis_runs.update_document_ocr_result(record, AnalysisResultStatus.PROCESSING)
             if not self._supports_document_image(evidence):
                 warning = "Only supported image evidence can be processed by OCR; this file was skipped."
@@ -391,6 +445,7 @@ class ClaimService:
             result=fallback_result,
             warning="; ".join(warnings) if warnings else None,
         )
+        return [record for _, record in ocr_records]
 
     @staticmethod
     def _document_category_status(statuses: list[AnalysisResultStatus]) -> AnalysisResultStatus:
@@ -731,7 +786,7 @@ class ClaimService:
         if item is None:
             raise LookupError("Evidence not found")
         stored_path = item.stored_path
-        if self.evidence.is_referenced_by_damage_analysis(item.id):
+        if self.evidence.is_referenced_by_analysis(item.id):
             self.evidence.mark_removed(item)
         else:
             self.evidence.delete(item)
