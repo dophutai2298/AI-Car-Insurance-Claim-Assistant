@@ -316,10 +316,23 @@ class ClaimService:
                 if previous_run and unchanged
                 else None
             )
+            if (
+                previous_extraction is None
+                and previous_run
+                and unchanged
+                and len(ocr_results) == 1
+            ):
+                previous_extraction = self.analysis_runs.document_extraction_for_category(
+                    previous_run.id,
+                    category,
+                )
             representative = completed[0]
             if previous_extraction is not None:
                 self.analysis_runs.copy_document_extraction(
-                    run, representative, previous_extraction
+                    run,
+                    representative,
+                    previous_extraction,
+                    DOCUMENT_EXTRACTION_SCHEMA_VERSION,
                 )
                 continue
             combined_ocr = "\n\n".join(

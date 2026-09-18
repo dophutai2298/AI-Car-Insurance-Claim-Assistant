@@ -279,7 +279,7 @@ class LangChainOpenAiDocumentExtractionAdapter:
             from langchain.messages import HumanMessage, SystemMessage
 
             structured_model = self.model.with_structured_output(
-                definition.output_schema, method="json_schema"
+                definition.output_schema, method="json_mode"
             )
             response = structured_model.invoke(
                 [
@@ -300,7 +300,7 @@ class LangChainOpenAiDocumentExtractionAdapter:
             )
             return definition.output_schema.model_validate(response)
         except Exception as error:
-            logger.warning(
+            logger.exception(
                 "OpenAI document extraction failed for %s using %s after %.2fs (%s)",
                 definition.category.value,
                 self.model_name,

@@ -290,24 +290,27 @@ class AnalysisRunRepository:
         self,
         run_id: int,
         category: EvidenceCategory,
-        schema_version: str,
+        schema_version: str | None = None,
     ) -> DocumentExtractionResult | None:
-        return self.session.scalar(
-            select(DocumentExtractionResult)
-            .where(
-                DocumentExtractionResult.analysis_run_id == run_id,
-                DocumentExtractionResult.document_type == category,
-                DocumentExtractionResult.schema_version == schema_version,
-            )
-            .order_by(DocumentExtractionResult.id)
+        statement = select(DocumentExtractionResult).where(
+            DocumentExtractionResult.analysis_run_id == run_id,
+            DocumentExtractionResult.document_type == category,
+            DocumentExtractionResult.status == AnalysisResultStatus.COMPLETED,
         )
+        if schema_version is not None:
+            statement = statement.where(
+                DocumentExtractionResult.schema_version == schema_version
+            )
+        return self.session.scalar(statement.order_by(DocumentExtractionResult.id))
 
     def copy_document_extraction(
         self,
         run: WorkflowAnalysisRun,
         ocr_result: DocumentOcrResult,
         source: DocumentExtractionResult,
+        schema_version: str | None = None,
     ) -> DocumentExtractionResult:
+        target_schema_version = schema_version or source.schema_version
         extraction = DocumentExtractionResult(
             analysis_run_id=run.id,
             document_ocr_result_id=ocr_result.id,
@@ -315,7 +318,7 @@ class AnalysisRunRepository:
             document_type=ocr_result.document_type,
             status=source.status,
             prompt_version=source.prompt_version,
-            schema_version=source.schema_version,
+            schema_version=target_schema_version,
             warning=source.warning,
             processed_at=datetime.now(timezone.utc),
         )
@@ -331,7 +334,7 @@ class AnalysisRunRepository:
                     ai_extracted_value=field.ai_extracted_value,
                     confirmed_value=field.confirmed_value,
                     prompt_version=field.prompt_version,
-                    schema_version=field.schema_version,
+                    schema_version=target_schema_version,
                 )
                 for field in self.extracted_fields_for_result(source.id)
             ]

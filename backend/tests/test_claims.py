@@ -580,12 +580,33 @@ def test_document_analysis_aggregates_each_category_and_only_reprocesses_changes
     assert "id-card.jpg" in identity_calls[0]
     assert "id-card-back.jpg" in identity_calls[0]
 
+    with client.app.state.session_factory() as session:
+        session.execute(
+            text(
+                "UPDATE document_extraction_results "
+                "SET schema_version = 'document-extraction-schema-v1' "
+                "WHERE document_type = 'INSURANCE_POLICY'"
+            )
+        )
+        session.commit()
+
     assert client.post(
         f"/api/claims/{claim['id']}/analysis-runs",
         headers=adjuster_headers(client),
     ).status_code == 202
     assert len(ocr_adapter.calls) == 5
     assert len(extraction_adapter.calls) == 4
+    reused_run = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+    reused_policy = next(
+        result
+        for result in reused_run["document_ocr_results"]
+        if result["document_type"] == "INSURANCE_POLICY"
+    )
+    assert reused_policy["extraction"]["schema_version"] == (
+        "document-extraction-schema-v2-aggregated"
+    )
 
     current = client.get(
         f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
@@ -612,6 +633,71 @@ def test_document_analysis_aggregates_each_category_and_only_reprocesses_changes
     assert len(ocr_adapter.calls) == 6
     assert len(extraction_adapter.calls) == 5
     assert extraction_adapter.calls[-1][0] == "INSURANCE_POLICY"
+
+
+def test_document_analysis_retries_only_failed_extraction_on_unchanged_evidence(
+    client: TestClient,
+    monkeypatch,
+):
+    class FailPolicyOnceAdapter:
+        def __init__(self):
+            self.calls: list[str] = []
+            self.delegate = DeterministicDocumentExtractionAdapter()
+            self.policy_attempts = 0
+
+        def extract(self, definition, raw_ocr_text):
+            self.calls.append(definition.category.value)
+            if definition.category.value == "INSURANCE_POLICY":
+                self.policy_attempts += 1
+                if self.policy_attempts == 1:
+                    return {"unexpected": "malformed"}
+            return self.delegate.extract(definition, raw_ocr_text)
+
+    adapter = FailPolicyOnceAdapter()
+    monkeypatch.setattr(
+        claim_routes,
+        "get_document_extraction_adapter",
+        lambda settings: adapter,
+    )
+    claim = prepare_claim_for_workflow_analysis(client)
+    current = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()
+    policy_pdf = next(
+        item for item in current["evidence"] if item["category"] == "INSURANCE_POLICY"
+    )
+    client.delete(
+        f"/api/claims/{claim['id']}/evidence/{policy_pdf['id']}",
+        headers=adjuster_headers(client),
+    )
+    client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=adjuster_headers(client),
+        data={"categories": ["INSURANCE_POLICY"]},
+        files=[("files", ("policy.jpg", b"policy", "image/jpeg"))],
+    )
+
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    assert adapter.calls.count("INSURANCE_POLICY") == 1
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+
+    assert len(adapter.calls) == 5
+    assert adapter.calls[-1] == "INSURANCE_POLICY"
+    latest = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+    policy = next(
+        result
+        for result in latest["document_ocr_results"]
+        if result["document_type"] == "INSURANCE_POLICY"
+    )
+    assert policy["extraction"]["status"] == "COMPLETED"
 
 
 def test_identity_and_policy_extraction_persists_structured_fields_and_confirmed_edits(

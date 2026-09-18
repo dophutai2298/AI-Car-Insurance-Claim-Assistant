@@ -70,7 +70,7 @@ def test_langchain_adapter_sends_system_and_human_messages_with_structured_schem
     }
     assert "Mai Nguyen" not in str(messages[1].content)
     assert captured["schema"] is IdentityCardExtraction
-    assert captured["method"] == "json_schema"
+    assert captured["method"] == "json_mode"
     assert result.identity_number == "000123456789"
 
 
