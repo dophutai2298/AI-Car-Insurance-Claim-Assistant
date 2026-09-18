@@ -93,6 +93,7 @@ const en = {
     otherFiles: "Other document files",
     addOther: "Add other document",
     uploaded: "Uploaded",
+    analysisRequired: "Analysis required",
     required: "Required",
     addMore: "Add files",
     selectFiles: "Select files",
@@ -173,6 +174,8 @@ const en = {
     processedBy: "Processed by {{adapter}}",
     processingState: "Waiting for OCR processing",
     processing: "OCR and field validation are processing.",
+    reusing: "Reusing the previous analysis result.",
+    reused: "Reused",
     unavailable: "Unavailable",
     noEvidence: "No evidence image is available in this category.",
     resultUnavailable:
@@ -184,6 +187,9 @@ const en = {
     fieldsLocked:
       "Field values are locked because an AI review already exists for this analysis run.",
     saveFailed: "The reviewed field value could not be saved.",
+    saveAll: "Save all fields",
+    saveAllSuccess: "All document field values were saved.",
+    saveAllFailed: "Document field values could not be saved.",
     rawOcr: "Raw OCR text",
     structuredExtraction: "Structured extraction",
     extractionProvenance: "Prompt {{prompt}} · Schema {{schema}}",

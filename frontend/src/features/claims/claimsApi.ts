@@ -123,6 +123,20 @@ export const updateDocumentExtractedField = (
       body: JSON.stringify({ confirmed_value: confirmedValue }),
     },
   );
+export const updateDocumentExtractedFields = (
+  claimId: string,
+  runId: number,
+  fields: Array<{ id: number; confirmed_value: string | null }>,
+  accessToken: string,
+) =>
+  request<ClaimDetail>(
+    `/api/claims/${claimId}/analysis-runs/${runId}/extraction-fields`,
+    accessToken,
+    {
+      method: "PUT",
+      body: JSON.stringify({ fields }),
+    },
+  );
 export const runWorkflowAiReview = (
   claimId: string,
   runId: number,

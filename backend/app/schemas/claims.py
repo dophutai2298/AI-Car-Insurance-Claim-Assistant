@@ -85,6 +85,7 @@ class EvidenceResponse(BaseModel):
     content_url: str
     group_id: int | None = None
     group_label: str | None = None
+    analysis_required: bool = False
 
 
 class DamageDetectionResponse(BaseModel):
@@ -130,6 +131,22 @@ class DocumentExtractedFieldUpdateRequest(BaseModel):
     confirmed_value: str | None = Field(default=None, max_length=2000)
 
 
+class DocumentExtractedFieldBatchItem(BaseModel):
+    id: int = Field(gt=0)
+    confirmed_value: str | None = Field(default=None, max_length=2000)
+
+
+class DocumentExtractedFieldsBatchUpdateRequest(BaseModel):
+    fields: list[DocumentExtractedFieldBatchItem] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def field_ids_must_be_unique(self):
+        ids = [field.id for field in self.fields]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Document extracted field ids must be unique")
+        return self
+
+
 class DocumentAnalysisResponse(BaseModel):
     id: int
     document_type: EvidenceCategory
@@ -151,6 +168,7 @@ class DocumentOcrResultResponse(BaseModel):
     warning: str | None
     created_at: datetime
     processed_at: datetime | None
+    reused: bool = False
     extraction: "DocumentExtractionResultResponse | None" = None
     field_validations: list["DocumentFieldValidationResponse"] = Field(default_factory=list)
 
@@ -181,6 +199,7 @@ class DocumentExtractionResultResponse(BaseModel):
     warning: str | None
     created_at: datetime
     processed_at: datetime | None
+    reused: bool = False
     fields: list[DocumentExtractedFieldResponse] = Field(default_factory=list)
 
 

@@ -14,6 +14,7 @@ import {
   transitionClaimStatus,
   updateClaimInformation,
   updateDocumentExtractedField,
+  updateDocumentExtractedFields,
   updateDocumentField,
   updateDocumentFieldValidation,
   uploadEvidence,
@@ -210,6 +211,26 @@ export function useUpdateDocumentExtractedField(
         runId,
         extractedFieldId,
         confirmedValue,
+        session!.access_token,
+      ),
+    onSuccess: cache,
+  });
+}
+
+export function useUpdateDocumentExtractedFields(
+  claimId: string | undefined,
+  runId: number,
+) {
+  const { session } = useAuth();
+  const cache = useClaimCache();
+  return useMutation({
+    mutationFn: (
+      fields: Array<{ id: number; confirmed_value: string | null }>,
+    ) =>
+      updateDocumentExtractedFields(
+        claimId!,
+        runId,
+        fields,
         session!.access_token,
       ),
     onSuccess: cache,

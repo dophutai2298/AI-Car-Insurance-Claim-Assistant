@@ -253,6 +253,7 @@ function CategorySection({
   const { t } = useTranslation();
   const input = useRef<HTMLInputElement>(null);
   const complete = evidence.length > 0;
+  const analysisRequired = evidence.some((item) => item.analysis_required);
   return (
     <section
       className={`grid content-start gap-3 border p-4 ${complete ? "border-emerald-200 bg-emerald-50/40" : "border-amber-200 bg-amber-50/40"}`}
@@ -266,9 +267,21 @@ function CategorySection({
             {t(`evidence.hints.${category}`)}
           </p>
         </div>
-        <Chip color={complete ? "success" : "warning"} size="sm" variant="soft">
-          {complete ? <CheckmarkOutline size={14} /> : <WarningAlt size={14} />}
-          {complete ? t("evidence.uploaded") : t("evidence.required")}
+        <Chip
+          color={!complete || analysisRequired ? "warning" : "success"}
+          size="sm"
+          variant="soft"
+        >
+          {complete && !analysisRequired ? (
+            <CheckmarkOutline size={14} />
+          ) : (
+            <WarningAlt size={14} />
+          )}
+          {!complete
+            ? t("evidence.required")
+            : analysisRequired
+              ? t("evidence.analysisRequired")
+              : t("evidence.uploaded")}
         </Chip>
       </div>
       <EvidenceFiles evidence={evidence} locked={locked} onRemove={onRemove} />
@@ -337,6 +350,11 @@ function EvidenceFiles({
             <p className="text-xs text-slate-500">
               {formatFileSize(item.file_size)}
             </p>
+            {item.analysis_required ? (
+              <p className="mt-1 text-xs font-medium text-amber-700">
+                {t("evidence.analysisRequired")}
+              </p>
+            ) : null}
           </div>
           {!locked ? (
             <Button

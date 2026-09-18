@@ -19,6 +19,7 @@ from app.schemas.claims import (
     DamageAnalysisResponse,
     DocumentAnalysisFieldUpdateRequest,
     DocumentExtractedFieldUpdateRequest,
+    DocumentExtractedFieldsBatchUpdateRequest,
     DocumentFieldValidationUpdateRequest,
     WorkflowAnalysisRunResponse,
 )
@@ -339,6 +340,28 @@ def update_document_extracted_field(
         claim = service.update_document_extracted_field(
             claim_number, run_id, extracted_field_id, request
         )
+    except LookupError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+    if claim is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
+    return claim
+
+
+@router.put(
+    "/{claim_number}/analysis-runs/{run_id}/extraction-fields",
+    response_model=ClaimResponse,
+)
+def update_document_extracted_fields(
+    claim_number: str,
+    run_id: int,
+    request: DocumentExtractedFieldsBatchUpdateRequest,
+    _current_user: AdjusterUser,
+    service: ClaimServiceDependency,
+) -> ClaimResponse:
+    try:
+        claim = service.update_document_extracted_fields(claim_number, run_id, request)
     except LookupError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
     except ValueError as error:

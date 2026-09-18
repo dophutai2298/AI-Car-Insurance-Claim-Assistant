@@ -2,6 +2,7 @@ import {
   CheckmarkOutline,
   Document,
   InProgress,
+  Save,
   WarningAlt,
 } from "@carbon/icons-react";
 import { Alert, Button, Chip, Input, Label } from "@heroui/react";
@@ -11,7 +12,7 @@ import { useTranslation } from "react-i18next";
 import { EvidenceImagePreview } from "./EvidencePanel";
 import { ClaimsApiError } from "./claimsApi";
 import {
-  useUpdateDocumentExtractedField,
+  useUpdateDocumentExtractedFields,
   useUpdateDocumentFieldValidation,
 } from "./useClaims";
 import type {
@@ -52,6 +53,25 @@ export function DocumentAnalysisResults({
   const results = run.document_ocr_results ?? [];
   const checks = run.consistency_checks ?? [];
   const editable = !run.damage_analysis?.copilot_conclusion;
+  const extractedFields = results.flatMap(
+    (result) => result.extraction?.fields ?? [],
+  );
+  const extractedFieldIds = extractedFields.map((field) => field.id).join(",");
+  const [draftValues, setDraftValues] = useState<Record<number, string>>({});
+  const saveAll = useUpdateDocumentExtractedFields(claim.id, run.id);
+  useEffect(() => {
+    setDraftValues((current) =>
+      Object.fromEntries(
+        extractedFields.map((field) => [
+          field.id,
+          Object.hasOwn(current, field.id)
+            ? current[field.id]
+            : (field.confirmed_value ?? ""),
+        ]),
+      ),
+    );
+    saveAll.reset();
+  }, [extractedFieldIds, run.id]);
 
   return (
     <section className="grid gap-5 border-t border-slate-200 pt-5">
@@ -89,13 +109,57 @@ export function DocumentAnalysisResults({
               claimId={claim.id}
               editable={editable}
               evidence={categoryEvidence}
+              draftValues={draftValues}
               isRunActive={["PENDING", "PROCESSING"].includes(run.status)}
               key={category}
+              onDraftChange={(fieldId, value) => {
+                saveAll.reset();
+                setDraftValues((current) => ({
+                  ...current,
+                  [fieldId]: value,
+                }));
+              }}
               results={categoryResults}
             />
           );
         })}
       </div>
+
+      {extractedFields.length ? (
+        <div className="flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div aria-live="polite" className="text-xs">
+            {saveAll.isSuccess ? (
+              <span className="text-emerald-700">
+                {t("documents.saveAllSuccess")}
+              </span>
+            ) : saveAll.error ? (
+              <span className="text-red-700">
+                {saveAll.error instanceof ClaimsApiError
+                  ? saveAll.error.message
+                  : t("documents.saveAllFailed")}
+              </span>
+            ) : null}
+          </div>
+          <Button
+            isDisabled={
+              !editable || ["PENDING", "PROCESSING"].includes(run.status)
+            }
+            isPending={saveAll.isPending}
+            onPress={() =>
+              saveAll.mutate(
+                extractedFields.map((field) => ({
+                  id: field.id,
+                  confirmed_value: draftValues[field.id]?.trim() || null,
+                })),
+              )
+            }
+            variant="primary"
+          >
+            <Save size={16} />
+            {t("documents.saveAll")}
+          </Button>
+        </div>
+      ) : null}
 
       <div className="border-l-2 border-slate-300 bg-slate-50 px-4 py-3 text-xs text-slate-600">
         {t("documents.decisionBoundary")}
@@ -112,6 +176,8 @@ function DocumentCategoryResults({
   isRunActive,
   claimId,
   editable,
+  draftValues,
+  onDraftChange,
 }: {
   category: EvidenceCategory;
   evidence: EvidenceItem[];
@@ -120,6 +186,8 @@ function DocumentCategoryResults({
   isRunActive: boolean;
   claimId: string;
   editable: boolean;
+  draftValues: Record<number, string>;
+  onDraftChange: (fieldId: number, value: string) => void;
 }) {
   const { t } = useTranslation();
   const resultsByEvidence = new Map(
@@ -170,9 +238,10 @@ function DocumentCategoryResults({
           </div>
           {extraction ? (
             <ExtractionResult
-              claimId={claimId}
+              draftValues={draftValues}
               editable={editable}
               extraction={extraction}
+              onDraftChange={onDraftChange}
             />
           ) : null}
         </div>
@@ -203,6 +272,9 @@ function DocumentImageResult({
   const { t } = useTranslation();
   const filename =
     result?.original_filename ?? evidence?.original_filename ?? "";
+  const awaitingReuse = Boolean(
+    !result && isRunActive && evidence && !evidence.analysis_required,
+  );
   const status = result?.status ?? (isRunActive ? "PROCESSING" : "UNAVAILABLE");
   const fieldChecks = new Map(
     checks
@@ -236,18 +308,33 @@ function DocumentImageResult({
             >
               {filename}
             </p>
-            <StatusChip status={status} />
+            <div className="flex shrink-0 items-center gap-1">
+              {result?.reused || awaitingReuse ? (
+                <Chip color="default" size="sm" variant="soft">
+                  {t("documents.reused")}
+                </Chip>
+              ) : null}
+              <StatusChip status={status} />
+            </div>
           </div>
           <p className="mt-2 text-xs text-slate-500">
-            {result?.adapter_name
-              ? t("documents.processedBy", { adapter: result.adapter_name })
-              : t("documents.processingState")}
+            {awaitingReuse
+              ? t("documents.reusing")
+              : result?.adapter_name
+                ? t("documents.processedBy", { adapter: result.adapter_name })
+                : t("documents.processingState")}
           </p>
         </div>
       </header>
 
       <div className="grid gap-4 p-4">
-        {!result && isRunActive ? <ProcessingState /> : null}
+        {!result && isRunActive ? (
+          awaitingReuse ? (
+            <ReuseState />
+          ) : (
+            <ProcessingState />
+          )
+        ) : null}
         {!result && !isRunActive ? (
           <EmptyResultState message={t("documents.resultUnavailable")} />
         ) : null}
@@ -292,12 +379,14 @@ function DocumentImageResult({
 
 function ExtractionResult({
   extraction,
-  claimId,
   editable,
+  draftValues,
+  onDraftChange,
 }: {
   extraction: NonNullable<DocumentOcrResult["extraction"]>;
-  claimId: string;
   editable: boolean;
+  draftValues: Record<number, string>;
+  onDraftChange: (fieldId: number, value: string) => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -314,7 +403,14 @@ function ExtractionResult({
             })}
           </p>
         </div>
-        <StatusChip status={extraction.status} />
+        <div className="flex items-center gap-1">
+          {extraction.reused ? (
+            <Chip color="default" size="sm" variant="soft">
+              {t("documents.reused")}
+            </Chip>
+          ) : null}
+          <StatusChip status={extraction.status} />
+        </div>
       </div>
       {extraction.warning ? (
         <Alert status="danger">
@@ -326,10 +422,11 @@ function ExtractionResult({
         <div className="grid gap-3">
           {extraction.fields.map((field) => (
             <ExtractedFieldEditor
-              claimId={claimId}
               editable={editable}
               field={field}
               key={field.id}
+              onChange={(value) => onDraftChange(field.id, value)}
+              value={draftValues[field.id] ?? field.confirmed_value ?? ""}
             />
           ))}
         </div>
@@ -342,28 +439,19 @@ function ExtractionResult({
 
 function ExtractedFieldEditor({
   field,
-  claimId,
   editable,
+  value,
+  onChange,
 }: {
   field: DocumentExtractedField;
-  claimId: string;
   editable: boolean;
+  value: string;
+  onChange: (value: string) => void;
 }) {
   const { t } = useTranslation();
-  const update = useUpdateDocumentExtractedField(
-    claimId,
-    field.analysis_run_id,
-  );
-  const [value, setValue] = useState(field.confirmed_value ?? "");
-  useEffect(
-    () => setValue(field.confirmed_value ?? ""),
-    [field.confirmed_value],
-  );
   const label = t(`documents.fields.${field.field_key}`, {
     defaultValue: field.field_key,
   });
-  const normalizedValue = value.trim();
-  const changed = normalizedValue !== (field.confirmed_value ?? "");
 
   return (
     <div className="grid gap-3 border-t border-slate-100 pt-3 first:border-t-0 first:pt-0">
@@ -375,7 +463,7 @@ function ExtractedFieldEditor({
         />
         <div className="min-w-0">
           <dt className="text-slate-500">{t("documents.confirmedValue")}</dt>
-          <dd className="mt-1 flex gap-2">
+          <dd className="mt-1">
             <Label className="sr-only">
               {t("documents.confirmedValueLabel", { field: label })}
             </Label>
@@ -383,37 +471,11 @@ function ExtractedFieldEditor({
               aria-label={t("documents.confirmedValueLabel", { field: label })}
               disabled={!editable}
               value={value}
-              onChange={(event) => setValue(event.target.value)}
+              onChange={(event) => onChange(event.target.value)}
             />
-            <Button
-              aria-label={t("documents.saveField", { field: label })}
-              isDisabled={!editable || !changed}
-              isIconOnly
-              isPending={update.isPending}
-              onPress={() =>
-                update.mutate({
-                  extractedFieldId: field.id,
-                  confirmedValue: normalizedValue || null,
-                })
-              }
-              size="sm"
-              variant="outline"
-            >
-              <CheckmarkOutline size={15} />
-            </Button>
           </dd>
         </div>
       </dl>
-      {update.error ? (
-        <div
-          className="border-l-2 border-red-500 bg-red-50 px-3 py-2 text-xs text-red-900"
-          role="alert"
-        >
-          {update.error instanceof ClaimsApiError
-            ? update.error.message
-            : t("documents.saveFailed")}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -563,6 +625,16 @@ function ProcessingState() {
     <div className="flex items-center gap-3 bg-blue-50 px-3 py-3 text-xs text-blue-900">
       <InProgress className="animate-spin" size={17} />
       {t("documents.processing")}
+    </div>
+  );
+}
+
+function ReuseState() {
+  const { t } = useTranslation();
+  return (
+    <div className="flex items-center gap-3 bg-slate-50 px-3 py-3 text-xs text-slate-700">
+      <CheckmarkOutline size={17} />
+      {t("documents.reusing")}
     </div>
   );
 }

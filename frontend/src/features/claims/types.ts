@@ -51,6 +51,7 @@ export type EvidenceItem = {
   content_url: string;
   group_id?: number | null;
   group_label?: string | null;
+  analysis_required?: boolean;
 };
 
 export type EvidenceUploadItem = { file: File; category: EvidenceCategory };
@@ -105,6 +106,7 @@ export type DocumentExtractionResult = {
   warning: string | null;
   created_at: string;
   processed_at: string | null;
+  reused?: boolean;
   fields: DocumentExtractedField[];
 };
 
@@ -121,6 +123,7 @@ export type DocumentOcrResult = {
   warning: string | null;
   created_at: string;
   processed_at: string | null;
+  reused?: boolean;
   extraction?: DocumentExtractionResult | null;
   field_validations: DocumentFieldValidation[];
 };

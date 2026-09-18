@@ -56,6 +56,23 @@ class AnalysisRunRepository:
         )
         return self.session.scalar(statement)
 
+    def latest_terminal_for_claim(self, claim_id: int) -> WorkflowAnalysisRun | None:
+        statement = (
+            select(WorkflowAnalysisRun)
+            .where(
+                WorkflowAnalysisRun.claim_id == claim_id,
+                WorkflowAnalysisRun.status.in_(
+                    [
+                        AnalysisRunStatus.COMPLETED,
+                        AnalysisRunStatus.PARTIAL,
+                        AnalysisRunStatus.FAILED,
+                    ]
+                ),
+            )
+            .order_by(WorkflowAnalysisRun.created_at.desc(), WorkflowAnalysisRun.id.desc())
+        )
+        return self.session.scalar(statement)
+
     def latest_before(self, claim_id: int, run_id: int) -> WorkflowAnalysisRun | None:
         statement = (
             select(WorkflowAnalysisRun)
@@ -230,14 +247,37 @@ class AnalysisRunRepository:
         target: DocumentOcrResult,
         source: DocumentOcrResult,
     ) -> DocumentOcrResult:
+        metadata = json.loads(source.adapter_metadata_json)
+        metadata.update(
+            {
+                "ocr_reused": True,
+                "ocr_reused_from_analysis_run_id": source.analysis_run_id,
+            }
+        )
         return self.update_document_ocr_result(
             target,
             source.status,
             raw_text=source.raw_text,
             adapter_name=source.adapter_name,
-            adapter_metadata=json.loads(source.adapter_metadata_json),
+            adapter_metadata=metadata,
             warning=source.warning,
         )
+
+    def mark_document_extraction_reuse(
+        self,
+        ocr_result: DocumentOcrResult,
+        *,
+        reused: bool,
+        source_run_id: int | None = None,
+    ) -> None:
+        metadata = json.loads(ocr_result.adapter_metadata_json)
+        metadata["extraction_reused"] = reused
+        if source_run_id is not None:
+            metadata["extraction_reused_from_analysis_run_id"] = source_run_id
+        else:
+            metadata.pop("extraction_reused_from_analysis_run_id", None)
+        ocr_result.adapter_metadata_json = json.dumps(metadata)
+        self.session.commit()
 
     def save_document_extraction(
         self,
@@ -373,6 +413,27 @@ class AnalysisRunRepository:
             )
         )
 
+    def find_extracted_fields_for_claim(
+        self,
+        claim_id: int,
+        run_id: int,
+        extracted_field_ids: list[int],
+    ) -> list[DocumentExtractedField]:
+        return list(
+            self.session.scalars(
+                select(DocumentExtractedField)
+                .join(
+                    WorkflowAnalysisRun,
+                    WorkflowAnalysisRun.id == DocumentExtractedField.analysis_run_id,
+                )
+                .where(
+                    WorkflowAnalysisRun.claim_id == claim_id,
+                    WorkflowAnalysisRun.id == run_id,
+                    DocumentExtractedField.id.in_(extracted_field_ids),
+                )
+            )
+        )
+
     def update_extracted_field(
         self, field: DocumentExtractedField, confirmed_value: str | None
     ) -> DocumentExtractedField:
@@ -380,6 +441,16 @@ class AnalysisRunRepository:
         self.session.commit()
         self.session.refresh(field)
         return field
+
+    def update_extracted_fields(
+        self,
+        fields: list[DocumentExtractedField],
+        values_by_id: dict[int, str | None],
+    ) -> None:
+        for field in fields:
+            value = values_by_id[field.id]
+            field.confirmed_value = value.strip() if value else None
+        self.session.commit()
 
     def save_field_validations(
         self,

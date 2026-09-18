@@ -55,6 +55,7 @@ from app.schemas.claims import (
     DocumentAnalysisFieldUpdateRequest,
     DocumentAnalysisResponse,
     DocumentExtractedFieldResponse,
+    DocumentExtractedFieldsBatchUpdateRequest,
     DocumentExtractedFieldUpdateRequest,
     DocumentExtractionResultResponse,
     DocumentOcrResultResponse,
@@ -334,6 +335,11 @@ class ClaimService:
                     previous_extraction,
                     DOCUMENT_EXTRACTION_SCHEMA_VERSION,
                 )
+                self.analysis_runs.mark_document_extraction_reuse(
+                    representative,
+                    reused=True,
+                    source_run_id=previous_extraction.analysis_run_id,
+                )
                 continue
             combined_ocr = "\n\n".join(
                 f"--- SOURCE: {result.original_filename} ---\n{result.raw_text}"
@@ -344,6 +350,9 @@ class ClaimService:
                 combined_ocr,
             )
             self.analysis_runs.save_document_extraction(run, representative, outcome)
+            self.analysis_runs.mark_document_extraction_reuse(
+                representative, reused=False
+            )
 
     def _validate_document_fields(
         self, run: WorkflowAnalysisRun, claim: Claim
@@ -422,7 +431,7 @@ class ClaimService:
                     AnalysisResultStatus.COMPLETED,
                     raw_text=extracted.raw_text,
                     adapter_name=extracted.adapter_name,
-                    adapter_metadata=extracted.metadata,
+                    adapter_metadata={**extracted.metadata, "ocr_reused": False},
                     warning=extracted.warning,
                 )
                 if extracted.warning:
@@ -558,6 +567,29 @@ class ClaimService:
         if self.workflow_ai_reviews.find_for_run(run_id):
             raise ValueError("Re-run analysis before changing fields after AI review")
         self.analysis_runs.update_extracted_field(field, request.confirmed_value)
+        return self._to_response(claim)
+
+    def update_document_extracted_fields(
+        self,
+        claim_number: str,
+        run_id: int,
+        request: DocumentExtractedFieldsBatchUpdateRequest,
+    ) -> ClaimResponse | None:
+        claim = self.claims.find_by_claim_number(claim_number)
+        if claim is None:
+            return None
+        if self.workflow_ai_reviews.find_for_run(run_id):
+            raise ValueError("Re-run analysis before changing fields after AI review")
+        field_ids = [item.id for item in request.fields]
+        fields = self.analysis_runs.find_extracted_fields_for_claim(
+            claim.id, run_id, field_ids
+        )
+        if len(fields) != len(field_ids):
+            raise LookupError("One or more document extracted fields were not found")
+        self.analysis_runs.update_extracted_fields(
+            fields,
+            {item.id: item.confirmed_value for item in request.fields},
+        )
         return self._to_response(claim)
 
     def run_workflow_ai_review(self, claim_number: str, run_id: int) -> ClaimResponse | None:
@@ -861,6 +893,15 @@ class ClaimService:
             raise ValueError("Claim number must be assigned before serialization")
 
         evidence_groups = self.evidence.group_details_for_claim(claim.id)
+        terminal_run = self.analysis_runs.latest_terminal_for_claim(claim.id)
+        analyzed_evidence_ids = (
+            {
+                result.evidence_id
+                for result in self.analysis_runs.document_ocr_results(terminal_run.id)
+            }
+            if terminal_run
+            else set()
+        )
         return ClaimResponse(
             id=claim.claim_number,
             claimant_name=claim.claimant_name,
@@ -876,7 +917,15 @@ class ClaimService:
             created_at=claim.created_at,
             updated_at=claim.updated_at,
             evidence=[
-                self._to_evidence_response(claim.claim_number, item, evidence_groups.get(item.id))
+                self._to_evidence_response(
+                    claim.claim_number,
+                    item,
+                    evidence_groups.get(item.id),
+                    analysis_required=(
+                        item.category in DOCUMENT_EVIDENCE_CATEGORIES
+                        and item.id not in analyzed_evidence_ids
+                    ),
+                )
                 for item in self.evidence.list_for_claim(claim.id)
             ],
             latest_damage_analysis=self._latest_damage_analysis_response(claim.claim_number, claim.id),
@@ -934,11 +983,18 @@ class ClaimService:
                     status=result.status,
                     raw_text=result.raw_text,
                     adapter_name=result.adapter_name,
-                    adapter_metadata=json.loads(result.adapter_metadata_json),
+                    adapter_metadata=self._public_adapter_metadata(
+                        result.adapter_metadata_json
+                    ),
                     warning=result.warning,
                     created_at=result.created_at,
                     processed_at=result.processed_at,
-                    extraction=self._document_extraction_response(result.id),
+                    reused=bool(
+                        json.loads(result.adapter_metadata_json).get("ocr_reused", False)
+                    ),
+                    extraction=self._document_extraction_response(
+                        result.id, json.loads(result.adapter_metadata_json)
+                    ),
                     field_validations=[
                         DocumentFieldValidationResponse(
                             id=validation.id,
@@ -982,7 +1038,9 @@ class ClaimService:
         )
 
     def _document_extraction_response(
-        self, document_ocr_result_id: int
+        self,
+        document_ocr_result_id: int,
+        ocr_metadata: dict[str, object] | None = None,
     ) -> DocumentExtractionResultResponse | None:
         extraction = self.analysis_runs.document_extraction_for_ocr(document_ocr_result_id)
         if extraction is None:
@@ -999,6 +1057,7 @@ class ClaimService:
             warning=extraction.warning,
             created_at=extraction.created_at,
             processed_at=extraction.processed_at,
+            reused=bool((ocr_metadata or {}).get("extraction_reused", False)),
             fields=[
                 DocumentExtractedFieldResponse(
                     id=field.id,
@@ -1016,6 +1075,21 @@ class ClaimService:
                 for field in self.analysis_runs.extracted_fields_for_result(extraction.id)
             ],
         )
+
+    @staticmethod
+    def _public_adapter_metadata(metadata_json: str) -> dict[str, object]:
+        metadata = json.loads(metadata_json)
+        return {
+            key: value
+            for key, value in metadata.items()
+            if key
+            not in {
+                "ocr_reused",
+                "ocr_reused_from_analysis_run_id",
+                "extraction_reused",
+                "extraction_reused_from_analysis_run_id",
+            }
+        }
 
     def _incident_response(self, claim_id: int) -> IncidentInformation | None:
         incident = self.claim_incidents.find_for_claim(claim_id)
@@ -1215,6 +1289,7 @@ class ClaimService:
         claim_number: str,
         evidence: Evidence,
         group: tuple[int, str] | None = None,
+        analysis_required: bool = False,
     ) -> EvidenceResponse:
         return EvidenceResponse(
             id=evidence.id,
@@ -1226,4 +1301,5 @@ class ClaimService:
             content_url=f"/api/claims/{claim_number}/evidence/{evidence.id}/content",
             group_id=group[0] if group else None,
             group_label=group[1] if group else None,
+            analysis_required=analysis_required,
         )

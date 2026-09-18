@@ -564,6 +564,16 @@ def test_document_analysis_aggregates_each_category_and_only_reprocesses_changes
         ],
     )
     assert first_upload.status_code == 200
+    assert all(
+        item["analysis_required"]
+        for item in first_upload.json()["evidence"]
+        if item["category"] in {
+            "ID_CARD",
+            "INSURANCE_POLICY",
+            "VEHICLE_REGISTRATION",
+            "DRIVER_LICENSE",
+        }
+    )
 
     assert client.post(
         f"/api/claims/{claim['id']}/analysis-runs",
@@ -579,6 +589,19 @@ def test_document_analysis_aggregates_each_category_and_only_reprocesses_changes
     assert len(identity_calls) == 1
     assert "id-card.jpg" in identity_calls[0]
     assert "id-card-back.jpg" in identity_calls[0]
+    analyzed = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()
+    assert not any(
+        item["analysis_required"]
+        for item in analyzed["evidence"]
+        if item["category"] in {
+            "ID_CARD",
+            "INSURANCE_POLICY",
+            "VEHICLE_REGISTRATION",
+            "DRIVER_LICENSE",
+        }
+    )
 
     with client.app.state.session_factory() as session:
         session.execute(
@@ -625,6 +648,21 @@ def test_document_analysis_aggregates_each_category_and_only_reprocesses_changes
         files=[("files", ("policy-replacement.jpg", b"replacement", "image/jpeg"))],
     )
     assert replacement.status_code == 200
+    replacement_evidence = replacement.json()["evidence"]
+    assert next(
+        item
+        for item in replacement_evidence
+        if item["original_filename"] == "policy-replacement.jpg"
+    )["analysis_required"] is True
+    assert all(
+        not item["analysis_required"]
+        for item in replacement_evidence
+        if item["category"] in {
+            "ID_CARD",
+            "VEHICLE_REGISTRATION",
+            "DRIVER_LICENSE",
+        }
+    )
 
     assert client.post(
         f"/api/claims/{claim['id']}/analysis-runs",
@@ -633,6 +671,14 @@ def test_document_analysis_aggregates_each_category_and_only_reprocesses_changes
     assert len(ocr_adapter.calls) == 6
     assert len(extraction_adapter.calls) == 5
     assert extraction_adapter.calls[-1][0] == "INSURANCE_POLICY"
+    incremental_run = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+    for result in incremental_run["document_ocr_results"]:
+        changed = result["document_type"] == "INSURANCE_POLICY"
+        assert result["reused"] is (not changed)
+        if result["extraction"]:
+            assert result["extraction"]["reused"] is (not changed)
 
 
 def test_document_analysis_retries_only_failed_extraction_on_unchanged_evidence(
@@ -794,6 +840,66 @@ def test_identity_and_policy_extraction_persists_structured_fields_and_confirmed
         json={"confirmed_value": "Another Name"},
     )
     assert locked_edit.status_code == 409
+
+
+def test_batch_update_document_extracted_fields_is_atomic(client: TestClient):
+    claim = prepare_claim_for_workflow_analysis(client)
+    assert client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    ).status_code == 202
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+    fields = [
+        field
+        for result in run["document_ocr_results"]
+        if result["extraction"]
+        for field in result["extraction"]["fields"]
+    ]
+    assert len(fields) >= 2
+
+    saved = client.put(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields",
+        headers=adjuster_headers(client),
+        json={
+            "fields": [
+                {"id": fields[0]["id"], "confirmed_value": "Reviewed value one"},
+                {"id": fields[1]["id"], "confirmed_value": "Reviewed value two"},
+            ]
+        },
+    )
+    assert saved.status_code == 200
+    saved_fields = {
+        field["id"]: field
+        for result in saved.json()["latest_analysis_run"]["document_ocr_results"]
+        if result["extraction"]
+        for field in result["extraction"]["fields"]
+    }
+    assert saved_fields[fields[0]["id"]]["confirmed_value"] == "Reviewed value one"
+    assert saved_fields[fields[1]["id"]]["confirmed_value"] == "Reviewed value two"
+
+    rejected = client.put(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields",
+        headers=adjuster_headers(client),
+        json={
+            "fields": [
+                {"id": fields[0]["id"], "confirmed_value": "Must not persist"},
+                {"id": 999999, "confirmed_value": "Unknown field"},
+            ]
+        },
+    )
+    assert rejected.status_code == 404
+    refreshed = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+    refreshed_fields = {
+        field["id"]: field
+        for result in refreshed["document_ocr_results"]
+        if result["extraction"]
+        for field in result["extraction"]["fields"]
+    }
+    assert refreshed_fields[fields[0]["id"]]["confirmed_value"] == "Reviewed value one"
 
 
 def test_registration_and_driver_license_extraction_supports_multiple_images_and_null_fields(
@@ -1318,9 +1424,10 @@ def test_damage_analysis_returns_normalized_repair_fixture_and_persists_it(clien
             "file_size": 20,
             "uploaded_at": analysis["detections"][0]["annotated_evidence"]["uploaded_at"],
             "content_url": "/api/claims/CLM-000001/evidence/1/content",
-            "group_id": None,
-            "group_label": None,
-        },
+                "group_id": None,
+                "group_label": None,
+                "analysis_required": False,
+            },
     }]
     detail = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()
     assert detail["status"] == "REVIEW_REQUIRED"

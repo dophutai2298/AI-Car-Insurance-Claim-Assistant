@@ -1024,11 +1024,13 @@ test("adjuster reviews persisted identity extraction without a confidence score"
       return new Response(JSON.stringify(adjusterSession.user));
     if (path.endsWith("/content"))
       return new Response(new Blob(["image"], { type: "image/jpeg" }));
-    if (path.includes("/extraction-fields/202") && init?.method === "PATCH") {
+    if (path.endsWith("/extraction-fields") && init?.method === "PUT") {
       submittedField = JSON.parse(init.body as string);
       field.confirmed_value = (
-        submittedField as { confirmed_value: string }
-      ).confirmed_value;
+        submittedField as {
+          fields: Array<{ id: number; confirmed_value: string }>;
+        }
+      ).fields.find((item) => item.id === field.id)!.confirmed_value;
     }
     return new Response(JSON.stringify(claim));
   });
@@ -1048,11 +1050,11 @@ test("adjuster reviews persisted identity extraction without a confidence score"
   expect(within(identitySection).queryByText("97%")).not.toBeInTheDocument();
   await user.clear(input);
   await user.type(input, "Mai Nguyen");
-  await user.click(
-    within(identitySection).getByRole("button", { name: "Save Full name" }),
-  );
+  await user.click(screen.getByRole("button", { name: "Save all fields" }));
 
-  expect(submittedField).toEqual({ confirmed_value: "Mai Nguyen" });
+  expect(submittedField).toEqual({
+    fields: [{ id: 202, confirmed_value: "Mai Nguyen" }],
+  });
   expect(input).toHaveValue("Mai Nguyen");
 });
 
@@ -1180,11 +1182,13 @@ test("adjuster reviews registration and driver license extraction fields", async
       return new Response(JSON.stringify(adjusterSession.user));
     if (path.endsWith("/content"))
       return new Response(new Blob(["image"], { type: "image/jpeg" }));
-    if (path.includes("/extraction-fields/304") && init?.method === "PATCH") {
+    if (path.endsWith("/extraction-fields") && init?.method === "PUT") {
       submittedField = JSON.parse(init.body as string);
       registrationFields[3].confirmed_value = (
-        submittedField as { confirmed_value: string }
-      ).confirmed_value;
+        submittedField as {
+          fields: Array<{ id: number; confirmed_value: string }>;
+        }
+      ).fields.find((item) => item.id === 304)!.confirmed_value;
     }
     return new Response(JSON.stringify(claim));
   });
@@ -1214,10 +1218,21 @@ test("adjuster reviews registration and driver license extraction fields", async
 
   await user.clear(plate);
   await user.type(plate, "51H-999.99");
-  await user.click(
-    within(registration).getByRole("button", { name: "Save License plate" }),
-  );
-  expect(submittedField).toEqual({ confirmed_value: "51H-999.99" });
+  await user.click(screen.getByRole("button", { name: "Save all fields" }));
+  expect(
+    (
+      submittedField as {
+        fields: Array<{ id: number; confirmed_value: string | null }>;
+      }
+    ).fields.find((item) => item.id === 304),
+  ).toEqual({ id: 304, confirmed_value: "51H-999.99" });
+  expect(
+    (
+      submittedField as {
+        fields: Array<{ id: number; confirmed_value: string | null }>;
+      }
+    ).fields,
+  ).toHaveLength(7);
 });
 
 test("admin can update global assessment rules from the configuration page", async () => {
