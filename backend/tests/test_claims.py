@@ -1119,6 +1119,8 @@ def test_shared_extraction_replaces_legacy_field_validation_without_blocking_ai_
     assert run["consistency_checks"] == []
     assert registration_fields["vehicle_brand"]["ai_extracted_value"] == "Toyota"
     assert registration_fields["license_plate"]["ai_extracted_value"] == "51H-123.45"
+    assert registration_fields["vehicle_brand"]["comparison"]["status"] == "MATCH"
+    assert registration_fields["license_plate"]["comparison"]["status"] == "MATCH"
 
     captured_context: dict[str, object] = {}
     original_generate = LlmCopilotService.generate
@@ -1140,11 +1142,17 @@ def test_shared_extraction_replaces_legacy_field_validation_without_blocking_ai_
         if item["document_type"] == "VEHICLE_REGISTRATION"
     )
     assert registration_context["field_validations"] == []
-    assert registration_context["fields"]
+    confirmed_fields = {
+        field["field_key"]: field
+        for field in registration_context["confirmed_fields"]
+    }
+    assert confirmed_fields["vehicle_brand"]["confirmed_value"] == "Toyota"
+    assert confirmed_fields["vehicle_brand"]["comparison"]["status"] == "MATCH"
 
 
 def test_adjuster_can_confirm_registration_field_without_changing_ai_or_ocr_values(
     client: TestClient,
+    monkeypatch,
 ):
     claim = prepare_claim_for_workflow_analysis(client)
     client.post(
@@ -1189,12 +1197,37 @@ def test_adjuster_can_confirm_registration_field_without_changing_ai_or_ocr_valu
     assert corrected_registration["raw_text"] == raw_ocr
     assert corrected_plate["ai_extracted_value"] == "51H-123.45"
     assert corrected_plate["confirmed_value"] == "51H-999.99"
+    assert corrected_plate["comparison"]["status"] == "MISMATCH"
+    assert corrected_plate["comparison"]["document_value"] == "51H-999.99"
+
+    captured_context: dict[str, object] = {}
+    original_generate = LlmCopilotService.generate
+
+    def capture_input(self, input_data):
+        captured_context.update(input_data.model_context())
+        return original_generate(self, input_data)
+
+    monkeypatch.setattr(LlmCopilotService, "generate", capture_input)
 
     reviewed = client.post(
         f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
         headers=adjuster_headers(client),
     )
     assert reviewed.status_code == 200
+    registration_context = next(
+        item
+        for item in captured_context["document_analysis"]
+        if item["document_type"] == "VEHICLE_REGISTRATION"
+    )
+    confirmed_plate = next(
+        field
+        for field in registration_context["confirmed_fields"]
+        if field["field_key"] == "license_plate"
+    )
+    assert confirmed_plate["ai_extracted_value"] == "51H-123.45"
+    assert confirmed_plate["confirmed_value"] == "51H-999.99"
+    assert confirmed_plate["comparison"]["status"] == "MISMATCH"
+    assert any("differs" in warning for warning in captured_context["warnings"])
 
     locked = client.patch(
         f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields/{plate['id']}",

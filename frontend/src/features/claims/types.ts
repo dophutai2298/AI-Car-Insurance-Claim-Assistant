@@ -63,7 +63,14 @@ export type AnalysisResultStatus =
 export type FieldValidationStatus =
   "VALID" | "INVALID" | "UNCERTAIN" | "MISSING" | "LLM_UNAVAILABLE";
 
-export type ConsistencyStatus = "MATCH" | "MISMATCH";
+export type ConsistencyStatus = "MATCH" | "MISMATCH" | "UNAVAILABLE";
+
+export type DocumentFieldComparison = {
+  claim_value: string | null;
+  document_value: string | null;
+  status: ConsistencyStatus;
+  explanation: string;
+};
 
 export type DocumentFieldValidation = {
   id: number;
@@ -92,6 +99,7 @@ export type DocumentExtractedField = {
   schema_version: string;
   created_at: string;
   updated_at: string;
+  comparison?: DocumentFieldComparison | null;
 };
 
 export type DocumentExtractionResult = {

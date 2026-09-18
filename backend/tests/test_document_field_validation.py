@@ -42,7 +42,7 @@ def test_consistency_service_returns_matches_and_preserves_display_values():
     assert results[0].document_value == "Nguyễn Văn A"
 
 
-def test_consistency_service_returns_manual_review_warning_for_mismatch_and_skips_missing_values():
+def test_consistency_service_returns_manual_review_warning_and_skips_legacy_missing_values():
     results = ClaimConsistencyService().compare(
         ClaimFacts(claimant_name="Mai Nguyen", vehicle_make="Toyota", license_plate="51H-123.45"),
         [field("owner_name", "Tran Van B"), field("vehicle_make", None), field("license_plate", "30A-999.99")],
@@ -51,6 +51,27 @@ def test_consistency_service_returns_manual_review_warning_for_mismatch_and_skip
     assert [result.field_key for result in results] == ["owner_name", "license_plate"]
     assert all(result.status == "MISMATCH" for result in results)
     assert all("manual review" in result.explanation.lower() for result in results)
+
+
+def test_consistency_service_compares_confirmed_extraction_field_names_and_brands():
+    service = ClaimConsistencyService()
+    claim = ClaimFacts(
+        claimant_name="Nguyễn Văn A",
+        vehicle_make="Toyota",
+        license_plate="51H-123.45",
+    )
+
+    owner = service.compare_value(claim, "vehicle_owner", 10, "nguyen van a")
+    brand = service.compare_value(claim, "vehicle_brand", 11, "TOYOTA")
+    plate = service.compare_value(claim, "license_plate", 11, "51H 123-45")
+    unrelated = service.compare_value(claim, "expiry_date", 12, "31/12/2030")
+    missing = service.compare_value(claim, "vehicle_brand", 13, None)
+
+    assert owner and owner.status == "MATCH"
+    assert brand and brand.status == "MATCH"
+    assert plate and plate.status == "MATCH"
+    assert unrelated is None
+    assert missing and missing.status == "UNAVAILABLE"
 
 
 def test_field_validation_selects_a_dedicated_versioned_system_message_for_every_catalog_field():

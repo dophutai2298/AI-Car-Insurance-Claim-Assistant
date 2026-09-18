@@ -116,6 +116,7 @@ class FieldValidationStatus(str, Enum):
 class ConsistencyStatus(str, Enum):
     MATCH = "MATCH"
     MISMATCH = "MISMATCH"
+    UNAVAILABLE = "UNAVAILABLE"
 
 
 class CopilotConclusionRejectionCategory(str, Enum):

@@ -192,6 +192,8 @@ const en = {
     saveAllFailed: "Document field values could not be saved.",
     rawOcr: "Raw OCR text",
     structuredExtraction: "Structured extraction",
+    reviewNotice:
+      "Information was extracted automatically. Review and correct values before AI review.",
     extractionProvenance: "Prompt {{prompt}} · Schema {{schema}}",
     aiExtractedValue: "AI extracted value",
     confirmedValue: "Confirmed value",
@@ -206,6 +208,13 @@ const en = {
       MATCH: "Match",
       MISMATCH: "Mismatch",
       UNAVAILABLE: "Comparison unavailable",
+    },
+    consistencyExplanation: {
+      MATCH: "The confirmed document value matches Claim Information.",
+      MISMATCH:
+        "The confirmed document value differs from Claim Information and requires manual review.",
+      UNAVAILABLE:
+        "A claim or confirmed document value is missing, so comparison is unavailable.",
     },
     consistencyUnavailable:
       "A claim or document value is missing, so this field could not be compared.",
@@ -421,6 +430,7 @@ const vi = {
     addOther: "Thêm giấy tờ khác",
 
     uploaded: "Đã tải lên",
+    analysisRequired: "Cần phân tích",
     required: "Bắt buộc",
 
     addMore: "Thêm tệp",
@@ -528,6 +538,8 @@ const vi = {
     processedBy: "Xử lý bởi {{adapter}}",
     processingState: "Đang chờ xử lý OCR",
     processing: "OCR và xác thực trường dữ liệu đang được xử lý.",
+    reusing: "Đang sử dụng lại kết quả phân tích trước đó.",
+    reused: "Đã sử dụng lại",
     unavailable: "Không khả dụng",
     noEvidence: "Không có ảnh bằng chứng trong nhóm này.",
     resultUnavailable:
@@ -539,8 +551,13 @@ const vi = {
     fieldsLocked:
       "Giá trị các trường đã bị khóa vì lần phân tích này đã có đánh giá AI.",
     saveFailed: "Không thể lưu giá trị trường đã xem xét.",
+    saveAll: "Lưu tất cả trường",
+    saveAllSuccess: "Đã lưu tất cả giá trị giấy tờ.",
+    saveAllFailed: "Không thể lưu các giá trị giấy tờ.",
     rawOcr: "Văn bản OCR gốc",
     structuredExtraction: "Dữ liệu trích xuất có cấu trúc",
+    reviewNotice:
+      "Thông tin được trích xuất tự động. Hãy kiểm tra và chỉnh sửa trước khi thực hiện đánh giá AI.",
     extractionProvenance: "Prompt {{prompt}} · Schema {{schema}}",
     aiExtractedValue: "Giá trị AI trích xuất",
     confirmedValue: "Giá trị đã xác nhận",
@@ -555,6 +572,13 @@ const vi = {
       MATCH: "Khớp",
       MISMATCH: "Không khớp",
       UNAVAILABLE: "Không thể đối chiếu",
+    },
+    consistencyExplanation: {
+      MATCH: "Giá trị giấy tờ đã xác nhận khớp với Thông tin hồ sơ.",
+      MISMATCH:
+        "Giá trị giấy tờ đã xác nhận khác với Thông tin hồ sơ và cần được xem xét thủ công.",
+      UNAVAILABLE:
+        "Thiếu giá trị trong hồ sơ hoặc giấy tờ đã xác nhận nên chưa thể đối chiếu.",
     },
     consistencyUnavailable:
       "Thiếu giá trị trong hồ sơ hoặc giấy tờ nên chưa thể đối chiếu trường này.",

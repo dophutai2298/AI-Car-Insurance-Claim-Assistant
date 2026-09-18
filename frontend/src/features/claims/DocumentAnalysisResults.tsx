@@ -19,6 +19,7 @@ import type {
   ClaimConsistencyCheck,
   ClaimDetail,
   DocumentExtractedField,
+  DocumentFieldComparison,
   DocumentFieldValidation,
   DocumentOcrResult,
   EvidenceCategory,
@@ -418,6 +419,9 @@ function ExtractionResult({
           <Alert.Description>{extraction.warning}</Alert.Description>
         </Alert>
       ) : null}
+      <p className="border-l-2 border-cyan-500 bg-cyan-50 px-3 py-2 text-xs text-cyan-950">
+        {t("documents.reviewNotice")}
+      </p>
       {extraction.fields.length ? (
         <div className="grid gap-3">
           {extraction.fields.map((field) => (
@@ -476,6 +480,7 @@ function ExtractedFieldEditor({
           </dd>
         </div>
       </dl>
+      {field.comparison ? <ConsistencyResult check={field.comparison} /> : null}
     </div>
   );
 }
@@ -581,28 +586,37 @@ function ValidatedField({
   );
 }
 
-function ConsistencyResult({ check }: { check: ClaimConsistencyCheck }) {
+function ConsistencyResult({
+  check,
+}: {
+  check: ClaimConsistencyCheck | DocumentFieldComparison;
+}) {
   const { t } = useTranslation();
   const matches = check.status === "MATCH";
+  const unavailable = check.status === "UNAVAILABLE";
   return (
     <div
       className={`grid gap-1 border-l-2 px-3 py-2 text-xs ${
         matches
           ? "border-emerald-500 bg-emerald-50 text-emerald-900"
-          : "border-amber-500 bg-amber-50 text-amber-950"
+          : unavailable
+            ? "border-slate-300 bg-slate-50 text-slate-700"
+            : "border-amber-500 bg-amber-50 text-amber-950"
       }`}
     >
       <div className="flex items-center gap-2 font-semibold">
         {matches ? <CheckmarkOutline size={15} /> : <WarningAlt size={15} />}
         {t(`documents.consistency.${check.status}`)}
       </div>
-      <p>{check.explanation}</p>
-      <p className="text-slate-600">
-        {t("documents.comparedValues", {
-          claim: check.claim_value,
-          document: check.document_value,
-        })}
-      </p>
+      <p>{t(`documents.consistencyExplanation.${check.status}`)}</p>
+      {check.claim_value && check.document_value ? (
+        <p className="text-slate-600">
+          {t("documents.comparedValues", {
+            claim: check.claim_value,
+            document: check.document_value,
+          })}
+        </p>
+      ) : null}
     </div>
   );
 }

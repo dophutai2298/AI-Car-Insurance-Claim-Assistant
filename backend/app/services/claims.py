@@ -18,6 +18,7 @@ from app.models import (
     DocumentOcrResult,
     Evidence,
     EvidenceCategory,
+    ConsistencyStatus,
     CopilotConclusion,
     ReferencePartPrice,
     ReferencePriceLookupStatus,
@@ -57,6 +58,7 @@ from app.schemas.claims import (
     DocumentExtractedFieldResponse,
     DocumentExtractedFieldsBatchUpdateRequest,
     DocumentExtractedFieldUpdateRequest,
+    DocumentFieldComparisonResponse,
     DocumentExtractionResultResponse,
     DocumentOcrResultResponse,
     DocumentFieldValidationResponse,
@@ -81,7 +83,11 @@ from app.services.llm_copilot import (
 from app.services.vehicle_manufacturers import VehicleManufacturerService
 from app.services.document_analysis import DocumentAnalysisAdapter, DocumentAnalysisResult
 from app.services.document_ocr import DocumentOcrAdapter, DocumentOcrError
-from app.services.document_consistency import ClaimConsistencyService, ClaimFacts
+from app.services.document_consistency import (
+    ClaimConsistencyService,
+    ClaimFacts,
+    ConsistencyResult,
+)
 from app.services.document_extraction import DocumentExtractionService
 from app.services.document_extraction import SCHEMA_VERSION as DOCUMENT_EXTRACTION_SCHEMA_VERSION
 from app.services.document_field_validation import (
@@ -617,12 +623,27 @@ class ClaimService:
         ocr_by_id = {item.id: item for item in ocr_results}
         field_validations = self.analysis_runs.field_validations(run.id)
         consistency_checks = self.analysis_runs.consistency_checks(run.id)
+        claim_facts = ClaimFacts(
+            claimant_name=claim.claimant_name,
+            vehicle_make=claim.vehicle_make,
+            license_plate=claim.license_plate,
+        )
+        confirmed_fields_by_category = self._confirmed_fields_by_category(
+            ocr_results, claim_facts
+        )
         document_payload: list[dict[str, object]] = []
         warnings = [damage.warning] if damage.warning else []
         warnings.extend(
             check.explanation
             for check in consistency_checks
             if check.status.value == "MISMATCH"
+        )
+        warnings.extend(
+            field["comparison"]["explanation"]
+            for fields in confirmed_fields_by_category.values()
+            for field in fields
+            if field.get("comparison")
+            and field["comparison"]["status"] == ConsistencyStatus.MISMATCH.value
         )
         for document in documents:
             document_warnings = json.loads(document.warnings_json)
@@ -676,6 +697,9 @@ class ClaimService:
                         for check in consistency_checks
                         if check.field_validation_id in validation_ids
                     ],
+                    "confirmed_fields": confirmed_fields_by_category.get(
+                        document.document_type, []
+                    ),
                     "warnings": document_warnings,
                 }
             )
@@ -947,6 +971,14 @@ class ClaimService:
     ) -> WorkflowAnalysisRunResponse:
         damage = self.analysis_runs.damage_analysis(run.id)
         incident = self.claim_incidents.find_for_claim(run.claim_id)
+        claim = self.claims.find_by_id(run.claim_id)
+        if claim is None:
+            raise ValueError("Analysis run claim must be available")
+        claim_facts = ClaimFacts(
+            claimant_name=claim.claimant_name,
+            vehicle_make=claim.vehicle_make,
+            license_plate=claim.license_plate,
+        )
         return WorkflowAnalysisRunResponse(
             id=run.id,
             status=run.status,
@@ -993,7 +1025,9 @@ class ClaimService:
                         json.loads(result.adapter_metadata_json).get("ocr_reused", False)
                     ),
                     extraction=self._document_extraction_response(
-                        result.id, json.loads(result.adapter_metadata_json)
+                        result.id,
+                        claim_facts,
+                        json.loads(result.adapter_metadata_json),
                     ),
                     field_validations=[
                         DocumentFieldValidationResponse(
@@ -1040,6 +1074,7 @@ class ClaimService:
     def _document_extraction_response(
         self,
         document_ocr_result_id: int,
+        claim_facts: ClaimFacts,
         ocr_metadata: dict[str, object] | None = None,
     ) -> DocumentExtractionResultResponse | None:
         extraction = self.analysis_runs.document_extraction_for_ocr(document_ocr_result_id)
@@ -1071,9 +1106,64 @@ class ClaimService:
                     schema_version=field.schema_version,
                     created_at=field.created_at,
                     updated_at=field.updated_at,
+                    comparison=self._comparison_response(
+                        self.claim_consistency.compare_value(
+                            claim_facts,
+                            field.field_key,
+                            field.source_evidence_id,
+                            field.confirmed_value,
+                        )
+                    ),
                 )
                 for field in self.analysis_runs.extracted_fields_for_result(extraction.id)
             ],
+        )
+
+    def _confirmed_fields_by_category(
+        self,
+        ocr_results: list[DocumentOcrResult],
+        claim_facts: ClaimFacts,
+    ) -> dict[EvidenceCategory, list[dict[str, object]]]:
+        fields_by_category: dict[EvidenceCategory, list[dict[str, object]]] = {}
+        for ocr_result in ocr_results:
+            extraction = self.analysis_runs.document_extraction_for_ocr(ocr_result.id)
+            if extraction is None:
+                continue
+            category_fields: list[dict[str, object]] = []
+            for field in self.analysis_runs.extracted_fields_for_result(extraction.id):
+                comparison = self._comparison_response(
+                    self.claim_consistency.compare_value(
+                        claim_facts,
+                        field.field_key,
+                        field.source_evidence_id,
+                        field.confirmed_value,
+                    )
+                )
+                category_fields.append(
+                    {
+                        "field_key": field.field_key,
+                        "source_evidence_id": field.source_evidence_id,
+                        "ai_extracted_value": field.ai_extracted_value,
+                        "confirmed_value": field.confirmed_value,
+                        "comparison": (
+                            comparison.model_dump(mode="json") if comparison else None
+                        ),
+                    }
+                )
+            fields_by_category[ocr_result.document_type] = category_fields
+        return fields_by_category
+
+    @staticmethod
+    def _comparison_response(
+        result: ConsistencyResult | None,
+    ) -> DocumentFieldComparisonResponse | None:
+        if result is None:
+            return None
+        return DocumentFieldComparisonResponse(
+            claim_value=result.claim_value,
+            document_value=result.document_value,
+            status=result.status,
+            explanation=result.explanation,
         )
 
     @staticmethod

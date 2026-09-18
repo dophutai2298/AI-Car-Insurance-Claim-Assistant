@@ -147,6 +147,13 @@ class DocumentExtractedFieldsBatchUpdateRequest(BaseModel):
         return self
 
 
+class DocumentFieldComparisonResponse(BaseModel):
+    claim_value: str | None
+    document_value: str | None
+    status: ConsistencyStatus
+    explanation: str
+
+
 class DocumentAnalysisResponse(BaseModel):
     id: int
     document_type: EvidenceCategory
@@ -185,6 +192,7 @@ class DocumentExtractedFieldResponse(BaseModel):
     schema_version: str
     created_at: datetime
     updated_at: datetime
+    comparison: DocumentFieldComparisonResponse | None = None
 
 
 class DocumentExtractionResultResponse(BaseModel):

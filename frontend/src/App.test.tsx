@@ -951,6 +951,13 @@ test("adjuster reviews persisted identity extraction without a confidence score"
     schema_version: "document-extraction-schema-v1",
     created_at: "2026-09-08T00:00:02Z",
     updated_at: "2026-09-08T00:00:02Z",
+    comparison: {
+      claim_value: "Mai Nguyen",
+      document_value: "Nguyen Van A",
+      status: "MISMATCH",
+      explanation:
+        "Document value differs from Claim Information and requires manual review.",
+    },
   };
   const claim = {
     id: "CLM-000082",
@@ -1048,6 +1055,7 @@ test("adjuster reviews persisted identity extraction without a confidence score"
   );
   expect(within(identitySection).getByText("Nguyen Van A")).toBeVisible();
   expect(within(identitySection).queryByText("97%")).not.toBeInTheDocument();
+  expect(within(identitySection).getByText("Mismatch")).toBeVisible();
   await user.clear(input);
   await user.type(input, "Mai Nguyen");
   await user.click(screen.getByRole("button", { name: "Save all fields" }));
@@ -1080,6 +1088,12 @@ test("adjuster reviews registration and driver license extraction fields", async
     sourceEvidenceId: number,
     fieldKey: string,
     value: string | null,
+    comparison: {
+      claim_value: string | null;
+      document_value: string | null;
+      status: "MATCH" | "MISMATCH" | "UNAVAILABLE";
+      explanation: string;
+    } | null = null,
   ) => ({
     id,
     analysis_run_id: 10,
@@ -1092,16 +1106,39 @@ test("adjuster reviews registration and driver license extraction fields", async
     schema_version: "document-extraction-schema-v1",
     created_at: "2026-09-08T00:00:02Z",
     updated_at: "2026-09-08T00:00:02Z",
+    comparison,
   });
   const registrationFields = [
-    extractedField(301, 3, "vehicle_owner", "Nguyen Van A"),
-    extractedField(302, 3, "vehicle_brand", "Toyota"),
+    extractedField(301, 3, "vehicle_owner", "Nguyen Van A", {
+      claim_value: "Mai Nguyen",
+      document_value: "Nguyen Van A",
+      status: "MISMATCH",
+      explanation:
+        "Document value differs from Claim Information and requires manual review.",
+    }),
+    extractedField(302, 3, "vehicle_brand", "Toyota", {
+      claim_value: "Toyota",
+      document_value: "Toyota",
+      status: "MATCH",
+      explanation: "Document value matches Claim Information.",
+    }),
     extractedField(303, 3, "vehicle_type", "Ô tô con"),
-    extractedField(304, 3, "license_plate", "51H-123.45"),
+    extractedField(304, 3, "license_plate", "51H-123.45", {
+      claim_value: "51H-123.45",
+      document_value: "51H-123.45",
+      status: "MATCH",
+      explanation: "Document value matches Claim Information.",
+    }),
   ];
   const driverFields = [
     extractedField(401, 4, "license_number", "079012345678"),
-    extractedField(402, 4, "full_name", null),
+    extractedField(402, 4, "full_name", null, {
+      claim_value: "Mai Nguyen",
+      document_value: null,
+      status: "UNAVAILABLE",
+      explanation:
+        "Comparison is unavailable because a claim or document value is missing.",
+    }),
     extractedField(403, 4, "expiry_date", null),
   ];
   const ocrResult = (
@@ -1189,6 +1226,13 @@ test("adjuster reviews registration and driver license extraction fields", async
           fields: Array<{ id: number; confirmed_value: string }>;
         }
       ).fields.find((item) => item.id === 304)!.confirmed_value;
+      registrationFields[3].comparison = {
+        claim_value: "51H-123.45",
+        document_value: "51H-999.99",
+        status: "MISMATCH",
+        explanation:
+          "Document value differs from Claim Information and requires manual review.",
+      };
     }
     return new Response(JSON.stringify(claim));
   });
@@ -1214,7 +1258,10 @@ test("adjuster reviews registration and driver license extraction fields", async
     within(driver).getByLabelText("License number confirmed value"),
   ).toHaveValue("079012345678");
   expect(within(driver).getAllByText("Not provided")).toHaveLength(2);
+  expect(within(driver).getByText("Comparison unavailable")).toBeVisible();
   expect(within(registration).queryByText(/%/)).not.toBeInTheDocument();
+  expect(within(registration).getAllByText("Match")).toHaveLength(2);
+  expect(within(registration).getByText("Mismatch")).toBeVisible();
 
   await user.clear(plate);
   await user.type(plate, "51H-999.99");
@@ -1233,6 +1280,7 @@ test("adjuster reviews registration and driver license extraction fields", async
       }
     ).fields,
   ).toHaveLength(7);
+  expect(within(registration).getAllByText("Mismatch")).toHaveLength(2);
 });
 
 test("admin can update global assessment rules from the configuration page", async () => {
