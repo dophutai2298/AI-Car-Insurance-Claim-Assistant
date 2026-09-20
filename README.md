@@ -23,6 +23,7 @@ OPENAI_API_KEY=your-openai-api-key
 OPENAI_MODEL=gpt-5.6-luna
 LLM_REQUEST_TIMEOUT_SECONDS=60
 LLM_MAX_RETRIES=0
+LLM_TOKEN_USAGE_LOG_ENABLED=true
 ```
 
 Do not set `LLM_BASE_URL` for the official OpenAI API; LangChain uses its default
@@ -32,6 +33,14 @@ Use a fixed model with structured-output support for document extraction. Dynami
 router models can vary in latency and schema support between requests. The timeout
 and retry settings keep one failed document from blocking the remaining workflow.
 Do not commit API keys.
+
+Set `LLM_TOKEN_USAGE_LOG_ENABLED=true` to print provider-reported token usage after
+each document extraction and document field-validation LLM call. Each terminal log
+includes the operation, document type, model, input tokens, output tokens, and total
+tokens. Set it to `false` to disable these logs. OCR text, prompts, and model output
+are never included in the token-usage log. If the provider omits usage metadata, the
+log reports `status=unavailable` instead of estimating tokens with a potentially
+incompatible tokenizer.
 
 ### 2. Start Postgres
 

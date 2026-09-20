@@ -50,6 +50,9 @@ class Settings(BaseSettings):
         default=60.0, gt=0, validation_alias="LLM_REQUEST_TIMEOUT_SECONDS"
     )
     llm_max_retries: int = Field(default=0, ge=0, validation_alias="LLM_MAX_RETRIES")
+    llm_token_usage_log_enabled: bool = Field(
+        default=False, validation_alias="LLM_TOKEN_USAGE_LOG_ENABLED"
+    )
     frontend_origin: str = Field(default="http://localhost:5173", validation_alias="FRONTEND_ORIGIN")
     check_database_on_health: bool = Field(default=True, validation_alias="CHECK_DATABASE_ON_HEALTH")
 

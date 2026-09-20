@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.core.config import Settings
 from app.models import AnalysisResultStatus, EvidenceCategory
+from app.services.llm_token_usage import log_llm_token_usage
 
 
 PROMPT_VERSION = "document-extraction-v1"
@@ -254,6 +255,7 @@ class LangChainOpenAiDocumentExtractionAdapter:
         model: str,
         request_timeout_seconds: float = 60.0,
         max_retries: int = 0,
+        token_usage_logging_enabled: bool = False,
     ) -> None:
         from langchain_openai import ChatOpenAI
 
@@ -268,6 +270,7 @@ class LangChainOpenAiDocumentExtractionAdapter:
             options["base_url"] = base_url
         self.model = ChatOpenAI(**options)
         self.model_name = model
+        self.token_usage_logging_enabled = token_usage_logging_enabled
 
     def extract(
         self,
@@ -279,7 +282,7 @@ class LangChainOpenAiDocumentExtractionAdapter:
             from langchain.messages import HumanMessage, SystemMessage
 
             structured_model = self.model.with_structured_output(
-                definition.output_schema, method="json_mode"
+                definition.output_schema, method="json_mode", include_raw=True
             )
             response = structured_model.invoke(
                 [
@@ -292,13 +295,21 @@ class LangChainOpenAiDocumentExtractionAdapter:
                     ),
                 ]
             )
+            log_llm_token_usage(
+                enabled=self.token_usage_logging_enabled,
+                operation="document_extraction",
+                document_type=definition.category.value,
+                model=self.model_name,
+                response=response,
+            )
             logger.info(
                 "Document extraction completed for %s using %s in %.2fs",
                 definition.category.value,
                 self.model_name,
                 perf_counter() - started_at,
             )
-            return definition.output_schema.model_validate(response)
+            parsed = response.get("parsed") if isinstance(response, dict) else None
+            return definition.output_schema.model_validate(parsed)
         except Exception as error:
             logger.exception(
                 "OpenAI document extraction failed for %s using %s after %.2fs (%s)",
@@ -391,4 +402,5 @@ def get_document_extraction_adapter(settings: Settings) -> DocumentExtractionAda
         settings.openai_model,
         settings.llm_request_timeout_seconds,
         settings.llm_max_retries,
+        settings.llm_token_usage_log_enabled,
     )

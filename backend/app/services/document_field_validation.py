@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import logging
 import re
@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.core.config import Settings
 from app.models import EvidenceCategory, FieldValidationStatus
+from app.services.llm_token_usage import log_llm_token_usage
 
 
 PROMPT_VERSION = "document-fields-v1"
@@ -31,6 +32,7 @@ class DocumentFieldDefinition:
     aliases: tuple[str, ...]
     system_message: str
     prompt_version: str = PROMPT_VERSION
+    category: EvidenceCategory | None = None
 
 
 def _field(
@@ -229,10 +231,17 @@ class UnavailableFieldValidationAdapter:
 
 
 class LangChainOpenAiFieldValidationAdapter:
-    def __init__(self, base_url: str | None, api_key: str, model: str) -> None:
+    def __init__(
+        self,
+        base_url: str | None,
+        api_key: str,
+        model: str,
+        token_usage_logging_enabled: bool = False,
+    ) -> None:
         self.base_url = base_url
         self.api_key = api_key
         self.model = model
+        self.token_usage_logging_enabled = token_usage_logging_enabled
 
     def validate(
         self,
@@ -251,7 +260,9 @@ class LangChainOpenAiFieldValidationAdapter:
             }
             if self.base_url:
                 options["base_url"] = self.base_url
-            model = ChatOpenAI(**options).with_structured_output(FieldValidationSelection)
+            model = ChatOpenAI(**options).with_structured_output(
+                FieldValidationSelection, include_raw=True
+            )
             payload = {
                 "prompt_version": definition.prompt_version,
                 "field_key": definition.field_key,
@@ -264,7 +275,16 @@ class LangChainOpenAiFieldValidationAdapter:
                     ("human", json.dumps(payload, ensure_ascii=False)),
                 ]
             )
-            return FieldValidationSelection.model_validate(response)
+            log_llm_token_usage(
+                enabled=self.token_usage_logging_enabled,
+                operation="document_field_validation",
+                document_type=definition.category.value if definition.category else "UNKNOWN",
+                model=self.model,
+                response=response,
+                field_key=definition.field_key,
+            )
+            parsed = response.get("parsed") if isinstance(response, dict) else None
+            return FieldValidationSelection.model_validate(parsed)
         except Exception as error:
             logger.warning(
                 "OpenAI document field validation failed for %s using %s (%s)",
@@ -289,7 +309,8 @@ class DocumentFieldValidationService:
         claim_information: dict[str, str],
     ) -> list[ValidatedDocumentField]:
         results: list[ValidatedDocumentField] = []
-        for definition in FIELD_CATALOG[category]:
+        for catalog_definition in FIELD_CATALOG[category]:
+            definition = replace(catalog_definition, category=category)
             claim_context = self._claim_context(definition.field_key, claim_information)
             try:
                 selection = self.adapter.validate(definition, raw_ocr_text, claim_context)
@@ -370,4 +391,5 @@ def get_document_field_validation_adapter(settings: Settings) -> DocumentFieldVa
         settings.llm_base_url,
         settings.openai_api_key,
         settings.openai_model,
+        settings.llm_token_usage_log_enabled,
     )

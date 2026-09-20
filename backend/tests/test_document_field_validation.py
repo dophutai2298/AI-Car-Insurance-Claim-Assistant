@@ -1,8 +1,14 @@
+import logging
+from dataclasses import replace
+from types import SimpleNamespace
+
 from app.models import EvidenceCategory, FieldValidationStatus
 from app.services.document_field_validation import (
     DocumentFieldValidationService,
+    FIELD_CATALOG,
     FieldValidationError,
     FieldValidationSelection,
+    LangChainOpenAiFieldValidationAdapter,
     ValidatedDocumentField,
 )
 from app.services.document_consistency import ClaimConsistencyService, ClaimFacts, normalize_for_comparison
@@ -20,6 +26,52 @@ def field(key: str, value: str | None, evidence_id: int = 1) -> ValidatedDocumen
         warnings=[],
         prompt_version="document-fields-v1",
     )
+
+
+def test_langchain_field_validation_logs_usage_with_document_and_field(monkeypatch, caplog):
+    class FakeChatOpenAI:
+        def __init__(self, **options):
+            pass
+
+        def with_structured_output(self, schema, include_raw):
+            assert schema is FieldValidationSelection
+            assert include_raw is True
+            return self
+
+        def invoke(self, messages):
+            return {
+                "raw": SimpleNamespace(
+                    usage_metadata={
+                        "input_tokens": 55,
+                        "output_tokens": 15,
+                        "total_tokens": 70,
+                    },
+                    response_metadata={},
+                ),
+                "parsed": FieldValidationSelection(
+                    ocr_value="Toyota",
+                    normalized_value="Toyota",
+                    status=FieldValidationStatus.VALID,
+                    confidence=0.9,
+                    summary="Vehicle make was found.",
+                    warnings=[],
+                ),
+                "parsing_error": None,
+            }
+
+    monkeypatch.setattr("langchain_openai.ChatOpenAI", FakeChatOpenAI)
+    adapter = LangChainOpenAiFieldValidationAdapter(
+        None, "test-key", "test-model", token_usage_logging_enabled=True
+    )
+    definition = FIELD_CATALOG[EvidenceCategory.VEHICLE_REGISTRATION][2]
+    definition = replace(definition, category=EvidenceCategory.VEHICLE_REGISTRATION)
+
+    with caplog.at_level(logging.INFO):
+        result = adapter.validate(definition, "Vehicle make: Toyota", {})
+
+    assert result.normalized_value == "Toyota"
+    assert "document=VEHICLE_REGISTRATION model=test-model field=vehicle_make" in caplog.text
+    assert "input_tokens=55 output_tokens=15 total_tokens=70" in caplog.text
 
 
 def test_consistency_normalization_handles_vietnamese_diacritics_case_whitespace_and_punctuation():
