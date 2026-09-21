@@ -58,7 +58,7 @@ def test_llm_copilot_returns_a_fallback_when_the_adapter_fails():
     assert conclusion.failure_reason == "Provider request failed"
 
 
-def test_together_configuration_is_passed_to_the_langchain_openai_adapter(monkeypatch):
+def test_openai_configuration_uses_the_provider_default_endpoint(monkeypatch):
     captured: dict[str, object] = {}
 
     class StructuredModel:
@@ -76,15 +76,15 @@ def test_together_configuration_is_passed_to_the_langchain_openai_adapter(monkey
     monkeypatch.setattr("langchain_openai.ChatOpenAI", FakeChatOpenAI)
     settings = SimpleNamespace(
         llm_mode="openai",
-        llm_base_url="https://api.together.xyz/v1",
+        llm_base_url=None,
         openai_api_key="test-key",
-        openai_model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
+        openai_model="gpt-5.6-luna",
     )
 
     result = get_llm_copilot_adapter(settings).generate_selection(build_input())
 
-    assert captured["base_url"] == "https://api.together.xyz/v1"
+    assert "base_url" not in captured
     assert captured["api_key"] == "test-key"
-    assert captured["model"] == "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"
+    assert captured["model"] == "gpt-5.6-luna"
     assert captured["schema"] is CopilotSelection
     assert result.status is CopilotConclusionStatus.GENERATED

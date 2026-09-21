@@ -2,9 +2,16 @@ from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 from app.core.config import get_settings
 from app.main import create_app
+from app.api.routes import claims as claim_routes
+from app.services.document_ocr import DocumentOcrError, DocumentOcrResult
+from app.services.document_extraction import (
+    DeterministicDocumentExtractionAdapter,
+    IdentityCardExtraction,
+)
 from app.services.evidence_storage import LocalEvidenceStorage
 from app.services.llm_copilot import LlmCopilotService
 
@@ -21,6 +28,7 @@ def client(tmp_path, monkeypatch) -> Iterator[TestClient]:
     monkeypatch.setenv("CHECK_DATABASE_ON_HEALTH", "false")
     monkeypatch.setenv("UPLOAD_ROOT", str(tmp_path / "uploads"))
     monkeypatch.setenv("LLM_MODE", "mock")
+    monkeypatch.setenv("DOCUMENT_OCR_MODE", "mock")
     get_settings.cache_clear()
 
     with TestClient(create_app()) as test_client:
@@ -405,7 +413,7 @@ def test_workflow_analysis_returns_pending_then_persists_grouped_results(client:
     assert started.json()["status"] == "PENDING"
     detail = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()
     run = detail["latest_analysis_run"]
-    assert run["status"] == "COMPLETED"
+    assert run["status"] == "PARTIAL"
     assert run["damage_status"] == "COMPLETED"
     assert run["damage_analysis"]["assessment"] == "REPAIR_LIKELY"
     assert {item["document_type"] for item in run["document_analyses"]} == {
@@ -420,6 +428,813 @@ def test_workflow_analysis_returns_pending_then_persists_grouped_results(client:
     assert registration["status"] == "COMPLETED"
     assert {field["key"] for field in registration["fields"]} >= {"owner_name", "license_plate"}
     assert all(field["original_ai_value"] == field["reviewed_value"] for field in registration["fields"])
+    policy = next(
+        item for item in run["document_ocr_results"] if item["document_type"] == "INSURANCE_POLICY"
+    )
+    assert policy["status"] == "FAILED"
+
+
+def test_workflow_analysis_persists_ocr_results_per_image_and_marks_unsupported_files(client: TestClient):
+    claim = prepare_claim_for_workflow_analysis(client)
+    second_id_card = client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=adjuster_headers(client),
+        data={"categories": ["ID_CARD"]},
+        files=[("files", ("id-card-back.png", b"id-card-back", "image/png"))],
+    )
+    assert second_id_card.status_code == 200
+
+    started = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    assert started.status_code == 202
+
+    run = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()[
+        "latest_analysis_run"
+    ]
+    ocr_results = run["document_ocr_results"]
+    id_card_results = [item for item in ocr_results if item["document_type"] == "ID_CARD"]
+    policy_result = next(item for item in ocr_results if item["document_type"] == "INSURANCE_POLICY")
+
+    assert len(id_card_results) == 2
+    assert all(item["status"] == "COMPLETED" and item["raw_text"] for item in id_card_results)
+    assert policy_result["status"] == "FAILED"
+    assert "supported image" in policy_result["warning"].lower()
+    assert run["status"] == "PARTIAL"
+
+
+def test_document_evidence_can_be_removed_after_analysis_without_deleting_history(
+    client: TestClient,
+):
+    with client.app.state.session_factory() as session:
+        session.execute(text("PRAGMA foreign_keys=ON"))
+
+    claim = prepare_claim_for_workflow_analysis(client)
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    analyzed = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()
+    policy = next(
+        item
+        for item in analyzed["evidence"]
+        if item["category"] == "INSURANCE_POLICY"
+    )
+
+    removed = client.delete(
+        f"/api/claims/{claim['id']}/evidence/{policy['id']}",
+        headers=adjuster_headers(client),
+    )
+
+    assert removed.status_code == 200
+    assert all(item["id"] != policy["id"] for item in removed.json()["evidence"])
+    assert any(
+        item["source_evidence_id"] == policy["id"]
+        for item in removed.json()["latest_analysis_run"]["document_ocr_results"]
+    )
+
+
+def test_document_analysis_aggregates_each_category_and_only_reprocesses_changes(
+    client: TestClient,
+    monkeypatch,
+):
+    class CountingOcrAdapter:
+        def __init__(self):
+            self.calls: list[int] = []
+
+        def extract(self, evidence, source_path):
+            self.calls.append(evidence.id)
+            return DocumentOcrResult(
+                raw_text=(
+                    f"Source file: {evidence.original_filename}\n"
+                    "Full name: Nguyen Van A\n"
+                    "Identity number: 000123456789\n"
+                    "Vehicle owner: Nguyen Van A\n"
+                    "Vehicle brand: Toyota\n"
+                    "Vehicle type: Sedan\n"
+                    "License plate: 51H-123.45\n"
+                    "License number: 001234567890\n"
+                    "Expiry date: 2030-12-31"
+                ),
+                adapter_name="counting-ocr",
+                metadata={},
+            )
+
+    class CountingExtractionAdapter:
+        def __init__(self):
+            self.calls: list[tuple[str, str]] = []
+            self.delegate = DeterministicDocumentExtractionAdapter()
+
+        def extract(self, definition, raw_ocr_text):
+            self.calls.append((definition.category.value, raw_ocr_text))
+            return self.delegate.extract(definition, raw_ocr_text)
+
+    ocr_adapter = CountingOcrAdapter()
+    extraction_adapter = CountingExtractionAdapter()
+    monkeypatch.setattr(
+        claim_routes, "get_document_ocr_adapter", lambda settings: ocr_adapter
+    )
+    monkeypatch.setattr(
+        claim_routes,
+        "get_document_extraction_adapter",
+        lambda settings: extraction_adapter,
+    )
+
+    claim = prepare_claim_for_workflow_analysis(client)
+    initial = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()
+    policy_pdf = next(
+        item for item in initial["evidence"] if item["category"] == "INSURANCE_POLICY"
+    )
+    assert client.delete(
+        f"/api/claims/{claim['id']}/evidence/{policy_pdf['id']}",
+        headers=adjuster_headers(client),
+    ).status_code == 200
+    first_upload = client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=adjuster_headers(client),
+        data={"categories": ["ID_CARD", "INSURANCE_POLICY"]},
+        files=[
+            ("files", ("id-card-back.jpg", b"id-card-back", "image/jpeg")),
+            ("files", ("policy-front.jpg", b"policy-front", "image/jpeg")),
+        ],
+    )
+    assert first_upload.status_code == 200
+    assert all(
+        item["analysis_required"]
+        for item in first_upload.json()["evidence"]
+        if item["category"] in {
+            "ID_CARD",
+            "INSURANCE_POLICY",
+            "VEHICLE_REGISTRATION",
+            "DRIVER_LICENSE",
+        }
+    )
+
+    assert client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    ).status_code == 202
+    assert len(ocr_adapter.calls) == 5
+    assert len(extraction_adapter.calls) == 4
+    identity_calls = [
+        raw_text
+        for category, raw_text in extraction_adapter.calls
+        if category == "ID_CARD"
+    ]
+    assert len(identity_calls) == 1
+    assert "id-card.jpg" in identity_calls[0]
+    assert "id-card-back.jpg" in identity_calls[0]
+    analyzed = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()
+    assert not any(
+        item["analysis_required"]
+        for item in analyzed["evidence"]
+        if item["category"] in {
+            "ID_CARD",
+            "INSURANCE_POLICY",
+            "VEHICLE_REGISTRATION",
+            "DRIVER_LICENSE",
+        }
+    )
+
+    with client.app.state.session_factory() as session:
+        session.execute(
+            text(
+                "UPDATE document_extraction_results "
+                "SET schema_version = 'document-extraction-schema-v1' "
+                "WHERE document_type = 'INSURANCE_POLICY'"
+            )
+        )
+        session.commit()
+
+    assert client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    ).status_code == 202
+    assert len(ocr_adapter.calls) == 5
+    assert len(extraction_adapter.calls) == 4
+    reused_run = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+    reused_policy = next(
+        result
+        for result in reused_run["document_ocr_results"]
+        if result["document_type"] == "INSURANCE_POLICY"
+    )
+    assert reused_policy["extraction"]["schema_version"] == (
+        "document-extraction-schema-v2-aggregated"
+    )
+
+    current = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()
+    policy_image = next(
+        item for item in current["evidence"] if item["category"] == "INSURANCE_POLICY"
+    )
+    assert client.delete(
+        f"/api/claims/{claim['id']}/evidence/{policy_image['id']}",
+        headers=adjuster_headers(client),
+    ).status_code == 200
+    replacement = client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=adjuster_headers(client),
+        data={"categories": ["INSURANCE_POLICY"]},
+        files=[("files", ("policy-replacement.jpg", b"replacement", "image/jpeg"))],
+    )
+    assert replacement.status_code == 200
+    replacement_evidence = replacement.json()["evidence"]
+    assert next(
+        item
+        for item in replacement_evidence
+        if item["original_filename"] == "policy-replacement.jpg"
+    )["analysis_required"] is True
+    assert all(
+        not item["analysis_required"]
+        for item in replacement_evidence
+        if item["category"] in {
+            "ID_CARD",
+            "VEHICLE_REGISTRATION",
+            "DRIVER_LICENSE",
+        }
+    )
+
+    assert client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    ).status_code == 202
+    assert len(ocr_adapter.calls) == 6
+    assert len(extraction_adapter.calls) == 5
+    assert extraction_adapter.calls[-1][0] == "INSURANCE_POLICY"
+    incremental_run = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+    for result in incremental_run["document_ocr_results"]:
+        changed = result["document_type"] == "INSURANCE_POLICY"
+        assert result["reused"] is (not changed)
+        if result["extraction"]:
+            assert result["extraction"]["reused"] is (not changed)
+
+
+def test_document_analysis_retries_only_failed_extraction_on_unchanged_evidence(
+    client: TestClient,
+    monkeypatch,
+):
+    class FailPolicyOnceAdapter:
+        def __init__(self):
+            self.calls: list[str] = []
+            self.delegate = DeterministicDocumentExtractionAdapter()
+            self.policy_attempts = 0
+
+        def extract(self, definition, raw_ocr_text):
+            self.calls.append(definition.category.value)
+            if definition.category.value == "INSURANCE_POLICY":
+                self.policy_attempts += 1
+                if self.policy_attempts == 1:
+                    return {"unexpected": "malformed"}
+            return self.delegate.extract(definition, raw_ocr_text)
+
+    adapter = FailPolicyOnceAdapter()
+    monkeypatch.setattr(
+        claim_routes,
+        "get_document_extraction_adapter",
+        lambda settings: adapter,
+    )
+    claim = prepare_claim_for_workflow_analysis(client)
+    current = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()
+    policy_pdf = next(
+        item for item in current["evidence"] if item["category"] == "INSURANCE_POLICY"
+    )
+    client.delete(
+        f"/api/claims/{claim['id']}/evidence/{policy_pdf['id']}",
+        headers=adjuster_headers(client),
+    )
+    client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=adjuster_headers(client),
+        data={"categories": ["INSURANCE_POLICY"]},
+        files=[("files", ("policy.jpg", b"policy", "image/jpeg"))],
+    )
+
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    assert adapter.calls.count("INSURANCE_POLICY") == 1
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+
+    assert len(adapter.calls) == 5
+    assert adapter.calls[-1] == "INSURANCE_POLICY"
+    latest = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+    policy = next(
+        result
+        for result in latest["document_ocr_results"]
+        if result["document_type"] == "INSURANCE_POLICY"
+    )
+    assert policy["extraction"]["status"] == "COMPLETED"
+
+
+def test_identity_and_policy_extraction_persists_structured_fields_and_confirmed_edits(
+    client: TestClient,
+):
+    claim = prepare_claim_for_workflow_analysis(client)
+    policy_image = client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=adjuster_headers(client),
+        data={"categories": ["INSURANCE_POLICY"]},
+        files=[("files", ("policy-card.jpg", b"policy-card", "image/jpeg"))],
+    )
+    assert policy_image.status_code == 200
+
+    started = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    assert started.status_code == 202
+
+    detail = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()
+    run = detail["latest_analysis_run"]
+    id_card = next(
+        item
+        for item in run["document_ocr_results"]
+        if item["original_filename"] == "id-card.jpg"
+    )
+    policy = next(
+        item
+        for item in run["document_ocr_results"]
+        if item["original_filename"] == "policy-card.jpg"
+    )
+
+    assert id_card["raw_text"]
+    assert id_card["extraction"]["status"] == "COMPLETED"
+    assert id_card["extraction"]["prompt_version"] == "document-extraction-v1"
+    identity_fields = {
+        field["field_key"]: field for field in id_card["extraction"]["fields"]
+    }
+    assert set(identity_fields) == {
+        "full_name",
+        "identity_number",
+        "date_of_birth",
+        "place_of_origin",
+        "expiry_date",
+    }
+    assert identity_fields["identity_number"]["ai_extracted_value"] == "079203001234"
+    assert identity_fields["identity_number"]["confirmed_value"] == "079203001234"
+    assert "confidence" not in identity_fields["identity_number"]
+
+    policy_fields = {
+        field["field_key"]: field for field in policy["extraction"]["fields"]
+    }
+    assert set(policy_fields) == {"vehicle_owner", "vehicle_brand"}
+    assert policy_fields["vehicle_owner"]["ai_extracted_value"] == "Nguyen Van A"
+    assert policy_fields["vehicle_brand"]["ai_extracted_value"] == "Toyota"
+
+    raw_ocr_before_edit = id_card["raw_text"]
+    full_name = identity_fields["full_name"]
+    corrected = client.patch(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields/{full_name['id']}",
+        headers=adjuster_headers(client),
+        json={"confirmed_value": "Mai Nguyen"},
+    )
+    assert corrected.status_code == 200
+
+    refreshed = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+    refreshed_id_card = next(
+        item
+        for item in refreshed["document_ocr_results"]
+        if item["original_filename"] == "id-card.jpg"
+    )
+    refreshed_name = next(
+        field
+        for field in refreshed_id_card["extraction"]["fields"]
+        if field["field_key"] == "full_name"
+    )
+    assert refreshed_id_card["raw_text"] == raw_ocr_before_edit
+    assert refreshed_name["ai_extracted_value"] == "Nguyen Van A"
+    assert refreshed_name["confirmed_value"] == "Mai Nguyen"
+
+    reviewed = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=adjuster_headers(client),
+    )
+    assert reviewed.status_code == 200
+    locked_edit = client.patch(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields/{full_name['id']}",
+        headers=adjuster_headers(client),
+        json={"confirmed_value": "Another Name"},
+    )
+    assert locked_edit.status_code == 409
+
+
+def test_batch_update_document_extracted_fields_is_atomic(client: TestClient):
+    claim = prepare_claim_for_workflow_analysis(client)
+    assert client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    ).status_code == 202
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+    fields = [
+        field
+        for result in run["document_ocr_results"]
+        if result["extraction"]
+        for field in result["extraction"]["fields"]
+    ]
+    assert len(fields) >= 2
+
+    saved = client.put(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields",
+        headers=adjuster_headers(client),
+        json={
+            "fields": [
+                {"id": fields[0]["id"], "confirmed_value": "Reviewed value one"},
+                {"id": fields[1]["id"], "confirmed_value": "Reviewed value two"},
+            ]
+        },
+    )
+    assert saved.status_code == 200
+    saved_fields = {
+        field["id"]: field
+        for result in saved.json()["latest_analysis_run"]["document_ocr_results"]
+        if result["extraction"]
+        for field in result["extraction"]["fields"]
+    }
+    assert saved_fields[fields[0]["id"]]["confirmed_value"] == "Reviewed value one"
+    assert saved_fields[fields[1]["id"]]["confirmed_value"] == "Reviewed value two"
+
+    rejected = client.put(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields",
+        headers=adjuster_headers(client),
+        json={
+            "fields": [
+                {"id": fields[0]["id"], "confirmed_value": "Must not persist"},
+                {"id": 999999, "confirmed_value": "Unknown field"},
+            ]
+        },
+    )
+    assert rejected.status_code == 404
+    refreshed = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+    refreshed_fields = {
+        field["id"]: field
+        for result in refreshed["document_ocr_results"]
+        if result["extraction"]
+        for field in result["extraction"]["fields"]
+    }
+    assert refreshed_fields[fields[0]["id"]]["confirmed_value"] == "Reviewed value one"
+
+
+def test_registration_and_driver_license_extraction_supports_multiple_images_and_null_fields(
+    client: TestClient,
+):
+    claim = prepare_claim_for_workflow_analysis(client)
+    second_registration = client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=adjuster_headers(client),
+        data={"categories": ["VEHICLE_REGISTRATION"]},
+        files=[("files", ("registration-back.jpg", b"registration-back", "image/jpeg"))],
+    )
+    assert second_registration.status_code == 200
+
+    started = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    assert started.status_code == 202
+
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+    registrations = [
+        result
+        for result in run["document_ocr_results"]
+        if result["document_type"] == "VEHICLE_REGISTRATION"
+    ]
+    driver_license = next(
+        result
+        for result in run["document_ocr_results"]
+        if result["document_type"] == "DRIVER_LICENSE"
+    )
+
+    assert len(registrations) == 2
+    registration_with_extraction = [
+        registration for registration in registrations if registration["extraction"]
+    ]
+    assert len(registration_with_extraction) == 1
+    registration = registration_with_extraction[0]
+    extraction = registration["extraction"]
+    fields = {field["field_key"]: field for field in extraction["fields"]}
+    assert extraction["source_evidence_id"] == registration["source_evidence_id"]
+    assert extraction["document_type"] == "VEHICLE_REGISTRATION"
+    assert set(fields) == {
+        "vehicle_owner",
+        "vehicle_brand",
+        "vehicle_type",
+        "license_plate",
+    }
+    assert fields["vehicle_owner"]["ai_extracted_value"] == "Nguyen Van A"
+    assert fields["vehicle_brand"]["ai_extracted_value"] == "Toyota"
+    assert fields["vehicle_type"]["ai_extracted_value"] == "Ô tô con"
+    assert fields["license_plate"]["ai_extracted_value"] == "51H-123.45"
+    assert all(
+        field["source_evidence_id"] == registration["source_evidence_id"]
+        for field in fields.values()
+    )
+    assert all("confidence" not in field for field in fields.values())
+    assert all(registration["field_validations"] == [] for registration in registrations)
+
+    driver_fields = {
+        field["field_key"]: field
+        for field in driver_license["extraction"]["fields"]
+    }
+    assert set(driver_fields) == {"license_number", "full_name", "expiry_date"}
+    assert driver_fields["license_number"]["ai_extracted_value"] == "079012345678"
+    assert driver_fields["full_name"]["ai_extracted_value"] is None
+    assert driver_fields["expiry_date"]["ai_extracted_value"] is None
+    assert driver_license["field_validations"] == []
+
+
+def test_document_extraction_selects_category_prompt_and_isolates_malformed_output(
+    client: TestClient, monkeypatch
+):
+    class CapturingExtractionAdapter:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str]] = []
+            self.delegate = DeterministicDocumentExtractionAdapter()
+
+        def extract(self, definition, raw_ocr_text):
+            self.calls.append((definition.category.value, definition.system_prompt))
+            if definition.category.value == "INSURANCE_POLICY":
+                return {"unexpected": "malformed"}
+            if definition.category.value == "ID_CARD":
+                return IdentityCardExtraction(
+                    full_name="Nguyen Van A",
+                    identity_number="000123456789",
+                    date_of_birth=None,
+                    place_of_origin=None,
+                    expiry_date=None,
+                )
+            return self.delegate.extract(definition, raw_ocr_text)
+
+    adapter = CapturingExtractionAdapter()
+    monkeypatch.setattr(
+        claim_routes, "get_document_extraction_adapter", lambda settings: adapter
+    )
+    claim = prepare_claim_for_workflow_analysis(client)
+    uploaded = client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=adjuster_headers(client),
+        data={"categories": ["INSURANCE_POLICY"]},
+        files=[("files", ("policy-card.jpg", b"policy-card", "image/jpeg"))],
+    )
+    assert uploaded.status_code == 200
+
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+
+    id_call = next(item for item in adapter.calls if item[0] == "ID_CARD")
+    policy_call = next(item for item in adapter.calls if item[0] == "INSURANCE_POLICY")
+    assert "Citizen Identity Card" in id_call[1]
+    assert "`full_name`" in id_call[1]
+    assert "Insurance Policy" in policy_call[1]
+
+    id_card = next(
+        item
+        for item in run["document_ocr_results"]
+        if item["original_filename"] == "id-card.jpg"
+    )
+    policy = next(
+        item
+        for item in run["document_ocr_results"]
+        if item["original_filename"] == "policy-card.jpg"
+    )
+    identity_number = next(
+        field
+        for field in id_card["extraction"]["fields"]
+        if field["field_key"] == "identity_number"
+    )
+    assert identity_number["ai_extracted_value"] == "000123456789"
+    assert next(
+        field
+        for field in id_card["extraction"]["fields"]
+        if field["field_key"] == "date_of_birth"
+    )["ai_extracted_value"] is None
+    assert policy["raw_text"]
+    assert policy["extraction"]["status"] == "FAILED"
+    assert policy["extraction"]["fields"] == []
+    assert "ValidationError" in policy["extraction"]["warning"]
+    assert all(
+        item["extraction"]["status"] == "COMPLETED"
+        for item in run["document_ocr_results"]
+        if item["status"] == "COMPLETED" and item["document_type"] != "INSURANCE_POLICY"
+    )
+
+
+def test_workflow_analysis_uses_injected_ocr_adapter_once_per_supported_document_image(
+    client: TestClient, monkeypatch
+):
+    class FakeOcrAdapter:
+        def __init__(self) -> None:
+            self.calls: list[int] = []
+
+        def extract(self, evidence, source_path):
+            self.calls.append(evidence.id)
+            if evidence.original_filename == "registration.jpg":
+                raise DocumentOcrError("OCR fixture failure")
+            return DocumentOcrResult(
+                raw_text=f"OCR text for {evidence.original_filename}",
+                adapter_name="fake-ocr",
+                metadata={"fixture": True},
+            )
+
+    adapter = FakeOcrAdapter()
+    monkeypatch.setattr(claim_routes, "get_document_ocr_adapter", lambda mode: adapter)
+    claim = prepare_claim_for_workflow_analysis(client)
+
+    client.post(f"/api/claims/{claim['id']}/analysis-runs", headers=adjuster_headers(client))
+
+    run = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()[
+        "latest_analysis_run"
+    ]
+    ocr_results = run["document_ocr_results"]
+    assert len(adapter.calls) == 3
+    assert len(adapter.calls) == len(set(adapter.calls))
+    registration = next(item for item in ocr_results if item["original_filename"] == "registration.jpg")
+    id_card = next(item for item in ocr_results if item["original_filename"] == "id-card.jpg")
+    assert registration["status"] == "FAILED"
+    assert registration["warning"] == "OCR fixture failure"
+    assert id_card["raw_text"] == "OCR text for id-card.jpg"
+    assert id_card["adapter_metadata"] == {"fixture": True}
+
+
+def test_shared_extraction_replaces_legacy_field_validation_without_blocking_ai_review(
+    client: TestClient, monkeypatch
+):
+    class UnexpectedLegacyFieldAdapter:
+        def validate(self, definition, raw_ocr_text, claim_context):
+            raise AssertionError("Legacy field validation must not run for extracted documents")
+
+    monkeypatch.setattr(
+        claim_routes,
+        "get_document_field_validation_adapter",
+        lambda settings: UnexpectedLegacyFieldAdapter(),
+    )
+    claim = prepare_claim_for_workflow_analysis(client)
+    client.post(f"/api/claims/{claim['id']}/analysis-runs", headers=adjuster_headers(client))
+
+    detail = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()
+    run = detail["latest_analysis_run"]
+    registration_ocr = next(
+        item
+        for item in run["document_ocr_results"]
+        if item["document_type"] == "VEHICLE_REGISTRATION"
+    )
+    registration_fields = {
+        item["field_key"]: item for item in registration_ocr["extraction"]["fields"]
+    }
+    assert registration_ocr["field_validations"] == []
+    assert run["consistency_checks"] == []
+    assert registration_fields["vehicle_brand"]["ai_extracted_value"] == "Toyota"
+    assert registration_fields["license_plate"]["ai_extracted_value"] == "51H-123.45"
+    assert registration_fields["vehicle_brand"]["comparison"]["status"] == "MATCH"
+    assert registration_fields["license_plate"]["comparison"]["status"] == "MATCH"
+
+    captured_context: dict[str, object] = {}
+    original_generate = LlmCopilotService.generate
+
+    def capture_input(self, input_data):
+        captured_context.update(input_data.model_context())
+        return original_generate(self, input_data)
+
+    monkeypatch.setattr(LlmCopilotService, "generate", capture_input)
+    reviewed = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=adjuster_headers(client),
+    )
+
+    assert reviewed.status_code == 200
+    registration_context = next(
+        item
+        for item in captured_context["document_analysis"]
+        if item["document_type"] == "VEHICLE_REGISTRATION"
+    )
+    assert registration_context["field_validations"] == []
+    confirmed_fields = {
+        field["field_key"]: field
+        for field in registration_context["confirmed_fields"]
+    }
+    assert confirmed_fields["vehicle_brand"]["confirmed_value"] == "Toyota"
+    assert confirmed_fields["vehicle_brand"]["comparison"]["status"] == "MATCH"
+
+
+def test_adjuster_can_confirm_registration_field_without_changing_ai_or_ocr_values(
+    client: TestClient,
+    monkeypatch,
+):
+    claim = prepare_claim_for_workflow_analysis(client)
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    detail = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()
+    run = detail["latest_analysis_run"]
+    registration = next(
+        item
+        for item in run["document_ocr_results"]
+        if item["document_type"] == "VEHICLE_REGISTRATION"
+    )
+    plate = next(
+        item
+        for item in registration["extraction"]["fields"]
+        if item["field_key"] == "license_plate"
+    )
+    raw_ocr = registration["raw_text"]
+
+    corrected = client.patch(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields/{plate['id']}",
+        headers=adjuster_headers(client),
+        json={"confirmed_value": "51H-999.99"},
+    )
+
+    assert corrected.status_code == 200
+    corrected_plate = next(
+        field
+        for result in corrected.json()["latest_analysis_run"]["document_ocr_results"]
+        if result["id"] == registration["id"]
+        for field in result["extraction"]["fields"]
+        if field["id"] == plate["id"]
+    )
+    corrected_registration = next(
+        result
+        for result in corrected.json()["latest_analysis_run"]["document_ocr_results"]
+        if result["id"] == registration["id"]
+    )
+    assert corrected_registration["raw_text"] == raw_ocr
+    assert corrected_plate["ai_extracted_value"] == "51H-123.45"
+    assert corrected_plate["confirmed_value"] == "51H-999.99"
+    assert corrected_plate["comparison"]["status"] == "MISMATCH"
+    assert corrected_plate["comparison"]["document_value"] == "51H-999.99"
+
+    captured_context: dict[str, object] = {}
+    original_generate = LlmCopilotService.generate
+
+    def capture_input(self, input_data):
+        captured_context.update(input_data.model_context())
+        return original_generate(self, input_data)
+
+    monkeypatch.setattr(LlmCopilotService, "generate", capture_input)
+
+    reviewed = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=adjuster_headers(client),
+    )
+    assert reviewed.status_code == 200
+    registration_context = next(
+        item
+        for item in captured_context["document_analysis"]
+        if item["document_type"] == "VEHICLE_REGISTRATION"
+    )
+    confirmed_plate = next(
+        field
+        for field in registration_context["confirmed_fields"]
+        if field["field_key"] == "license_plate"
+    )
+    assert confirmed_plate["ai_extracted_value"] == "51H-123.45"
+    assert confirmed_plate["confirmed_value"] == "51H-999.99"
+    assert confirmed_plate["comparison"]["status"] == "MISMATCH"
+    assert any("differs" in warning for warning in captured_context["warnings"])
+
+    locked = client.patch(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields/{plate['id']}",
+        headers=adjuster_headers(client),
+        json={"confirmed_value": "51H-000.00"},
+    )
+    assert locked.status_code == 409
 
 
 def test_admin_can_start_workflow_analysis(client: TestClient):
@@ -450,7 +1265,7 @@ def test_workflow_analysis_preserves_successful_results_when_one_document_fails(
         item for item in run["document_analyses"] if item["document_type"] == "DRIVER_LICENSE"
     )
     assert failed["status"] == "FAILED"
-    assert failed["warnings"] == ["Mock document analysis failed for this evidence group."]
+    assert failed["warnings"] == ["analysis-fail.jpg: Mock OCR failed for this evidence image."]
     assert any(item["status"] == "COMPLETED" for item in run["document_analyses"])
 
 
@@ -642,9 +1457,10 @@ def test_damage_analysis_returns_normalized_repair_fixture_and_persists_it(clien
             "file_size": 20,
             "uploaded_at": analysis["detections"][0]["annotated_evidence"]["uploaded_at"],
             "content_url": "/api/claims/CLM-000001/evidence/1/content",
-            "group_id": None,
-            "group_label": None,
-        },
+                "group_id": None,
+                "group_label": None,
+                "analysis_required": False,
+            },
     }]
     detail = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()
     assert detail["status"] == "REVIEW_REQUIRED"

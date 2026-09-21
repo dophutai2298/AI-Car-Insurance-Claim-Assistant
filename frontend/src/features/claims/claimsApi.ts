@@ -93,6 +93,50 @@ export const updateDocumentField = (
       body: JSON.stringify({ reviewed_value: reviewedValue }),
     },
   );
+export const updateDocumentFieldValidation = (
+  claimId: string,
+  runId: number,
+  fieldValidationId: number,
+  reviewedValue: string,
+  accessToken: string,
+) =>
+  request<ClaimDetail>(
+    `/api/claims/${claimId}/analysis-runs/${runId}/field-validations/${fieldValidationId}`,
+    accessToken,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ reviewed_value: reviewedValue }),
+    },
+  );
+export const updateDocumentExtractedField = (
+  claimId: string,
+  runId: number,
+  extractedFieldId: number,
+  confirmedValue: string | null,
+  accessToken: string,
+) =>
+  request<ClaimDetail>(
+    `/api/claims/${claimId}/analysis-runs/${runId}/extraction-fields/${extractedFieldId}`,
+    accessToken,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ confirmed_value: confirmedValue }),
+    },
+  );
+export const updateDocumentExtractedFields = (
+  claimId: string,
+  runId: number,
+  fields: Array<{ id: number; confirmed_value: string | null }>,
+  accessToken: string,
+) =>
+  request<ClaimDetail>(
+    `/api/claims/${claimId}/analysis-runs/${runId}/extraction-fields`,
+    accessToken,
+    {
+      method: "PUT",
+      body: JSON.stringify({ fields }),
+    },
+  );
 export const runWorkflowAiReview = (
   claimId: string,
   runId: number,

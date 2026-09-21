@@ -13,6 +13,7 @@ import {
   Chip,
   Input,
   Label,
+  Modal,
   TextField,
 } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
@@ -46,6 +47,7 @@ export function EvidencePanel({
   const [error, setError] = useState("");
   const [otherLabel, setOtherLabel] = useState("");
   const [otherFiles, setOtherFiles] = useState<File[]>([]);
+  const [deleteTarget, setDeleteTarget] = useState<EvidenceItem | null>(null);
 
   async function uploadFiles(
     category: EvidenceCategory,
@@ -68,6 +70,21 @@ export function EvidencePanel({
         caught instanceof ClaimsApiError
           ? caught.message
           : t("evidence.uploadFailed"),
+      );
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setError("");
+    try {
+      await remove.mutateAsync(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch (caught) {
+      setError(
+        caught instanceof ClaimsApiError
+          ? caught.message
+          : t("evidence.deleteFailed"),
       );
     }
   }
@@ -110,7 +127,7 @@ export function EvidencePanel({
               isPending={upload.isPending}
               key={category}
               locked={locked}
-              onRemove={(id) => remove.mutate(id)}
+              onRemove={setDeleteTarget}
               onUpload={(files) => uploadFiles(category, files)}
             />
           ))}
@@ -132,7 +149,7 @@ export function EvidencePanel({
               <EvidenceFiles
                 evidence={items}
                 locked={locked}
-                onRemove={(id) => remove.mutate(id)}
+                onRemove={setDeleteTarget}
               />
             </div>
           ))}
@@ -172,6 +189,48 @@ export function EvidencePanel({
           ) : null}
         </section>
       </Card.Content>
+      <Modal>
+        <Modal.Backdrop
+          isOpen={deleteTarget !== null}
+          onOpenChange={(isOpen) => {
+            if (!isOpen && !remove.isPending) setDeleteTarget(null);
+          }}
+        >
+          <Modal.Container>
+            <Modal.Dialog className="sm:max-w-md">
+              <Modal.Header>
+                <Modal.Heading>
+                  {t("evidence.confirmDeleteTitle")}
+                </Modal.Heading>
+              </Modal.Header>
+              <Modal.Body>
+                <p className="text-sm text-slate-600">
+                  {t("evidence.confirmDeleteDescription", {
+                    filename: deleteTarget?.original_filename ?? "",
+                  })}
+                </p>
+              </Modal.Body>
+              <Modal.Footer>
+                <Button
+                  isDisabled={remove.isPending}
+                  onPress={() => setDeleteTarget(null)}
+                  variant="outline"
+                >
+                  {t("common.cancel")}
+                </Button>
+                <Button
+                  className="bg-red-600 text-white hover:bg-red-700"
+                  isPending={remove.isPending}
+                  onPress={confirmDelete}
+                >
+                  <TrashCan size={17} />
+                  {t("evidence.deleteAction")}
+                </Button>
+              </Modal.Footer>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
+      </Modal>
     </Card>
   );
 }
@@ -189,11 +248,12 @@ function CategorySection({
   locked: boolean;
   isPending: boolean;
   onUpload: (files: File[]) => void;
-  onRemove: (id: number) => void;
+  onRemove: (item: EvidenceItem) => void;
 }) {
   const { t } = useTranslation();
   const input = useRef<HTMLInputElement>(null);
   const complete = evidence.length > 0;
+  const analysisRequired = evidence.some((item) => item.analysis_required);
   return (
     <section
       className={`grid content-start gap-3 border p-4 ${complete ? "border-emerald-200 bg-emerald-50/40" : "border-amber-200 bg-amber-50/40"}`}
@@ -207,9 +267,21 @@ function CategorySection({
             {t(`evidence.hints.${category}`)}
           </p>
         </div>
-        <Chip color={complete ? "success" : "warning"} size="sm" variant="soft">
-          {complete ? <CheckmarkOutline size={14} /> : <WarningAlt size={14} />}
-          {complete ? t("evidence.uploaded") : t("evidence.required")}
+        <Chip
+          color={!complete || analysisRequired ? "warning" : "success"}
+          size="sm"
+          variant="soft"
+        >
+          {complete && !analysisRequired ? (
+            <CheckmarkOutline size={14} />
+          ) : (
+            <WarningAlt size={14} />
+          )}
+          {!complete
+            ? t("evidence.required")
+            : analysisRequired
+              ? t("evidence.analysisRequired")
+              : t("evidence.uploaded")}
         </Chip>
       </div>
       <EvidenceFiles evidence={evidence} locked={locked} onRemove={onRemove} />
@@ -250,7 +322,7 @@ function EvidenceFiles({
 }: {
   evidence: EvidenceItem[];
   locked: boolean;
-  onRemove: (id: number) => void;
+  onRemove: (item: EvidenceItem) => void;
 }) {
   const { t } = useTranslation();
   if (!evidence.length) return null;
@@ -278,6 +350,11 @@ function EvidenceFiles({
             <p className="text-xs text-slate-500">
               {formatFileSize(item.file_size)}
             </p>
+            {item.analysis_required ? (
+              <p className="mt-1 text-xs font-medium text-amber-700">
+                {t("evidence.analysisRequired")}
+              </p>
+            ) : null}
           </div>
           {!locked ? (
             <Button
@@ -285,7 +362,7 @@ function EvidenceFiles({
                 filename: item.original_filename,
               })}
               isIconOnly
-              onPress={() => onRemove(item.id)}
+              onPress={() => onRemove(item)}
               size="sm"
               variant="ghost"
             >
@@ -323,7 +400,11 @@ export function EvidenceImagePreview({
   }, [item.content_url, session]);
   return previewUrl ? (
     <a href={previewUrl} rel="noopener noreferrer" target="_blank">
-      <img alt={item.original_filename} className={className} src={previewUrl} />
+      <img
+        alt={item.original_filename}
+        className={className}
+        src={previewUrl}
+      />
     </a>
   ) : (
     <Image className="text-slate-500" size={28} />

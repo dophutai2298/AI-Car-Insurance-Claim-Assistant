@@ -13,15 +13,34 @@
 
 Copy `.env.example` to `.env` and adjust values if needed. The defaults run the PoC in mock mode for the damage model, part search, and LLM.
 
-To use Together AI through its OpenAI-compatible endpoint, keep `LLM_MODE=openai` and configure the following values in `.env`:
+Document OCR defaults to the locally installed `deepdoc_vietocr` package. Set
+`DOCUMENT_OCR_MODE=mock` only for deterministic local demos and automated tests.
+
+To use OpenAI, set `LLM_MODE=openai` and configure the following values in `.env`:
 
 ```text
-LLM_BASE_URL=https://api.together.xyz/v1
-OPENAI_API_KEY=your-together-api-key
-OPENAI_MODEL=meta-llama/Llama-3.3-70B-Instruct-Turbo-Free
+OPENAI_API_KEY=your-openai-api-key
+OPENAI_MODEL=gpt-5.6-luna
+LLM_REQUEST_TIMEOUT_SECONDS=60
+LLM_MAX_RETRIES=0
+LLM_TOKEN_USAGE_LOG_ENABLED=true
 ```
 
-The application uses the same adapter with OpenAI later: replace `LLM_BASE_URL` and `OPENAI_MODEL` with the OpenAI values. `URL_MODEL` remains supported for the current local configuration. Do not commit API keys.
+Do not set `LLM_BASE_URL` for the official OpenAI API; LangChain uses its default
+OpenAI endpoint. `LLM_BASE_URL` is reserved for an explicitly configured,
+OpenAI-compatible provider. The legacy `URL_MODEL` variable is not supported.
+Use a fixed model with structured-output support for document extraction. Dynamic
+router models can vary in latency and schema support between requests. The timeout
+and retry settings keep one failed document from blocking the remaining workflow.
+Do not commit API keys.
+
+Set `LLM_TOKEN_USAGE_LOG_ENABLED=true` to print provider-reported token usage after
+each document extraction and document field-validation LLM call. Each terminal log
+includes the operation, document type, model, input tokens, output tokens, and total
+tokens. Set it to `false` to disable these logs. OCR text, prompts, and model output
+are never included in the token-usage log. If the provider omits usage metadata, the
+log reports `status=unavailable` instead of estimating tokens with a potentially
+incompatible tokenizer.
 
 ### 2. Start Postgres
 
@@ -36,6 +55,10 @@ docker-compose up -d postgres
 ```
 
 ### 3. Start the backend
+
+Download the private `deepdoc_vietocr-0.1.0-py3-none-any.whl` package from
+[Google Drive](https://drive.google.com/file/d/1LBGigUwhSzncbh4uMpkq5kZzU1JETlQz/view?usp=sharing)
+and place it in `backend/package/` before installing the backend requirements.
 
 ```bash
 cd backend

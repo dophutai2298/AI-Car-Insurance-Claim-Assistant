@@ -20,7 +20,7 @@ const en = {
     admin: "Admin Config",
     signOut: "Sign out",
   },
-  language: { switchToVietnamese: "Tiếng Việt", switchToEnglish: "English" },
+  language: { switchToVietnamese: "Tiếng Việt", switchToEnglish: "English" },
   claim: {
     intake: "Claim intake",
     createTitle: "Create a claim case",
@@ -93,11 +93,17 @@ const en = {
     otherFiles: "Other document files",
     addOther: "Add other document",
     uploaded: "Uploaded",
+    analysisRequired: "Analysis required",
     required: "Required",
     addMore: "Add files",
     selectFiles: "Select files",
     selectFor: "Select files for {{category}}",
     removeFile: "Remove {{filename}}",
+    deleteAction: "Delete",
+    deleteFailed: "Evidence could not be deleted",
+    confirmDeleteTitle: "Delete evidence?",
+    confirmDeleteDescription:
+      "Delete {{filename}} from the current claim evidence? Previous analysis history will be preserved.",
     categories: {
       VEHICLE_DAMAGE_IMAGE: "Vehicle damage images",
       ID_CARD: "ID cards",
@@ -162,16 +168,77 @@ const en = {
   documents: {
     title: "Document analysis",
     description:
-      "Mock OCR values use the future adapter contract and can be corrected before AI review.",
+      "Review OCR and field validation results against each source image.",
+    runContext: "Analysis run #{{id}}",
+    imageCount: "{{count}} image(s)",
+    processedBy: "Processed by {{adapter}}",
+    processingState: "Waiting for OCR processing",
+    processing: "OCR and field validation are processing.",
+    reusing: "Reusing the previous analysis result.",
+    reused: "Reused",
+    unavailable: "Unavailable",
+    noEvidence: "No evidence image is available in this category.",
+    resultUnavailable:
+      "No OCR result is available for this image. Run analysis again.",
+    noFields: "OCR completed, but no validated fields were returned.",
+    noExtractedFields:
+      "Extraction completed, but no document fields were returned.",
+    rerunHint: "Run analysis again to retry this image.",
+    fieldsLocked:
+      "Field values are locked because an AI review already exists for this analysis run.",
+    saveFailed: "The reviewed field value could not be saved.",
+    saveAll: "Save all fields",
+    saveAllSuccess: "All document field values were saved.",
+    saveAllFailed: "Document field values could not be saved.",
+    rawOcr: "Raw OCR text",
+    structuredExtraction: "Structured extraction",
+    reviewNotice:
+      "Information was extracted automatically. Review and correct values before AI review.",
+    extractionProvenance: "Prompt {{prompt}} · Schema {{schema}}",
+    aiExtractedValue: "AI extracted value",
+    confirmedValue: "Confirmed value",
+    confirmedValueLabel: "{{field}} confirmed value",
+    ocrValue: "OCR value",
+    normalizedValue: "Normalized value",
+    normalizedValueLabel: "{{field}} normalized value",
+    comparedValues: "Claim: {{claim}} · Document: {{document}}",
+    decisionBoundary:
+      "Document validation supports adjuster review and is not a final insurance claim decision.",
+    consistency: {
+      MATCH: "Match",
+      MISMATCH: "Mismatch",
+      UNAVAILABLE: "Comparison unavailable",
+    },
+    consistencyExplanation: {
+      MATCH: "The confirmed document value matches Claim Information.",
+      MISMATCH:
+        "The confirmed document value differs from Claim Information and requires manual review.",
+      UNAVAILABLE:
+        "A claim or confirmed document value is missing, so comparison is unavailable.",
+    },
+    consistencyUnavailable:
+      "A claim or document value is missing, so this field could not be compared.",
+    validationStatus: {
+      VALID: "Valid",
+      INVALID: "Invalid",
+      UNCERTAIN: "Uncertain",
+      MISSING: "Missing",
+      LLM_UNAVAILABLE: "AI unavailable",
+    },
     saveField: "Save {{field}}",
     originalValue: "Original AI value: {{value}}",
     fields: {
       full_name: "Full name",
       identity_number: "Identity number",
       date_of_birth: "Date of birth",
+      place_of_origin: "Place of origin",
+      expiry_date: "Expiry date",
       policy_number: "Policy number",
       insured_name: "Insured name",
       coverage_end: "Coverage end",
+      vehicle_owner: "Vehicle owner",
+      vehicle_brand: "Vehicle brand",
+      vehicle_type: "Vehicle type",
       owner_name: "Owner name",
       license_plate: "License plate",
       vehicle_make: "Vehicle make",
@@ -194,6 +261,7 @@ const en = {
     reviewRequired: "Review required",
     generated: "Generated",
     fallback: "Demo fallback",
+    unavailable: "AI unavailable",
     warnings: "Warnings",
     evidenceReferences: "Evidence references",
   },
@@ -362,12 +430,18 @@ const vi = {
     addOther: "Thêm giấy tờ khác",
 
     uploaded: "Đã tải lên",
+    analysisRequired: "Cần phân tích",
     required: "Bắt buộc",
 
     addMore: "Thêm tệp",
     selectFiles: "Chọn tệp",
     selectFor: "Chọn tệp cho {{category}}",
     removeFile: "Xóa {{filename}}",
+    deleteAction: "Xóa",
+    deleteFailed: "Không thể xóa bằng chứng",
+    confirmDeleteTitle: "Xóa bằng chứng?",
+    confirmDeleteDescription:
+      "Xóa {{filename}} khỏi bằng chứng hiện tại? Lịch sử phân tích trước đó vẫn được giữ lại.",
 
     categories: {
       VEHICLE_DAMAGE_IMAGE: "Hình ảnh hư hỏng xe",
@@ -458,7 +532,63 @@ const vi = {
     title: "Phân tích giấy tờ",
 
     description:
-      "Dữ liệu OCR mô phỏng sử dụng cấu trúc của adapter trong tương lai và có thể được chỉnh sửa trước khi đánh giá AI.",
+      "Đối chiếu kết quả OCR và xác thực từng trường với đúng ảnh nguồn.",
+    runContext: "Lần phân tích #{{id}}",
+    imageCount: "{{count}} ảnh",
+    processedBy: "Xử lý bởi {{adapter}}",
+    processingState: "Đang chờ xử lý OCR",
+    processing: "OCR và xác thực trường dữ liệu đang được xử lý.",
+    reusing: "Đang sử dụng lại kết quả phân tích trước đó.",
+    reused: "Đã sử dụng lại",
+    unavailable: "Không khả dụng",
+    noEvidence: "Không có ảnh bằng chứng trong nhóm này.",
+    resultUnavailable:
+      "Chưa có kết quả OCR cho ảnh này. Vui lòng chạy lại phân tích.",
+    noFields: "OCR đã hoàn tất nhưng không trả về trường dữ liệu đã xác thực.",
+    noExtractedFields:
+      "Trích xuất đã hoàn tất nhưng không trả về trường dữ liệu tài liệu.",
+    rerunHint: "Chạy lại phân tích để thử xử lý lại ảnh này.",
+    fieldsLocked:
+      "Giá trị các trường đã bị khóa vì lần phân tích này đã có đánh giá AI.",
+    saveFailed: "Không thể lưu giá trị trường đã xem xét.",
+    saveAll: "Lưu tất cả trường",
+    saveAllSuccess: "Đã lưu tất cả giá trị giấy tờ.",
+    saveAllFailed: "Không thể lưu các giá trị giấy tờ.",
+    rawOcr: "Văn bản OCR gốc",
+    structuredExtraction: "Dữ liệu trích xuất có cấu trúc",
+    reviewNotice:
+      "Thông tin được trích xuất tự động. Hãy kiểm tra và chỉnh sửa trước khi thực hiện đánh giá AI.",
+    extractionProvenance: "Prompt {{prompt}} · Schema {{schema}}",
+    aiExtractedValue: "Giá trị AI trích xuất",
+    confirmedValue: "Giá trị đã xác nhận",
+    confirmedValueLabel: "Giá trị đã xác nhận của {{field}}",
+    ocrValue: "Giá trị OCR",
+    normalizedValue: "Giá trị chuẩn hóa",
+    normalizedValueLabel: "Giá trị chuẩn hóa của {{field}}",
+    comparedValues: "Hồ sơ: {{claim}} · Giấy tờ: {{document}}",
+    decisionBoundary:
+      "Kết quả xác thực giấy tờ chỉ hỗ trợ chuyên viên xem xét và không phải quyết định bảo hiểm cuối cùng.",
+    consistency: {
+      MATCH: "Khớp",
+      MISMATCH: "Không khớp",
+      UNAVAILABLE: "Không thể đối chiếu",
+    },
+    consistencyExplanation: {
+      MATCH: "Giá trị giấy tờ đã xác nhận khớp với Thông tin hồ sơ.",
+      MISMATCH:
+        "Giá trị giấy tờ đã xác nhận khác với Thông tin hồ sơ và cần được xem xét thủ công.",
+      UNAVAILABLE:
+        "Thiếu giá trị trong hồ sơ hoặc giấy tờ đã xác nhận nên chưa thể đối chiếu.",
+    },
+    consistencyUnavailable:
+      "Thiếu giá trị trong hồ sơ hoặc giấy tờ nên chưa thể đối chiếu trường này.",
+    validationStatus: {
+      VALID: "Hợp lệ",
+      INVALID: "Không hợp lệ",
+      UNCERTAIN: "Chưa chắc chắn",
+      MISSING: "Thiếu dữ liệu",
+      LLM_UNAVAILABLE: "AI không khả dụng",
+    },
 
     saveField: "Lưu {{field}}",
 
@@ -468,10 +598,15 @@ const vi = {
       full_name: "Họ và tên",
       identity_number: "Số giấy tờ tùy thân",
       date_of_birth: "Ngày sinh",
+      place_of_origin: "Quê quán",
+      expiry_date: "Ngày hết hạn",
 
       policy_number: "Số hợp đồng bảo hiểm",
       insured_name: "Tên người được bảo hiểm",
       coverage_end: "Ngày hết hạn bảo hiểm",
+      vehicle_owner: "Chủ xe",
+      vehicle_brand: "Hãng xe",
+      vehicle_type: "Loại xe",
 
       owner_name: "Tên chủ sở hữu",
       license_plate: "Biển số xe",
@@ -504,6 +639,7 @@ const vi = {
     reviewRequired: "Cần xem xét",
     generated: "Đã tạo",
     fallback: "Dữ liệu dự phòng cho demo",
+    unavailable: "AI không khả dụng",
 
     warnings: "Cảnh báo",
     evidenceReferences: "Bằng chứng tham chiếu",

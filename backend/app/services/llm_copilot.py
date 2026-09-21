@@ -1,4 +1,5 @@
 import json
+import logging
 from dataclasses import asdict, dataclass
 from typing import Protocol
 
@@ -8,6 +9,7 @@ from app.core.config import Settings
 from app.models import CopilotConclusionStatus
 
 MANUAL_ADJUSTER_REVIEW = "MANUAL_ADJUSTER_REVIEW"
+logger = logging.getLogger(__name__)
 
 
 class LlmGenerationError(Exception):
@@ -120,12 +122,15 @@ class LangChainOpenAiAdapter:
         try:
             from langchain_openai import ChatOpenAI
 
-            model = ChatOpenAI(
-                model=self.model,
-                api_key=self.api_key,
-                base_url=self.base_url,
-                temperature=0,
-            )
+            chat_options = {
+                "model": self.model,
+                "api_key": self.api_key,
+                "temperature": 0,
+                "reasoning_effort": "medium",
+            }
+            if self.base_url:
+                chat_options["base_url"] = self.base_url
+            model = ChatOpenAI(**chat_options)
             structured_model = model.with_structured_output(CopilotSelection)
             response = structured_model.invoke(
                 [
@@ -137,7 +142,14 @@ class LangChainOpenAiAdapter:
                 ]
             )
         except Exception as error:
-            raise LlmGenerationError("LLM generation failed") from error
+            logger.warning(
+                "OpenAI copilot generation failed for model %s (%s)",
+                self.model,
+                type(error).__name__,
+            )
+            raise LlmGenerationError(
+                f"LLM generation failed ({type(error).__name__})."
+            ) from error
 
         try:
             selection = CopilotSelection.model_validate(response)

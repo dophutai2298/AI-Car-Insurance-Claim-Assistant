@@ -18,6 +18,9 @@ from app.schemas.claims import (
     CopilotConclusionReviewRevertRequest,
     DamageAnalysisResponse,
     DocumentAnalysisFieldUpdateRequest,
+    DocumentExtractedFieldUpdateRequest,
+    DocumentExtractedFieldsBatchUpdateRequest,
+    DocumentFieldValidationUpdateRequest,
     WorkflowAnalysisRunResponse,
 )
 from app.services.claims import ClaimService, EvidencePersistenceError
@@ -31,6 +34,17 @@ from app.services.llm_copilot import LlmCopilotService, get_llm_copilot_adapter
 from app.repositories.vehicle_manufacturers import VehicleManufacturerRepository
 from app.services.vehicle_manufacturers import VehicleManufacturerService
 from app.services.document_analysis import MockDocumentAnalysisAdapter
+from app.services.document_ocr import get_document_ocr_adapter
+from app.services.document_consistency import ClaimConsistencyService
+from app.services.document_extraction import (
+    DocumentExtractionService,
+    DocumentPromptResolver,
+    get_document_extraction_adapter,
+)
+from app.services.document_field_validation import (
+    DocumentFieldValidationService,
+    get_document_field_validation_adapter,
+)
 
 router = APIRouter(prefix="/api/claims", tags=["claims"])
 
@@ -47,6 +61,13 @@ def build_claim_service(session: Session, settings: Settings) -> ClaimService:
         settings.openai_model,
         VehicleManufacturerService(VehicleManufacturerRepository(session)),
         MockDocumentAnalysisAdapter(),
+        get_document_ocr_adapter(settings.document_ocr_mode),
+        settings.document_ocr_mode == "mock",
+        DocumentExtractionService(
+            get_document_extraction_adapter(settings), DocumentPromptResolver()
+        ),
+        DocumentFieldValidationService(get_document_field_validation_adapter(settings)),
+        ClaimConsistencyService(),
     )
 
 
@@ -269,6 +290,78 @@ def update_document_analysis_field(
         claim = service.update_document_analysis_field(
             claim_number, document_analysis_id, field_id, request
         )
+    except LookupError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+    if claim is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
+    return claim
+
+
+@router.patch(
+    "/{claim_number}/analysis-runs/{run_id}/field-validations/{field_validation_id}",
+    response_model=ClaimResponse,
+)
+def update_document_field_validation(
+    claim_number: str,
+    run_id: int,
+    field_validation_id: int,
+    request: DocumentFieldValidationUpdateRequest,
+    _current_user: AdjusterUser,
+    service: ClaimServiceDependency,
+) -> ClaimResponse:
+    try:
+        claim = service.update_document_field_validation(
+            claim_number, run_id, field_validation_id, request
+        )
+    except LookupError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+    if claim is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
+    return claim
+
+
+@router.patch(
+    "/{claim_number}/analysis-runs/{run_id}/extraction-fields/{extracted_field_id}",
+    response_model=ClaimResponse,
+)
+def update_document_extracted_field(
+    claim_number: str,
+    run_id: int,
+    extracted_field_id: int,
+    request: DocumentExtractedFieldUpdateRequest,
+    _current_user: AdjusterUser,
+    service: ClaimServiceDependency,
+) -> ClaimResponse:
+    try:
+        claim = service.update_document_extracted_field(
+            claim_number, run_id, extracted_field_id, request
+        )
+    except LookupError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+    if claim is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
+    return claim
+
+
+@router.put(
+    "/{claim_number}/analysis-runs/{run_id}/extraction-fields",
+    response_model=ClaimResponse,
+)
+def update_document_extracted_fields(
+    claim_number: str,
+    run_id: int,
+    request: DocumentExtractedFieldsBatchUpdateRequest,
+    _current_user: AdjusterUser,
+    service: ClaimServiceDependency,
+) -> ClaimResponse:
+    try:
+        claim = service.update_document_extracted_fields(claim_number, run_id, request)
     except LookupError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
     except ValueError as error:

@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import AliasChoices, Field
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
@@ -39,12 +39,20 @@ class Settings(BaseSettings):
     part_search_mode: Literal["mock", "unavailable"] = Field(
         default="mock", validation_alias="PART_SEARCH_MODE"
     )
-    llm_mode: Literal["mock", "openai"] = Field(default="mock", validation_alias="LLM_MODE")
-    llm_base_url: str | None = Field(
-        default=None, validation_alias=AliasChoices("LLM_BASE_URL", "URL_MODEL")
+    document_ocr_mode: Literal["deepdoc", "mock"] = Field(
+        default="deepdoc", validation_alias="DOCUMENT_OCR_MODE"
     )
+    llm_mode: Literal["mock", "openai"] = Field(default="mock", validation_alias="LLM_MODE")
+    llm_base_url: str | None = Field(default=None, validation_alias="LLM_BASE_URL")
     openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
     openai_model: str | None = Field(default=None, validation_alias="OPENAI_MODEL")
+    llm_request_timeout_seconds: float = Field(
+        default=60.0, gt=0, validation_alias="LLM_REQUEST_TIMEOUT_SECONDS"
+    )
+    llm_max_retries: int = Field(default=0, ge=0, validation_alias="LLM_MAX_RETRIES")
+    llm_token_usage_log_enabled: bool = Field(
+        default=False, validation_alias="LLM_TOKEN_USAGE_LOG_ENABLED"
+    )
     frontend_origin: str = Field(default="http://localhost:5173", validation_alias="FRONTEND_ORIGIN")
     check_database_on_health: bool = Field(default=True, validation_alias="CHECK_DATABASE_ON_HEALTH")
 
@@ -55,7 +63,9 @@ class Settings(BaseSettings):
             "damage_model_mode": self.damage_model_mode,
             "damage_confidence_threshold": str(self.damage_confidence_threshold),
             "part_search_mode": self.part_search_mode,
+            "document_ocr_mode": self.document_ocr_mode,
             "llm_mode": self.llm_mode,
+            "llm_model": self.openai_model or "",
             "upload_root": self.upload_root,
         }
 

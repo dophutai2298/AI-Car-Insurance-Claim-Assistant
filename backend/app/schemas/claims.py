@@ -6,10 +6,12 @@ from app.models import (
     AnalysisResultStatus,
     AnalysisRunStatus,
     ClaimStatus,
+    ConsistencyStatus,
     DamageAssessment,
     DamageDetectionStatus,
     EvidenceCategory,
     DocumentFieldStatus,
+    FieldValidationStatus,
     CopilotConclusionStatus,
     CopilotConclusionRejectionCategory,
     CopilotConclusionReviewStatus,
@@ -83,6 +85,7 @@ class EvidenceResponse(BaseModel):
     content_url: str
     group_id: int | None = None
     group_label: str | None = None
+    analysis_required: bool = False
 
 
 class DamageDetectionResponse(BaseModel):
@@ -120,6 +123,37 @@ class DocumentAnalysisFieldUpdateRequest(BaseModel):
     reviewed_value: str = Field(min_length=1, max_length=2000)
 
 
+class DocumentFieldValidationUpdateRequest(BaseModel):
+    reviewed_value: str = Field(min_length=1, max_length=2000)
+
+
+class DocumentExtractedFieldUpdateRequest(BaseModel):
+    confirmed_value: str | None = Field(default=None, max_length=2000)
+
+
+class DocumentExtractedFieldBatchItem(BaseModel):
+    id: int = Field(gt=0)
+    confirmed_value: str | None = Field(default=None, max_length=2000)
+
+
+class DocumentExtractedFieldsBatchUpdateRequest(BaseModel):
+    fields: list[DocumentExtractedFieldBatchItem] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def field_ids_must_be_unique(self):
+        ids = [field.id for field in self.fields]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Document extracted field ids must be unique")
+        return self
+
+
+class DocumentFieldComparisonResponse(BaseModel):
+    claim_value: str | None
+    document_value: str | None
+    status: ConsistencyStatus
+    explanation: str
+
+
 class DocumentAnalysisResponse(BaseModel):
     id: int
     document_type: EvidenceCategory
@@ -128,12 +162,89 @@ class DocumentAnalysisResponse(BaseModel):
     warnings: list[str]
 
 
+class DocumentOcrResultResponse(BaseModel):
+    id: int
+    source_evidence_id: int
+    document_type: EvidenceCategory
+    original_filename: str
+    content_type: str | None
+    status: AnalysisResultStatus
+    raw_text: str | None
+    adapter_name: str | None
+    adapter_metadata: dict[str, object]
+    warning: str | None
+    created_at: datetime
+    processed_at: datetime | None
+    reused: bool = False
+    extraction: "DocumentExtractionResultResponse | None" = None
+    field_validations: list["DocumentFieldValidationResponse"] = Field(default_factory=list)
+
+
+class DocumentExtractedFieldResponse(BaseModel):
+    id: int
+    analysis_run_id: int
+    extraction_result_id: int
+    source_evidence_id: int
+    field_key: str
+    ai_extracted_value: str | None
+    confirmed_value: str | None
+    prompt_version: str
+    schema_version: str
+    created_at: datetime
+    updated_at: datetime
+    comparison: DocumentFieldComparisonResponse | None = None
+
+
+class DocumentExtractionResultResponse(BaseModel):
+    id: int
+    analysis_run_id: int
+    document_ocr_result_id: int
+    source_evidence_id: int
+    document_type: EvidenceCategory
+    status: AnalysisResultStatus
+    prompt_version: str
+    schema_version: str
+    warning: str | None
+    created_at: datetime
+    processed_at: datetime | None
+    reused: bool = False
+    fields: list[DocumentExtractedFieldResponse] = Field(default_factory=list)
+
+
+class DocumentFieldValidationResponse(BaseModel):
+    id: int
+    analysis_run_id: int
+    document_ocr_result_id: int
+    source_evidence_id: int
+    field_key: str
+    prompt_version: str
+    ocr_value: str | None
+    normalized_value: str | None
+    status: FieldValidationStatus
+    confidence: float
+    summary: str
+    warnings: list[str]
+
+
+class ClaimConsistencyCheckResponse(BaseModel):
+    id: int
+    field_validation_id: int
+    source_evidence_id: int
+    field_key: str
+    claim_value: str
+    document_value: str
+    status: ConsistencyStatus
+    explanation: str
+
+
 class WorkflowAnalysisRunResponse(BaseModel):
     id: int
     status: AnalysisRunStatus
     damage_status: AnalysisResultStatus
     damage_analysis: DamageAnalysisResponse | None = None
     document_analyses: list[DocumentAnalysisResponse] = Field(default_factory=list)
+    document_ocr_results: list[DocumentOcrResultResponse] = Field(default_factory=list)
+    consistency_checks: list[ClaimConsistencyCheckResponse] = Field(default_factory=list)
     failure_reason: str | None = None
     created_at: datetime
     started_at: datetime | None = None

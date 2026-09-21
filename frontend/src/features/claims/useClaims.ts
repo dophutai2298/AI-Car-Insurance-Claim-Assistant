@@ -13,7 +13,10 @@ import {
   startWorkflowAnalysis,
   transitionClaimStatus,
   updateClaimInformation,
+  updateDocumentExtractedField,
+  updateDocumentExtractedFields,
   updateDocumentField,
+  updateDocumentFieldValidation,
   uploadEvidence,
 } from "./claimsApi";
 import type {
@@ -158,6 +161,76 @@ export function useUpdateDocumentField(claimId: string | undefined) {
         documentId,
         fieldId,
         reviewedValue,
+        session!.access_token,
+      ),
+    onSuccess: cache,
+  });
+}
+
+export function useUpdateDocumentFieldValidation(
+  claimId: string | undefined,
+  runId: number,
+) {
+  const { session } = useAuth();
+  const cache = useClaimCache();
+  return useMutation({
+    mutationFn: ({
+      fieldValidationId,
+      reviewedValue,
+    }: {
+      fieldValidationId: number;
+      reviewedValue: string;
+    }) =>
+      updateDocumentFieldValidation(
+        claimId!,
+        runId,
+        fieldValidationId,
+        reviewedValue,
+        session!.access_token,
+      ),
+    onSuccess: cache,
+  });
+}
+
+export function useUpdateDocumentExtractedField(
+  claimId: string | undefined,
+  runId: number,
+) {
+  const { session } = useAuth();
+  const cache = useClaimCache();
+  return useMutation({
+    mutationFn: ({
+      extractedFieldId,
+      confirmedValue,
+    }: {
+      extractedFieldId: number;
+      confirmedValue: string | null;
+    }) =>
+      updateDocumentExtractedField(
+        claimId!,
+        runId,
+        extractedFieldId,
+        confirmedValue,
+        session!.access_token,
+      ),
+    onSuccess: cache,
+  });
+}
+
+export function useUpdateDocumentExtractedFields(
+  claimId: string | undefined,
+  runId: number,
+) {
+  const { session } = useAuth();
+  const cache = useClaimCache();
+  return useMutation({
+    mutationFn: (
+      fields: Array<{ id: number; confirmed_value: string | null }>,
+    ) =>
+      updateDocumentExtractedFields(
+        claimId!,
+        runId,
+        fields,
         session!.access_token,
       ),
     onSuccess: cache,

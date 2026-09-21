@@ -281,7 +281,7 @@ test("claim information uses a vehicle-make autocomplete and persists the select
   await user.click(await screen.findByRole("option", { name: "Toyota" }));
   await user.click(screen.getByRole("button", { name: "Tiếng Việt" }));
 
-  expect(await screen.findByText("Thông tin yêu cầu bồi thường")).toBeVisible();
+  expect(await screen.findByText("Thông tin hồ sơ")).toBeVisible();
   expect(localStorage.getItem("app.language")).toBe("vi");
   await user.type(
     document.querySelector('input[name="incident_at"]')!,
@@ -297,7 +297,7 @@ test("claim information uses a vehicle-make autocomplete and persists the select
   );
 
   await user.type(screen.getByLabelText("Tên người yêu cầu"), "Mai Nguyen");
-  await user.type(screen.getByLabelText("Mẫu xe"), "Camry");
+  await user.type(screen.getByLabelText("Dòng xe"), "Camry");
   await user.type(screen.getByLabelText("Năm sản xuất"), "2022");
   await user.click(screen.getByRole("button", { name: "Tạo hồ sơ" }));
 
@@ -495,6 +495,62 @@ test("evidence cards render a constrained thumbnail for uploaded images", async 
   expect(preview.closest("a")).toHaveAttribute("rel", "noopener noreferrer");
 });
 
+test("deleting evidence requires confirmation", async () => {
+  const evidence: EvidenceItem = {
+    id: 1,
+    category: "ID_CARD",
+    original_filename: "claimant-id.jpg",
+    content_type: "image/jpeg",
+    file_size: 20,
+    uploaded_at: "2026-09-08T00:00:00Z",
+    content_url: "/api/claims/CLM-000063/evidence/1/content",
+  };
+  let deleted = false;
+  let claim = {
+    id: "CLM-000063",
+    claimant_name: "Mai Nguyen",
+    vehicle: { make: "Toyota", model: "Camry", year: 2022 },
+    incident: null,
+    status: "DRAFT",
+    created_at: "2026-09-08T00:00:00Z",
+    updated_at: "2026-09-08T00:00:00Z",
+    evidence: [evidence],
+    latest_damage_analysis: null,
+    latest_analysis_run: null,
+    copilot_review_history: [],
+  } as unknown as ClaimDetail;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const path = String(input);
+    if (path.endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adjusterSession.user));
+    if (path.endsWith("/content"))
+      return new Response(new Blob(["image"], { type: "image/jpeg" }));
+    if (path.endsWith("/evidence/1") && init?.method === "DELETE") {
+      deleted = true;
+      claim = { ...claim, evidence: [] };
+    }
+    return new Response(JSON.stringify(claim));
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  const user = userEvent.setup();
+  renderRoute("/claims/CLM-000063");
+
+  await user.click(
+    await screen.findByRole("button", { name: "Remove claimant-id.jpg" }),
+  );
+  const dialog = await screen.findByRole("dialog");
+  expect(within(dialog).getByText("Delete evidence?")).toBeVisible();
+  expect(within(dialog).getByText(/claimant-id\.jpg/)).toBeVisible();
+  expect(deleted).toBe(false);
+
+  await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+  expect(deleted).toBe(true);
+  expect(screen.queryByText("claimant-id.jpg")).not.toBeInTheDocument();
+});
+
 test("legacy claim data remains readable and requests the missing workflow information", async () => {
   const damageImage: EvidenceItem = {
     id: 1,
@@ -616,7 +672,7 @@ test("legacy claim data remains readable and requests the missing workflow infor
 });
 
 test("adjuster reviews grouped workflow results and submits a noted human decision", async () => {
-  const evidence = [
+  const evidence: EvidenceItem[] = [
     "VEHICLE_DAMAGE_IMAGE",
     "ID_CARD",
     "INSURANCE_POLICY",
@@ -631,6 +687,15 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
     uploaded_at: "2026-09-08T00:00:00Z",
     content_url: `/api/claims/CLM-000081/evidence/${index + 1}/content`,
   }));
+  evidence.push({
+    id: 6,
+    category: "ID_CARD",
+    original_filename: "id_card_back.jpg",
+    content_type: "image/jpeg",
+    file_size: 18,
+    uploaded_at: "2026-09-08T00:00:00Z",
+    content_url: "/api/claims/CLM-000081/evidence/6/content",
+  });
   const damageAnalysis = {
     id: "DA-000008",
     assessment: "NO_DAMAGE" as const,
@@ -667,7 +732,7 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
     created_at: "2026-09-08T00:01:00Z",
   };
   let submittedReview: unknown = null;
-  const currentClaim: ClaimDetail = {
+  const currentClaim = {
     id: "CLM-000081",
     claimant_name: "Mai Nguyen",
     vehicle: {
@@ -689,7 +754,7 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
     latest_damage_analysis: damageAnalysis,
     latest_analysis_run: {
       id: 8,
-      status: "COMPLETED",
+      status: "PARTIAL",
       damage_status: "COMPLETED",
       damage_analysis: damageAnalysis,
       document_analyses: [
@@ -711,13 +776,103 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
           ],
         },
       ],
+      document_ocr_results: [
+        {
+          id: 101,
+          source_evidence_id: 2,
+          document_type: "ID_CARD",
+          original_filename: "id_card.jpg",
+          content_type: "image/jpeg",
+          status: "COMPLETED",
+          raw_text: "Full name: Nguyen Van A\nIdentity number: 079203001234",
+          adapter_name: "deepdoc-vietocr",
+          adapter_metadata: {},
+          warning: null,
+          created_at: "2026-09-08T00:00:01Z",
+          processed_at: "2026-09-08T00:00:02Z",
+          field_validations: [
+            {
+              id: 201,
+              analysis_run_id: 8,
+              document_ocr_result_id: 101,
+              source_evidence_id: 2,
+              field_key: "full_name",
+              prompt_version: "document-fields-v1",
+              ocr_value: "Nguyen Van A",
+              normalized_value: "Nguyen Van A",
+              status: "VALID",
+              confidence: 0.97,
+              summary: "The holder name is readable.",
+              warnings: [],
+            },
+          ],
+        },
+        {
+          id: 102,
+          source_evidence_id: 6,
+          document_type: "ID_CARD",
+          original_filename: "id_card_back.jpg",
+          content_type: "image/jpeg",
+          status: "COMPLETED",
+          raw_text: "Full name: Nguyen Van A",
+          adapter_name: "deepdoc-vietocr",
+          adapter_metadata: {},
+          warning: null,
+          created_at: "2026-09-08T00:00:01Z",
+          processed_at: "2026-09-08T00:00:02Z",
+          field_validations: [
+            {
+              id: 202,
+              analysis_run_id: 8,
+              document_ocr_result_id: 102,
+              source_evidence_id: 6,
+              field_key: "full_name",
+              prompt_version: "document-fields-v1",
+              ocr_value: "Nguyen Van A",
+              normalized_value: "Nguyen Van A",
+              status: "LLM_UNAVAILABLE",
+              confidence: 0,
+              summary: "Full name requires manual review.",
+              warnings: ["Field validation unavailable (RateLimitError)."],
+            },
+          ],
+        },
+        {
+          id: 103,
+          source_evidence_id: 3,
+          document_type: "INSURANCE_POLICY",
+          original_filename: "insurance_policy.jpg",
+          content_type: "image/jpeg",
+          status: "FAILED",
+          raw_text: null,
+          adapter_name: null,
+          adapter_metadata: {},
+          warning: "OCR processing failed for this image.",
+          created_at: "2026-09-08T00:00:01Z",
+          processed_at: "2026-09-08T00:00:02Z",
+          field_validations: [],
+        },
+      ],
+      consistency_checks: [
+        {
+          id: 301,
+          field_validation_id: 201,
+          source_evidence_id: 2,
+          field_key: "full_name",
+          claim_value: "Mai Nguyen",
+          document_value: "Nguyen Van A",
+          status: "MISMATCH",
+          explanation:
+            "Document value differs from Claim Information and requires manual review.",
+        },
+      ],
       failure_reason: null,
       created_at: "2026-09-08T00:00:00Z",
       started_at: "2026-09-08T00:00:01Z",
       completed_at: "2026-09-08T00:00:02Z",
     },
     copilot_review_history: [],
-  };
+  } as unknown as ClaimDetail;
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     if (String(input).endsWith("/api/auth/me"))
       return new Response(JSON.stringify(adjusterSession.user));
@@ -736,6 +891,27 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
   renderRoute("/claims/CLM-000081");
 
   expect(await screen.findByText("Document analysis")).toBeVisible();
+  expect(screen.getByText("Partial results available")).toBeVisible();
+  const front = screen.getByRole("article", { name: "id_card.jpg" });
+  const back = screen.getByRole("article", { name: "id_card_back.jpg" });
+  const failedPolicy = screen.getByRole("article", {
+    name: "insurance_policy.jpg",
+  });
+  expect(within(front).getByText("The holder name is readable.")).toBeVisible();
+  expect(
+    within(front).getByLabelText("Full name normalized value"),
+  ).toBeDisabled();
+  expect(within(front).getByText("Mismatch")).toBeVisible();
+  expect(within(front).getByText(/requires manual review/i)).toBeVisible();
+  expect(within(back).getByText("AI unavailable")).toBeVisible();
+  expect(within(back).getByText("Comparison unavailable")).toBeVisible();
+  expect(within(back).getByText(/field validation unavailable/i)).toBeVisible();
+  expect(within(failedPolicy).getByText("Failed")).toBeVisible();
+  expect(
+    within(failedPolicy).getByText(/ocr processing failed/i),
+  ).toBeVisible();
+  expect(screen.getAllByText("ID cards")).toHaveLength(2);
+  expect(screen.getByText("No significant damage detections")).toBeVisible();
   expect(screen.getByText("85%")).toBeVisible();
   expect(
     screen.getByText(/not an automatic approval probability/i),
@@ -751,6 +927,360 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
     status: "APPROVED",
     comment: "Evidence checked against the submitted documents.",
   });
+});
+
+test("adjuster reviews persisted identity extraction without a confidence score", async () => {
+  const evidence: EvidenceItem = {
+    id: 2,
+    category: "ID_CARD",
+    original_filename: "claimant-id.jpg",
+    content_type: "image/jpeg",
+    file_size: 20,
+    uploaded_at: "2026-09-08T00:00:00Z",
+    content_url: "/api/claims/CLM-000082/evidence/2/content",
+  };
+  const field = {
+    id: 202,
+    analysis_run_id: 9,
+    extraction_result_id: 302,
+    source_evidence_id: 2,
+    field_key: "full_name",
+    ai_extracted_value: "Nguyen Van A",
+    confirmed_value: "Nguyen Van A",
+    prompt_version: "document-extraction-v1",
+    schema_version: "document-extraction-schema-v1",
+    created_at: "2026-09-08T00:00:02Z",
+    updated_at: "2026-09-08T00:00:02Z",
+    comparison: {
+      claim_value: "Mai Nguyen",
+      document_value: "Nguyen Van A",
+      status: "MISMATCH",
+      explanation:
+        "Document value differs from Claim Information and requires manual review.",
+    },
+  };
+  const claim = {
+    id: "CLM-000082",
+    claimant_name: "Mai Nguyen",
+    vehicle: {
+      make: "Toyota",
+      model: "Camry",
+      year: 2022,
+      license_plate: "51H-123.45",
+      vin: null,
+    },
+    incident: {
+      occurred_at: "2026-09-08T00:00:00Z",
+      location: "District 1",
+      description: "Rear impact.",
+    },
+    status: "REVIEW_REQUIRED",
+    created_at: "2026-09-08T00:00:00Z",
+    updated_at: "2026-09-08T00:01:00Z",
+    evidence: [evidence],
+    latest_damage_analysis: null,
+    latest_analysis_run: {
+      id: 9,
+      status: "COMPLETED",
+      damage_status: "FAILED",
+      damage_analysis: null,
+      document_analyses: [],
+      document_ocr_results: [
+        {
+          id: 102,
+          source_evidence_id: 2,
+          document_type: "ID_CARD",
+          original_filename: "claimant-id.jpg",
+          content_type: "image/jpeg",
+          status: "COMPLETED",
+          raw_text: "Full name: Nguyen Van A",
+          adapter_name: "deepdoc-vietocr",
+          adapter_metadata: {},
+          warning: null,
+          created_at: "2026-09-08T00:00:01Z",
+          processed_at: "2026-09-08T00:00:02Z",
+          extraction: {
+            id: 302,
+            analysis_run_id: 9,
+            document_ocr_result_id: 102,
+            source_evidence_id: 2,
+            document_type: "ID_CARD",
+            status: "COMPLETED",
+            prompt_version: "document-extraction-v1",
+            schema_version: "document-extraction-schema-v1",
+            warning: null,
+            created_at: "2026-09-08T00:00:02Z",
+            processed_at: "2026-09-08T00:00:02Z",
+            fields: [field],
+          },
+          field_validations: [],
+        },
+      ],
+      consistency_checks: [],
+      failure_reason: null,
+      created_at: "2026-09-08T00:00:00Z",
+      started_at: "2026-09-08T00:00:01Z",
+      completed_at: "2026-09-08T00:00:02Z",
+    },
+    copilot_review_history: [],
+  } as unknown as ClaimDetail;
+  let submittedField: unknown = null;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const path = String(input);
+    if (path.endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adjusterSession.user));
+    if (path.endsWith("/content"))
+      return new Response(new Blob(["image"], { type: "image/jpeg" }));
+    if (path.endsWith("/extraction-fields") && init?.method === "PUT") {
+      submittedField = JSON.parse(init.body as string);
+      field.confirmed_value = (
+        submittedField as {
+          fields: Array<{ id: number; confirmed_value: string }>;
+        }
+      ).fields.find((item) => item.id === field.id)!.confirmed_value;
+    }
+    return new Response(JSON.stringify(claim));
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  const user = userEvent.setup();
+  renderRoute("/claims/CLM-000082");
+
+  await screen.findByRole("article", { name: "claimant-id.jpg" });
+  const identitySection = screen.getByRole("region", { name: "ID cards" });
+  const input = within(identitySection).getByLabelText(
+    "Full name confirmed value",
+  );
+  expect(within(identitySection).getByText("Nguyen Van A")).toBeVisible();
+  expect(within(identitySection).queryByText("97%")).not.toBeInTheDocument();
+  expect(within(identitySection).getByText("Mismatch")).toBeVisible();
+  await user.clear(input);
+  await user.type(input, "Mai Nguyen");
+  await user.click(screen.getByRole("button", { name: "Save all fields" }));
+
+  expect(submittedField).toEqual({
+    fields: [{ id: 202, confirmed_value: "Mai Nguyen" }],
+  });
+  expect(input).toHaveValue("Mai Nguyen");
+});
+
+test("adjuster reviews registration and driver license extraction fields", async () => {
+  const registrationEvidence: EvidenceItem = {
+    id: 3,
+    category: "VEHICLE_REGISTRATION",
+    original_filename: "registration.jpg",
+    content_type: "image/jpeg",
+    file_size: 20,
+    uploaded_at: "2026-09-08T00:00:00Z",
+    content_url: "/api/claims/CLM-000083/evidence/3/content",
+  };
+  const driverEvidence: EvidenceItem = {
+    ...registrationEvidence,
+    id: 4,
+    category: "DRIVER_LICENSE",
+    original_filename: "driver-license.jpg",
+    content_url: "/api/claims/CLM-000083/evidence/4/content",
+  };
+  const extractedField = (
+    id: number,
+    sourceEvidenceId: number,
+    fieldKey: string,
+    value: string | null,
+    comparison: {
+      claim_value: string | null;
+      document_value: string | null;
+      status: "MATCH" | "MISMATCH" | "UNAVAILABLE";
+      explanation: string;
+    } | null = null,
+  ) => ({
+    id,
+    analysis_run_id: 10,
+    extraction_result_id: sourceEvidenceId + 300,
+    source_evidence_id: sourceEvidenceId,
+    field_key: fieldKey,
+    ai_extracted_value: value,
+    confirmed_value: value,
+    prompt_version: "document-extraction-v1",
+    schema_version: "document-extraction-schema-v1",
+    created_at: "2026-09-08T00:00:02Z",
+    updated_at: "2026-09-08T00:00:02Z",
+    comparison,
+  });
+  const registrationFields = [
+    extractedField(301, 3, "vehicle_owner", "Nguyen Van A", {
+      claim_value: "Mai Nguyen",
+      document_value: "Nguyen Van A",
+      status: "MISMATCH",
+      explanation:
+        "Document value differs from Claim Information and requires manual review.",
+    }),
+    extractedField(302, 3, "vehicle_brand", "Toyota", {
+      claim_value: "Toyota",
+      document_value: "Toyota",
+      status: "MATCH",
+      explanation: "Document value matches Claim Information.",
+    }),
+    extractedField(303, 3, "vehicle_type", "Ô tô con"),
+    extractedField(304, 3, "license_plate", "51H-123.45", {
+      claim_value: "51H-123.45",
+      document_value: "51H-123.45",
+      status: "MATCH",
+      explanation: "Document value matches Claim Information.",
+    }),
+  ];
+  const driverFields = [
+    extractedField(401, 4, "license_number", "079012345678"),
+    extractedField(402, 4, "full_name", null, {
+      claim_value: "Mai Nguyen",
+      document_value: null,
+      status: "UNAVAILABLE",
+      explanation:
+        "Comparison is unavailable because a claim or document value is missing.",
+    }),
+    extractedField(403, 4, "expiry_date", null),
+  ];
+  const ocrResult = (
+    id: number,
+    evidence: EvidenceItem,
+    fields: ReturnType<typeof extractedField>[],
+  ) => ({
+    id,
+    source_evidence_id: evidence.id,
+    document_type: evidence.category,
+    original_filename: evidence.original_filename,
+    content_type: evidence.content_type,
+    status: "COMPLETED" as const,
+    raw_text: `OCR for ${evidence.original_filename}`,
+    adapter_name: "deepdoc-vietocr",
+    adapter_metadata: {},
+    warning: null,
+    created_at: "2026-09-08T00:00:01Z",
+    processed_at: "2026-09-08T00:00:02Z",
+    extraction: {
+      id: evidence.id + 300,
+      analysis_run_id: 10,
+      document_ocr_result_id: id,
+      source_evidence_id: evidence.id,
+      document_type: evidence.category,
+      status: "COMPLETED" as const,
+      prompt_version: "document-extraction-v1",
+      schema_version: "document-extraction-schema-v1",
+      warning: null,
+      created_at: "2026-09-08T00:00:02Z",
+      processed_at: "2026-09-08T00:00:02Z",
+      fields,
+    },
+    field_validations: [],
+  });
+  const claim = {
+    id: "CLM-000083",
+    claimant_name: "Mai Nguyen",
+    vehicle: {
+      make: "Toyota",
+      model: "Camry",
+      year: 2022,
+      license_plate: "51H-123.45",
+      vin: null,
+    },
+    incident: {
+      occurred_at: "2026-09-08T00:00:00Z",
+      location: "District 1",
+      description: "Rear impact.",
+    },
+    status: "REVIEW_REQUIRED",
+    created_at: "2026-09-08T00:00:00Z",
+    updated_at: "2026-09-08T00:01:00Z",
+    evidence: [registrationEvidence, driverEvidence],
+    latest_damage_analysis: null,
+    latest_analysis_run: {
+      id: 10,
+      status: "COMPLETED",
+      damage_status: "FAILED",
+      damage_analysis: null,
+      document_analyses: [],
+      document_ocr_results: [
+        ocrResult(103, registrationEvidence, registrationFields),
+        ocrResult(104, driverEvidence, driverFields),
+      ],
+      consistency_checks: [],
+      failure_reason: null,
+      created_at: "2026-09-08T00:00:00Z",
+      started_at: "2026-09-08T00:00:01Z",
+      completed_at: "2026-09-08T00:00:02Z",
+    },
+    copilot_review_history: [],
+  } as unknown as ClaimDetail;
+  let submittedField: unknown = null;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const path = String(input);
+    if (path.endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adjusterSession.user));
+    if (path.endsWith("/content"))
+      return new Response(new Blob(["image"], { type: "image/jpeg" }));
+    if (path.endsWith("/extraction-fields") && init?.method === "PUT") {
+      submittedField = JSON.parse(init.body as string);
+      registrationFields[3].confirmed_value = (
+        submittedField as {
+          fields: Array<{ id: number; confirmed_value: string }>;
+        }
+      ).fields.find((item) => item.id === 304)!.confirmed_value;
+      registrationFields[3].comparison = {
+        claim_value: "51H-123.45",
+        document_value: "51H-999.99",
+        status: "MISMATCH",
+        explanation:
+          "Document value differs from Claim Information and requires manual review.",
+      };
+    }
+    return new Response(JSON.stringify(claim));
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  const user = userEvent.setup();
+  renderRoute("/claims/CLM-000083");
+
+  await screen.findByRole("article", { name: "registration.jpg" });
+  const registration = screen.getByRole("region", {
+    name: "Vehicle registrations",
+  });
+  const driver = screen.getByRole("region", { name: "Driver licenses" });
+  expect(
+    within(registration).getByLabelText("Vehicle type confirmed value"),
+  ).toHaveValue("Ô tô con");
+  const plate = within(registration).getByLabelText(
+    "License plate confirmed value",
+  );
+  expect(
+    within(driver).getByLabelText("License number confirmed value"),
+  ).toHaveValue("079012345678");
+  expect(within(driver).getAllByText("Not provided")).toHaveLength(2);
+  expect(within(driver).getByText("Comparison unavailable")).toBeVisible();
+  expect(within(registration).queryByText(/%/)).not.toBeInTheDocument();
+  expect(within(registration).getAllByText("Match")).toHaveLength(2);
+  expect(within(registration).getByText("Mismatch")).toBeVisible();
+
+  await user.clear(plate);
+  await user.type(plate, "51H-999.99");
+  await user.click(screen.getByRole("button", { name: "Save all fields" }));
+  expect(
+    (
+      submittedField as {
+        fields: Array<{ id: number; confirmed_value: string | null }>;
+      }
+    ).fields.find((item) => item.id === 304),
+  ).toEqual({ id: 304, confirmed_value: "51H-999.99" });
+  expect(
+    (
+      submittedField as {
+        fields: Array<{ id: number; confirmed_value: string | null }>;
+      }
+    ).fields,
+  ).toHaveLength(7);
+  expect(within(registration).getAllByText("Mismatch")).toHaveLength(2);
 });
 
 test("admin can update global assessment rules from the configuration page", async () => {
@@ -863,11 +1393,16 @@ test("admin can create, disable, and re-enable a vehicle manufacturer", async ()
   renderRoute("/admin");
 
   expect(await screen.findByRole("table")).toBeVisible();
-  expect(screen.getByRole("columnheader", { name: "Manufacturer" })).toBeVisible();
+  expect(
+    screen.getByRole("columnheader", { name: "Manufacturer name" }),
+  ).toBeVisible();
   expect(screen.getByRole("columnheader", { name: "Status" })).toBeVisible();
   expect(screen.getByRole("columnheader", { name: "Actions" })).toBeVisible();
 
-  await user.type(await screen.findByLabelText("Manufacturer name"), "BYD");
+  await user.type(
+    (await screen.findAllByLabelText("Manufacturer name"))[0],
+    "BYD",
+  );
   await user.click(screen.getByRole("button", { name: "Add manufacturer" }));
   expect(await screen.findByDisplayValue("BYD")).toBeVisible();
 

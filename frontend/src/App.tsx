@@ -111,7 +111,7 @@ function AppShell() {
             </nav>
 
             <div className="mt-auto border-t border-slate-800 pt-4">
-              <LanguageSwitcher />
+              {/* <LanguageSwitcher /> */}
               <div className="mb-3 mt-4 hidden min-w-0 lg:block">
                 <div className="truncate text-sm font-semibold text-white">
                   {session?.user.full_name}

@@ -5,7 +5,6 @@ import {
   Document,
   Image,
   Reset,
-  Save,
   WarningAlt,
 } from "@carbon/icons-react";
 import {
@@ -26,10 +25,10 @@ import {
   requiredEvidenceCategories,
 } from "./EvidencePanel";
 import { ClaimsApiError } from "./claimsApi";
+import { DocumentAnalysisResults } from "./DocumentAnalysisResults";
 import {
   useRevertCopilotReview,
   useReviewCopilotConclusion,
-  useUpdateDocumentField,
   useWorkflowAiReview,
   useWorkflowAnalysis,
 } from "./useClaims";
@@ -39,8 +38,6 @@ import type {
   CopilotConclusionRejectionCategory,
   CopilotConclusionReview,
   DamageAnalysis,
-  DocumentAnalysis,
-  DocumentAnalysisField,
   WorkflowAnalysisRun,
 } from "./types";
 
@@ -168,13 +165,7 @@ export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
         {run?.damage_analysis ? (
           <DamageResults analysis={run.damage_analysis} />
         ) : null}
-        {/* {run?.document_analyses.length ? (
-          <DocumentResults
-            claimId={claim.id}
-            documents={run.document_analyses}
-            editable={!run.damage_analysis?.copilot_conclusion}
-          />
-        ) : null} */}
+        {run ? <DocumentAnalysisResults claim={claim} run={run} /> : null}
         {!run ? (
           <p className="text-sm text-slate-500">{t("analysis.empty")}</p>
         ) : null}
@@ -270,127 +261,6 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
   );
 }
 
-function DocumentResults({
-  claimId,
-  documents,
-  editable,
-}: {
-  claimId: string;
-  documents: DocumentAnalysis[];
-  editable: boolean;
-}) {
-  const { t } = useTranslation();
-  return (
-    <section className="grid gap-4 border-t border-slate-200 pt-5">
-      <div>
-        <h3 className="text-sm font-semibold text-slate-950">
-          {t("documents.title")}
-        </h3>
-        <p className="mt-1 text-xs text-slate-500">
-          {t("documents.description")}
-        </p>
-      </div>
-      <div className="grid gap-4 xl:grid-cols-2">
-        {documents.map((document) => (
-          <article
-            className="grid content-start gap-4 border border-slate-200 p-4"
-            key={document.id}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Document size={18} />
-                <h4 className="text-sm font-semibold text-slate-950">
-                  {t(`evidence.categories.${document.document_type}`)}
-                </h4>
-              </div>
-              <Chip
-                color={document.status === "COMPLETED" ? "success" : "danger"}
-                size="sm"
-                variant="soft"
-              >
-                {t(`analysis.status.${document.status}`)}
-              </Chip>
-            </div>
-            {document.warnings.map((warning) => (
-              <Alert key={warning} status="warning">
-                <Alert.Description>{warning}</Alert.Description>
-              </Alert>
-            ))}
-            {document.fields.map((field) => (
-              <EditableDocumentField
-                claimId={claimId}
-                documentId={document.id}
-                editable={editable}
-                field={field}
-                key={field.id}
-              />
-            ))}
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function EditableDocumentField({
-  claimId,
-  documentId,
-  field,
-  editable,
-}: {
-  claimId: string;
-  documentId: number;
-  field: DocumentAnalysisField;
-  editable: boolean;
-}) {
-  const { t } = useTranslation();
-  const update = useUpdateDocumentField(claimId);
-  const [value, setValue] = useState(field.reviewed_value);
-  const changed = value.trim() !== field.reviewed_value;
-  const label = t(`documents.fields.${field.key}`, {
-    defaultValue: field.label,
-  });
-  return (
-    <div className="grid gap-2 border-t border-slate-100 pt-3">
-      <div className="flex items-center justify-between gap-3">
-        <Label className="text-xs font-semibold text-slate-600">{label}</Label>
-        <span className="text-xs text-slate-500">
-          {t("analysis.confidence")} {formatPercent(field.confidence * 100)}
-        </span>
-      </div>
-      <div className="flex gap-2">
-        <Input
-          aria-label={label}
-          disabled={!editable}
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-        />
-        <Button
-          aria-label={t("documents.saveField", { field: label })}
-          isDisabled={!changed || !value.trim() || !editable}
-          isIconOnly
-          isPending={update.isPending}
-          onPress={() =>
-            update.mutate({
-              documentId,
-              fieldId: field.id,
-              reviewedValue: value,
-            })
-          }
-          variant="outline"
-        >
-          <Save size={16} />
-        </Button>
-      </div>
-      {field.original_ai_value !== field.reviewed_value ? (
-        <p className="text-xs text-slate-500">
-          {t("documents.originalValue", { value: field.original_ai_value })}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
 export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
   const { t } = useTranslation();
   const run = claim.latest_analysis_run;
@@ -479,12 +349,20 @@ function AiReviewResult({ conclusion }: { conclusion: CopilotConclusion }) {
               {conclusion.review_status ?? t("aiReview.reviewRequired")}
             </Chip>
             <Chip
-              color={conclusion.status === "GENERATED" ? "success" : "default"}
+              color={
+                conclusion.status === "GENERATED"
+                  ? "success"
+                  : conclusion.status === "LLM_UNAVAILABLE"
+                    ? "danger"
+                    : "default"
+              }
               variant="soft"
             >
               {conclusion.status === "GENERATED"
                 ? t("aiReview.generated")
-                : t("aiReview.fallback")}
+                : conclusion.status === "LLM_UNAVAILABLE"
+                  ? t("aiReview.unavailable")
+                  : t("aiReview.fallback")}
             </Chip>
           </div>
           <p className="mt-4 text-sm leading-6 text-slate-700">
@@ -492,6 +370,14 @@ function AiReviewResult({ conclusion }: { conclusion: CopilotConclusion }) {
           </p>
         </div>
       </div>
+      {conclusion.status === "LLM_UNAVAILABLE" ? (
+        <Alert status="danger">
+          <Alert.Title>{t("aiReview.unavailable")}</Alert.Title>
+          <Alert.Description>
+            {conclusion.failure_reason ?? t("aiReview.failed")}
+          </Alert.Description>
+        </Alert>
+      ) : null}
       {conclusion.warnings.length ? (
         <Alert status="warning">
           <WarningAlt size={18} />
