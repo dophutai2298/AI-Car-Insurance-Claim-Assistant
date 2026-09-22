@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -266,6 +267,28 @@ class ClaimConsistencyCheckResponse(BaseModel):
     explanation: str
 
 
+class AnalysisBlockedReasonResponse(BaseModel):
+    code: str
+    message: str
+    category: EvidenceCategory | None = None
+    field_id: int | None = None
+    field_key: str | None = None
+
+
+class AnalysisReadinessResponse(BaseModel):
+    status: Literal["NOT_SAVED", "BLOCKED", "READY", "STALE"]
+    blocked_reasons: list[AnalysisBlockedReasonResponse] = Field(default_factory=list)
+
+
+class ConfirmedAnalysisSnapshotResponse(BaseModel):
+    status: Literal["READY", "STALE"]
+    documents: list[dict[str, object]] = Field(default_factory=list)
+    damage: dict[str, object]
+    warnings: list[str] = Field(default_factory=list)
+    evidence_references: list[dict[str, object]] = Field(default_factory=list)
+    saved_at: datetime
+
+
 class WorkflowAnalysisRunResponse(BaseModel):
     id: int
     status: AnalysisRunStatus
@@ -274,6 +297,8 @@ class WorkflowAnalysisRunResponse(BaseModel):
     document_analyses: list[DocumentAnalysisResponse] = Field(default_factory=list)
     document_ocr_results: list[DocumentOcrResultResponse] = Field(default_factory=list)
     consistency_checks: list[ClaimConsistencyCheckResponse] = Field(default_factory=list)
+    analysis_readiness: AnalysisReadinessResponse
+    analysis_snapshot: ConfirmedAnalysisSnapshotResponse | None = None
     failure_reason: str | None = None
     created_at: datetime
     started_at: datetime | None = None

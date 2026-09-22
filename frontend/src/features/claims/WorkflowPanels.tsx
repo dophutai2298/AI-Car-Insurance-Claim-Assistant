@@ -272,8 +272,10 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
     run &&
     !run.inputs_changed &&
     ["COMPLETED", "PARTIAL"].includes(run.status) &&
-    run.damage_analysis,
+    run.damage_analysis &&
+    (!run.analysis_readiness || run.analysis_readiness.status === "READY"),
   );
+  const blockedReasons = run?.analysis_readiness?.blocked_reasons ?? [];
   return (
     <Card
       className="rounded-lg border border-slate-200 bg-white shadow-sm"
@@ -318,9 +320,28 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
         {conclusion ? (
           <AiReviewResult conclusion={conclusion} />
         ) : (
-          <p className="text-sm text-slate-500">
-            {ready ? t("aiReview.ready") : t("aiReview.blocked")}
-          </p>
+          <div className="grid gap-2 text-sm text-slate-500">
+            <p>{ready ? t("aiReview.ready") : t("aiReview.blocked")}</p>
+            {!ready && blockedReasons.length ? (
+              <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
+                {blockedReasons.map((reason, index) => (
+                  <li key={`${reason.code}-${reason.field_id ?? index}`}>
+                    {t(`documents.blockReasons.${reason.code}`, {
+                      defaultValue: reason.message,
+                      field: reason.field_key
+                        ? t(`documents.fields.${reason.field_key}`, {
+                            defaultValue: reason.field_key,
+                          })
+                        : "",
+                      category: reason.category
+                        ? t(`evidence.categories.${reason.category}`)
+                        : "",
+                    })}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
         )}
       </Card.Content>
     </Card>

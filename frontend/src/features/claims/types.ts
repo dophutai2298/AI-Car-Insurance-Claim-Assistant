@@ -173,6 +173,8 @@ export type WorkflowAnalysisRun = {
   document_analyses: DocumentAnalysis[];
   document_ocr_results?: DocumentOcrResult[];
   consistency_checks?: ClaimConsistencyCheck[];
+  analysis_readiness?: AnalysisReadiness;
+  analysis_snapshot?: ConfirmedAnalysisSnapshot | null;
   failure_reason: string | null;
   created_at: string;
   started_at: string | null;
@@ -192,6 +194,28 @@ export type DamageDetection = {
   confidence: number;
   status: "DETECTED" | "NO_SIGNIFICANT_DAMAGE";
   annotated_evidence: EvidenceItem;
+};
+
+export type AnalysisBlockedReason = {
+  code: string;
+  message: string;
+  category: EvidenceCategory | null;
+  field_id: number | null;
+  field_key: string | null;
+};
+
+export type AnalysisReadiness = {
+  status: "NOT_SAVED" | "BLOCKED" | "READY" | "STALE";
+  blocked_reasons: AnalysisBlockedReason[];
+};
+
+export type ConfirmedAnalysisSnapshot = {
+  status: "READY" | "STALE";
+  documents: Array<Record<string, unknown>>;
+  damage: Record<string, unknown>;
+  warnings: string[];
+  evidence_references: Array<Record<string, unknown>>;
+  saved_at: string;
 };
 
 export type DamageDetail = {

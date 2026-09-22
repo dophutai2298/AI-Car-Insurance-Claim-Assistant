@@ -119,6 +119,11 @@ class ConsistencyStatus(str, Enum):
     UNAVAILABLE = "UNAVAILABLE"
 
 
+class AnalysisSnapshotStatus(str, Enum):
+    READY = "READY"
+    STALE = "STALE"
+
+
 class CopilotConclusionRejectionCategory(str, Enum):
     DOCUMENT_INFORMATION_INCOMPLETE = "DOCUMENT_INFORMATION_INCOMPLETE"
     DOCUMENT_INFORMATION_INCORRECT = "DOCUMENT_INFORMATION_INCORRECT"
@@ -280,6 +285,29 @@ class WorkflowAnalysisDamage(Base):
     )
     damage_analysis_id: Mapped[int] = mapped_column(
         ForeignKey("damage_analyses.id"), unique=True, index=True
+    )
+
+
+class ConfirmedAnalysisSnapshot(Base):
+    __tablename__ = "confirmed_analysis_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    analysis_run_id: Mapped[int] = mapped_column(
+        ForeignKey("workflow_analysis_runs.id"), unique=True, index=True
+    )
+    input_revision: Mapped[int] = mapped_column(Integer)
+    status: Mapped[AnalysisSnapshotStatus] = mapped_column(
+        SqlEnum(AnalysisSnapshotStatus, native_enum=False),
+        default=AnalysisSnapshotStatus.READY,
+    )
+    payload_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
 

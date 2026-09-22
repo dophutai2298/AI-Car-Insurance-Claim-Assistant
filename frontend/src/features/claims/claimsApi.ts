@@ -1,5 +1,6 @@
 import type {
   ClaimCreateInput,
+  AnalysisBlockedReason,
   ClaimDetail,
   ClaimInformationInput,
   ClaimListItem,
@@ -10,7 +11,14 @@ import type {
   WorkflowAnalysisRun,
 } from "./types";
 
-export class ClaimsApiError extends Error {}
+export class ClaimsApiError extends Error {
+  blockedReasons: AnalysisBlockedReason[];
+
+  constructor(message: string, blockedReasons: AnalysisBlockedReason[] = []) {
+    super(message);
+    this.blockedReasons = blockedReasons;
+  }
+}
 
 async function request<T>(
   path: string,
@@ -27,14 +35,27 @@ async function request<T>(
   });
   const body: unknown = await response.json();
   if (!response.ok) {
-    const message =
-      typeof body === "object" &&
-      body !== null &&
-      "detail" in body &&
-      typeof body.detail === "string"
+    const detail =
+      typeof body === "object" && body !== null && "detail" in body
         ? body.detail
-        : "Unable to load claims";
-    throw new ClaimsApiError(message);
+        : null;
+    const message =
+      typeof detail === "string"
+        ? detail
+        : typeof detail === "object" &&
+            detail !== null &&
+            "message" in detail &&
+            typeof detail.message === "string"
+          ? detail.message
+          : "Unable to load claims";
+    const blockedReasons =
+      typeof detail === "object" &&
+      detail !== null &&
+      "blocked_reasons" in detail &&
+      Array.isArray(detail.blocked_reasons)
+        ? (detail.blocked_reasons as AnalysisBlockedReason[])
+        : [];
+    throw new ClaimsApiError(message, blockedReasons);
   }
   return body as T;
 }

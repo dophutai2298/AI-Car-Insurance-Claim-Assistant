@@ -23,7 +23,11 @@ from app.schemas.claims import (
     DocumentFieldValidationUpdateRequest,
     WorkflowAnalysisRunResponse,
 )
-from app.services.claims import ClaimService, EvidencePersistenceError
+from app.services.claims import (
+    AnalysisConfirmationBlockedError,
+    ClaimService,
+    EvidencePersistenceError,
+)
 from app.repositories.assessment_rules import AssessmentRuleRepository
 from app.services.assessment_rules import AssessmentRuleService
 from app.services.damage_assessment import DamageAssessmentService
@@ -363,6 +367,10 @@ def update_document_extracted_fields(
 ) -> ClaimResponse:
     try:
         claim = service.update_document_extracted_fields(claim_number, run_id, request)
+    except AnalysisConfirmationBlockedError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=error.detail()
+        ) from error
     except LookupError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
     except ValueError as error:
@@ -384,6 +392,11 @@ def run_workflow_ai_review(
 ) -> ClaimResponse:
     try:
         claim = service.run_workflow_ai_review(claim_number, run_id)
+    except AnalysisConfirmationBlockedError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=error.detail(),
+        ) from error
     except LookupError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
     except RuntimeError as error:

@@ -7,9 +7,14 @@ from sqlalchemy import text
 from app.core.config import get_settings
 from app.main import create_app
 from app.api.routes import claims as claim_routes
-from app.services.document_ocr import DocumentOcrError, DocumentOcrResult
+from app.services.document_ocr import (
+    DocumentOcrError,
+    DocumentOcrResult,
+    MockDocumentOcrAdapter,
+)
 from app.services.document_extraction import (
     DeterministicDocumentExtractionAdapter,
+    DocumentExtractionService,
     IdentityCardExtraction,
 )
 from app.services.evidence_storage import LocalEvidenceStorage
@@ -361,6 +366,7 @@ def prepare_claim_for_workflow_analysis(
     client: TestClient,
     *,
     driver_license_filename: str = "driver-license.jpg",
+    policy_filename: str = "policy.pdf",
 ) -> dict[str, object]:
     claim = create_claim(client)
     information = client.patch(
@@ -392,13 +398,306 @@ def prepare_claim_for_workflow_analysis(
         files=[
             ("files", ("repair.jpg", b"damage", "image/jpeg")),
             ("files", ("id-card.jpg", b"id-card", "image/jpeg")),
-            ("files", ("policy.pdf", b"policy", "application/pdf")),
+            ("files", (policy_filename, b"policy", "image/jpeg" if policy_filename.endswith(".jpg") else "application/pdf")),
             ("files", ("registration.jpg", b"registration", "image/jpeg")),
             ("files", (driver_license_filename, b"license", "image/jpeg")),
         ],
     )
     assert upload.status_code == 200
     return claim
+
+
+def ready_confirmed_fields(run: dict[str, object], claim: dict[str, object]):
+    comparable_values = {
+        "full_name": claim["claimant_name"],
+        "vehicle_owner": claim["claimant_name"],
+        "vehicle_brand": claim["vehicle"]["make"],
+        "vehicle_make": claim["vehicle"]["make"],
+        "license_plate": claim["vehicle"]["license_plate"],
+    }
+    return [
+        {
+            "id": field["id"],
+            "confirmed_value": comparable_values.get(field["field_key"])
+            or field["confirmed_value"]
+            or f"Reviewed {field['field_key']}",
+        }
+        for result in run["document_ocr_results"]
+        if result["extraction"]
+        for field in result["extraction"]["fields"]
+    ]
+
+
+def save_ready_analysis_snapshot(
+    client: TestClient,
+    claim: dict[str, object],
+    run: dict[str, object],
+):
+    return client.put(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields",
+        headers=adjuster_headers(client),
+        json={"fields": ready_confirmed_fields(run, claim)},
+    )
+
+
+def test_save_all_persists_ready_aggregate_snapshot_and_survives_reload(
+    client: TestClient,
+):
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+
+    saved = save_ready_analysis_snapshot(client, claim, run)
+
+    assert saved.status_code == 200
+    snapshot = saved.json()["latest_analysis_run"]["analysis_snapshot"]
+    assert snapshot["status"] == "READY"
+    assert {item["document_type"] for item in snapshot["documents"]} == {
+        "ID_CARD",
+        "INSURANCE_POLICY",
+        "VEHICLE_REGISTRATION",
+        "DRIVER_LICENSE",
+    }
+    assert snapshot["damage"]["assessment"] == "REPAIR_LIKELY"
+    assert snapshot["damage"]["findings"][0]["vehicle_part"] == "rear_bumper"
+    assert snapshot["evidence_references"]
+    refreshed = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+    assert refreshed["analysis_snapshot"] == snapshot
+    assert refreshed["analysis_readiness"] == {
+        "status": "READY",
+        "blocked_reasons": [],
+    }
+
+
+def test_save_all_rejects_mismatch_atomically_with_structured_field_reason(
+    client: TestClient,
+):
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+    fields = ready_confirmed_fields(run, claim)
+    registration = next(
+        result
+        for result in run["document_ocr_results"]
+        if result["document_type"] == "VEHICLE_REGISTRATION"
+    )
+    plate = next(
+        field
+        for field in registration["extraction"]["fields"]
+        if field["field_key"] == "license_plate"
+    )
+    before = plate["confirmed_value"]
+    next(item for item in fields if item["id"] == plate["id"])[
+        "confirmed_value"
+    ] = "51H-999.99"
+
+    rejected = client.put(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields",
+        headers=adjuster_headers(client),
+        json={"fields": fields},
+    )
+
+    assert rejected.status_code == 409
+    detail = rejected.json()["detail"]
+    assert detail["message"] == "Analysis confirmation is blocked"
+    reason = next(item for item in detail["blocked_reasons"] if item["field_id"] == plate["id"])
+    assert reason["code"] == "COMPARISON_MISMATCH"
+    assert reason["category"] == "VEHICLE_REGISTRATION"
+    refreshed = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+    refreshed_plate = next(
+        field
+        for result in refreshed["document_ocr_results"]
+        if result["document_type"] == "VEHICLE_REGISTRATION"
+        for field in result["extraction"]["fields"]
+        if field["id"] == plate["id"]
+    )
+    assert refreshed_plate["confirmed_value"] == before
+    assert refreshed["analysis_snapshot"] is None
+
+
+def test_ai_review_rejects_missing_snapshot_before_provider_invocation(
+    client: TestClient, monkeypatch
+):
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+
+    def unexpected_generate(self, input_data):
+        raise AssertionError("Copilot provider must not run before Save All")
+
+    monkeypatch.setattr(LlmCopilotService, "generate", unexpected_generate)
+    response = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=adjuster_headers(client),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["blocked_reasons"][0]["code"] in {
+        "SNAPSHOT_MISSING",
+        "ANALYSIS_BLOCKED",
+    }
+
+
+def test_save_all_blocks_missing_required_value_without_rerunning_ocr_or_llm(
+    client: TestClient, monkeypatch
+):
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+    fields = ready_confirmed_fields(run, claim)
+    missing = fields[-1]
+    missing["confirmed_value"] = None
+
+    monkeypatch.setattr(
+        MockDocumentOcrAdapter,
+        "extract",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("Save All must not rerun OCR")
+        ),
+    )
+    monkeypatch.setattr(
+        DocumentExtractionService,
+        "extract",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("Save All must not rerun document LLM")
+        ),
+    )
+    response = client.put(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields",
+        headers=adjuster_headers(client),
+        json={"fields": fields},
+    )
+
+    assert response.status_code == 409
+    assert any(
+        reason["code"] == "REQUIRED_VALUE_MISSING"
+        and reason["field_id"] == missing["id"]
+        for reason in response.json()["detail"]["blocked_reasons"]
+    )
+
+
+def test_save_all_blocks_failed_required_document_category(client: TestClient):
+    claim = prepare_claim_for_workflow_analysis(client)
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+
+    response = client.put(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields",
+        headers=adjuster_headers(client),
+        json={"fields": ready_confirmed_fields(run, claim)},
+    )
+
+    assert response.status_code == 409
+    assert any(
+        reason["code"] == "DOCUMENT_CATEGORY_FAILED"
+        and reason["category"] == "INSURANCE_POLICY"
+        for reason in response.json()["detail"]["blocked_reasons"]
+    )
+
+
+def test_save_all_blocks_unavailable_damage_analysis(client: TestClient, monkeypatch):
+    class FailingDamageAdapter:
+        def analyze(self, images):
+            raise RuntimeError("damage package unavailable")
+
+    monkeypatch.setattr(
+        claim_routes,
+        "get_damage_model_adapter",
+        lambda settings, storage: FailingDamageAdapter(),
+    )
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+
+    response = client.put(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields",
+        headers=adjuster_headers(client),
+        json={"fields": ready_confirmed_fields(run, claim)},
+    )
+
+    assert response.status_code == 409
+    assert any(
+        reason["code"] == "DAMAGE_ANALYSIS_UNAVAILABLE"
+        for reason in response.json()["detail"]["blocked_reasons"]
+    )
+
+
+def test_edit_after_save_marks_snapshot_stale_and_blocks_ai_provider(
+    client: TestClient, monkeypatch
+):
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=adjuster_headers(client),
+    )
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_analysis_run"]
+    saved = save_ready_analysis_snapshot(client, claim, run)
+    assert saved.status_code == 200
+    identity_number = next(
+        field
+        for result in run["document_ocr_results"]
+        if result["document_type"] == "ID_CARD"
+        for field in result["extraction"]["fields"]
+        if field["field_key"] == "identity_number"
+    )
+
+    edited = client.patch(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields/{identity_number['id']}",
+        headers=adjuster_headers(client),
+        json={"confirmed_value": "079203009999"},
+    )
+    assert edited.status_code == 200
+    assert edited.json()["latest_analysis_run"]["analysis_readiness"]["status"] == "STALE"
+
+    monkeypatch.setattr(
+        LlmCopilotService,
+        "generate",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("Copilot provider must not run for a stale snapshot")
+        ),
+    )
+    reviewed = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=adjuster_headers(client),
+    )
+    assert reviewed.status_code == 422
+    assert reviewed.json()["detail"]["blocked_reasons"][0]["code"] == "SNAPSHOT_STALE"
 
 
 def test_workflow_analysis_returns_pending_then_persists_grouped_results(client: TestClient):
@@ -749,7 +1048,7 @@ def test_document_analysis_retries_only_failed_extraction_on_unchanged_evidence(
 def test_identity_and_policy_extraction_persists_structured_fields_and_confirmed_edits(
     client: TestClient,
 ):
-    claim = prepare_claim_for_workflow_analysis(client)
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
     policy_image = client.post(
         f"/api/claims/{claim['id']}/evidence",
         headers=adjuster_headers(client),
@@ -829,6 +1128,8 @@ def test_identity_and_policy_extraction_persists_structured_fields_and_confirmed
     assert refreshed_name["ai_extracted_value"] == "Nguyen Van A"
     assert refreshed_name["confirmed_value"] == "Mai Nguyen"
 
+    assert save_ready_analysis_snapshot(client, claim, refreshed).status_code == 200
+
     reviewed = client.post(
         f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
         headers=adjuster_headers(client),
@@ -843,7 +1144,7 @@ def test_identity_and_policy_extraction_persists_structured_fields_and_confirmed
 
 
 def test_batch_update_document_extracted_fields_is_atomic(client: TestClient):
-    claim = prepare_claim_for_workflow_analysis(client)
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
     assert client.post(
         f"/api/claims/{claim['id']}/analysis-runs",
         headers=adjuster_headers(client),
@@ -859,16 +1160,7 @@ def test_batch_update_document_extracted_fields_is_atomic(client: TestClient):
     ]
     assert len(fields) >= 2
 
-    saved = client.put(
-        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields",
-        headers=adjuster_headers(client),
-        json={
-            "fields": [
-                {"id": fields[0]["id"], "confirmed_value": "Reviewed value one"},
-                {"id": fields[1]["id"], "confirmed_value": "Reviewed value two"},
-            ]
-        },
-    )
+    saved = save_ready_analysis_snapshot(client, claim, run)
     assert saved.status_code == 200
     saved_fields = {
         field["id"]: field
@@ -876,8 +1168,7 @@ def test_batch_update_document_extracted_fields_is_atomic(client: TestClient):
         if result["extraction"]
         for field in result["extraction"]["fields"]
     }
-    assert saved_fields[fields[0]["id"]]["confirmed_value"] == "Reviewed value one"
-    assert saved_fields[fields[1]["id"]]["confirmed_value"] == "Reviewed value two"
+    first_saved_value = saved_fields[fields[0]["id"]]["confirmed_value"]
 
     rejected = client.put(
         f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields",
@@ -899,13 +1190,13 @@ def test_batch_update_document_extracted_fields_is_atomic(client: TestClient):
         if result["extraction"]
         for field in result["extraction"]["fields"]
     }
-    assert refreshed_fields[fields[0]["id"]]["confirmed_value"] == "Reviewed value one"
+    assert refreshed_fields[fields[0]["id"]]["confirmed_value"] == first_saved_value
 
 
 def test_registration_and_driver_license_extraction_supports_multiple_images_and_null_fields(
     client: TestClient,
 ):
-    claim = prepare_claim_for_workflow_analysis(client)
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
     second_registration = client.post(
         f"/api/claims/{claim['id']}/evidence",
         headers=adjuster_headers(client),
@@ -1102,7 +1393,7 @@ def test_shared_extraction_replaces_legacy_field_validation_without_blocking_ai_
         "get_document_field_validation_adapter",
         lambda settings: UnexpectedLegacyFieldAdapter(),
     )
-    claim = prepare_claim_for_workflow_analysis(client)
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
     client.post(f"/api/claims/{claim['id']}/analysis-runs", headers=adjuster_headers(client))
 
     detail = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()
@@ -1130,6 +1421,7 @@ def test_shared_extraction_replaces_legacy_field_validation_without_blocking_ai_
         return original_generate(self, input_data)
 
     monkeypatch.setattr(LlmCopilotService, "generate", capture_input)
+    assert save_ready_analysis_snapshot(client, claim, run).status_code == 200
     reviewed = client.post(
         f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
         headers=adjuster_headers(client),
@@ -1141,7 +1433,7 @@ def test_shared_extraction_replaces_legacy_field_validation_without_blocking_ai_
         for item in captured_context["document_analysis"]
         if item["document_type"] == "VEHICLE_REGISTRATION"
     )
-    assert registration_context["field_validations"] == []
+    assert "field_validations" not in registration_context
     confirmed_fields = {
         field["field_key"]: field
         for field in registration_context["confirmed_fields"]
@@ -1154,7 +1446,7 @@ def test_adjuster_can_confirm_registration_field_without_changing_ai_or_ocr_valu
     client: TestClient,
     monkeypatch,
 ):
-    claim = prepare_claim_for_workflow_analysis(client)
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
     client.post(
         f"/api/claims/{claim['id']}/analysis-runs",
         headers=adjuster_headers(client),
@@ -1209,6 +1501,31 @@ def test_adjuster_can_confirm_registration_field_without_changing_ai_or_ocr_valu
 
     monkeypatch.setattr(LlmCopilotService, "generate", capture_input)
 
+    blocked_fields = ready_confirmed_fields(
+        corrected.json()["latest_analysis_run"], claim
+    )
+    next(item for item in blocked_fields if item["id"] == plate["id"])[
+        "confirmed_value"
+    ] = "51H-999.99"
+    blocked_save = client.put(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields",
+        headers=adjuster_headers(client),
+        json={"fields": blocked_fields},
+    )
+    assert blocked_save.status_code == 409
+    assert any(
+        reason["code"] == "COMPARISON_MISMATCH"
+        for reason in blocked_save.json()["detail"]["blocked_reasons"]
+    )
+    corrected_again = client.patch(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields/{plate['id']}",
+        headers=adjuster_headers(client),
+        json={"confirmed_value": claim["vehicle"]["license_plate"]},
+    )
+    assert corrected_again.status_code == 200
+    assert save_ready_analysis_snapshot(
+        client, claim, corrected_again.json()["latest_analysis_run"]
+    ).status_code == 200
     reviewed = client.post(
         f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
         headers=adjuster_headers(client),
@@ -1225,9 +1542,8 @@ def test_adjuster_can_confirm_registration_field_without_changing_ai_or_ocr_valu
         if field["field_key"] == "license_plate"
     )
     assert confirmed_plate["ai_extracted_value"] == "51H-123.45"
-    assert confirmed_plate["confirmed_value"] == "51H-999.99"
-    assert confirmed_plate["comparison"]["status"] == "MISMATCH"
-    assert any("differs" in warning for warning in captured_context["warnings"])
+    assert confirmed_plate["confirmed_value"] == "51H-123.45"
+    assert confirmed_plate["comparison"]["status"] == "MATCH"
 
     locked = client.patch(
         f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields/{plate['id']}",
@@ -1270,7 +1586,7 @@ def test_workflow_analysis_preserves_successful_results_when_one_document_fails(
 
 
 def test_adjuster_can_correct_document_fields_then_run_structured_ai_review(client: TestClient, monkeypatch):
-    claim = prepare_claim_for_workflow_analysis(client)
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
     client.post(
         f"/api/claims/{claim['id']}/analysis-runs",
         headers=adjuster_headers(client),
@@ -1307,6 +1623,7 @@ def test_adjuster_can_correct_document_fields_then_run_structured_ai_review(clie
         return original_generate(self, input_data)
 
     monkeypatch.setattr(LlmCopilotService, "generate", capture_normalized_input)
+    assert save_ready_analysis_snapshot(client, claim, run).status_code == 200
 
     reviewed = client.post(
         f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
@@ -1327,15 +1644,18 @@ def test_adjuster_can_correct_document_fields_then_run_structured_ai_review(clie
         if item["document_type"] == "VEHICLE_REGISTRATION"
     )
     assert next(
-        field for field in registration_payload["fields"] if field["key"] == "license_plate"
-    )["reviewed_value"] == "51H-999.99"
+        field
+        for field in registration_payload["confirmed_fields"]
+        if field["field_key"] == "license_plate"
+    )["confirmed_value"] == "51H-123.45"
 
 
 def test_ai_review_rejects_analysis_run_after_claim_inputs_change(client: TestClient):
-    claim = prepare_claim_for_workflow_analysis(client)
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
     client.post(f"/api/claims/{claim['id']}/analysis-runs", headers=adjuster_headers(client))
     detail = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()
     run = detail["latest_analysis_run"]
+    assert save_ready_analysis_snapshot(client, claim, run).status_code == 200
 
     updated = client.patch(
         f"/api/claims/{claim['id']}/information",
@@ -1358,16 +1678,15 @@ def test_ai_review_rejects_analysis_run_after_claim_inputs_change(client: TestCl
     )
 
     assert reviewed.status_code == 422
-    assert reviewed.json() == {
-        "detail": "Claim information or evidence changed; run analysis again"
-    }
+    assert reviewed.json()["detail"]["blocked_reasons"][0]["code"] == "SNAPSHOT_STALE"
 
 
 def test_human_review_requires_a_note_and_can_be_reverted_without_losing_history(client: TestClient):
-    claim = prepare_claim_for_workflow_analysis(client)
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
     client.post(f"/api/claims/{claim['id']}/analysis-runs", headers=adjuster_headers(client))
     detail = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()
     run = detail["latest_analysis_run"]
+    assert save_ready_analysis_snapshot(client, claim, run).status_code == 200
     reviewed = client.post(
         f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
         headers=adjuster_headers(client),

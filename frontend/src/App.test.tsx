@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router";
 import { expect, test, vi } from "vitest";
 
 import { AppRoutes } from "./App";
+import i18n from "./i18n";
 import { AuthProvider } from "./features/auth/AuthProvider";
 import type { AssessmentRuleConfiguration } from "./features/admin/types";
 import type {
@@ -959,6 +960,21 @@ test("adjuster reviews persisted identity extraction without a confidence score"
         "Document value differs from Claim Information and requires manual review.",
     },
   };
+  const damageAnalysis = {
+    id: "DA-000009",
+    assessment: "NO_DAMAGE",
+    detections: [],
+    warning: null,
+    rules: {
+      confidence_threshold: 0.7,
+      repair_max_percentage: 40,
+      replacement_min_percentage: 60,
+    },
+    reference_price_status: "NOT_REQUESTED",
+    reference_prices: [],
+    copilot_conclusion: null,
+    created_at: "2026-09-08T00:00:02Z",
+  };
   const claim = {
     id: "CLM-000082",
     claimant_name: "Mai Nguyen",
@@ -978,12 +994,12 @@ test("adjuster reviews persisted identity extraction without a confidence score"
     created_at: "2026-09-08T00:00:00Z",
     updated_at: "2026-09-08T00:01:00Z",
     evidence: [evidence],
-    latest_damage_analysis: null,
+    latest_damage_analysis: damageAnalysis,
     latest_analysis_run: {
       id: 9,
       status: "COMPLETED",
-      damage_status: "FAILED",
-      damage_analysis: null,
+      damage_status: "COMPLETED",
+      damage_analysis: damageAnalysis,
       document_analyses: [],
       document_ocr_results: [
         {
@@ -1017,6 +1033,19 @@ test("adjuster reviews persisted identity extraction without a confidence score"
         },
       ],
       consistency_checks: [],
+      analysis_readiness: {
+        status: "BLOCKED",
+        blocked_reasons: [
+          {
+            code: "COMPARISON_MISMATCH",
+            message: "Document value differs from Claim Information.",
+            category: "ID_CARD",
+            field_id: 202,
+            field_key: "full_name",
+          },
+        ],
+      },
+      analysis_snapshot: null,
       failure_reason: null,
       created_at: "2026-09-08T00:00:00Z",
       started_at: "2026-09-08T00:00:01Z",
@@ -1038,6 +1067,10 @@ test("adjuster reviews persisted identity extraction without a confidence score"
           fields: Array<{ id: number; confirmed_value: string }>;
         }
       ).fields.find((item) => item.id === field.id)!.confirmed_value;
+      claim.latest_analysis_run!.analysis_readiness = {
+        status: "READY",
+        blocked_reasons: [],
+      };
     }
     return new Response(JSON.stringify(claim));
   });
@@ -1056,14 +1089,42 @@ test("adjuster reviews persisted identity extraction without a confidence score"
   expect(within(identitySection).getByText("Nguyen Van A")).toBeVisible();
   expect(within(identitySection).queryByText("97%")).not.toBeInTheDocument();
   expect(within(identitySection).getByText("Mismatch")).toBeVisible();
+  expect(
+    within(identitySection).getByText(
+      "Full name does not match Claim Information.",
+    ),
+  ).toBeVisible();
+  expect(screen.getByRole("button", { name: "Save all fields" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Run AI review" })).toBeDisabled();
   await user.clear(input);
   await user.type(input, "Mai Nguyen");
+  expect(within(identitySection).queryByText("Mismatch")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Save all fields" })).toBeEnabled();
   await user.click(screen.getByRole("button", { name: "Save all fields" }));
 
   expect(submittedField).toEqual({
     fields: [{ id: 202, confirmed_value: "Mai Nguyen" }],
   });
   expect(input).toHaveValue("Mai Nguyen");
+  expect(
+    await screen.findByRole("button", { name: "Run AI review" }),
+  ).toBeEnabled();
+});
+
+test("analysis gate messages are available in English and Vietnamese", async () => {
+  await i18n.changeLanguage("en");
+  expect(
+    i18n.t("documents.blockReasons.COMPARISON_MISMATCH", {
+      field: "Full name",
+    }),
+  ).toBe("Full name does not match Claim Information.");
+  await i18n.changeLanguage("vi");
+  expect(
+    i18n.t("documents.blockReasons.COMPARISON_MISMATCH", {
+      field: "Họ và tên",
+    }),
+  ).toBe("Họ và tên không khớp với Thông tin hồ sơ.");
+  await i18n.changeLanguage("en");
 });
 
 test("adjuster reviews registration and driver license extraction fields", async () => {
