@@ -194,11 +194,40 @@ export type DamageDetection = {
   annotated_evidence: EvidenceItem;
 };
 
+export type DamageDetail = {
+  damage_type: string;
+  area_percentage: number;
+  pixels: number;
+  confidence: number;
+};
+
+export type DamagePart = {
+  vehicle_part: string;
+  total_damage_percentage: number;
+  part_confidence: number;
+  damage_details: DamageDetail[];
+};
+
+export type CarDamageRecord = {
+  source_evidence_ids: number[];
+  annotated_evidence_ids: number[];
+  raw_text: string;
+  parts: DamagePart[];
+};
+
+export type DamageModelOutput = {
+  adapter_name: string;
+  part_identities: string[];
+  record: CarDamageRecord;
+  warnings: string[];
+};
+
 export type DamageAnalysis = {
   id: string;
   assessment: DamageAssessment;
   warning: string | null;
   detections: DamageDetection[];
+  model_output?: DamageModelOutput | null;
   rules: {
     confidence_threshold: number;
     repair_max_percentage: number;

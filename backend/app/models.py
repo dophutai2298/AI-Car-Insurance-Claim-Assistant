@@ -450,6 +450,21 @@ class DamageDetection(Base):
     )
 
 
+class DamageModelOutput(Base):
+    __tablename__ = "damage_model_outputs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    analysis_id: Mapped[int] = mapped_column(
+        ForeignKey("damage_analyses.id"), unique=True, index=True
+    )
+    adapter_name: Mapped[str] = mapped_column(String(80))
+    output_json: Mapped[str] = mapped_column(Text)
+    warnings_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
 class DamageAnalysisRuleSnapshot(Base):
     __tablename__ = "damage_analysis_rule_snapshots"
 

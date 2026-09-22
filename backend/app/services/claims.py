@@ -252,7 +252,10 @@ class ClaimService:
         }
 
         try:
-            detections = self.damage_model.analyze(by_category[EvidenceCategory.VEHICLE_DAMAGE_IMAGE])
+            model_result = self.damage_model.analyze(
+                by_category[EvidenceCategory.VEHICLE_DAMAGE_IMAGE]
+            )
+            detections = model_result.detections
             rules = self.rules.active_values()
             assessment = self.assessment.assess(detections, rules)
             reference_prices = self.part_search.lookup_for_assessment(
@@ -266,6 +269,7 @@ class ClaimService:
             damage_analysis = self.damage_analyses.create(
                 claim,
                 assessment,
+                model_result,
                 detections,
                 rules,
                 reference_prices,
@@ -887,7 +891,8 @@ class ClaimService:
         ]
         if not images:
             raise ValueError("Upload at least one vehicle damage image before running analysis")
-        detections = self.damage_model.analyze(images)
+        model_result = self.damage_model.analyze(images)
+        detections = model_result.detections
         rules = self.rules.active_values()
         assessment = self.assessment.assess(detections, rules)
         reference_prices = self.part_search.lookup_for_assessment(
@@ -901,6 +906,7 @@ class ClaimService:
         analysis = self.damage_analyses.create(
             claim,
             assessment,
+            model_result,
             detections,
             rules,
             reference_prices,
@@ -1221,11 +1227,22 @@ class ClaimService:
             )
         reference_prices = self.damage_analyses.reference_prices(analysis.id)
         reference_price_responses = [self._to_reference_price_response(price) for price in reference_prices]
+        model_output = self.damage_analyses.model_output(analysis.id)
+        model_output_response = None
+        if model_output is not None:
+            output_payload = json.loads(model_output.output_json)
+            model_output_response = {
+                "adapter_name": model_output.adapter_name,
+                "part_identities": output_payload.get("part_identities", []),
+                "record": output_payload["record"],
+                "warnings": json.loads(model_output.warnings_json),
+            }
         return DamageAnalysisResponse(
             id=analysis.analysis_number,
             assessment=analysis.assessment,
             warning=analysis.warning,
             detections=detections,
+            model_output=model_output_response,
             rules=self._rules_for_analysis(analysis.id),
             reference_price_status=self._reference_price_status(reference_prices),
             reference_prices=reference_price_responses,

@@ -4,23 +4,33 @@ from dataclasses import dataclass
 import re
 
 from app.models import DamageDetectionStatus
-from app.services.damage_model import DamageModelDetection
 
 
 PART_PATTERN = re.compile(
     r"^(?P<part>[^|]+?)\s*\|\s*"
-    r"Total Damage:\s*(?P<total_damage>[\d.]+)%\s*\|\s*"
-    r"Part Conf:\s*(?P<part_conf>[\d.]+)\s*$",
+    r"Total Damage:\s*(?P<total_damage>\d+(?:\.\d+)?)%\s*\|\s*"
+    r"Part Conf:\s*(?P<part_conf>\d+(?:\.\d+)?)\s*$",
     re.IGNORECASE,
 )
 
 DAMAGE_PATTERN = re.compile(
     r"^(?P<damage_type>[^|]+?)\s*\|\s*"
-    r"Area:\s*(?P<area>[\d.]+)%\s*\|\s*"
-    r"Pixels:\s*(?P<pixels>[\d,]+)\s*\|\s*"
-    r"Conf:\s*(?P<confidence>[\d.]+)\s*$",
+    r"Area:\s*(?P<area>\d+(?:\.\d+)?)%\s*\|\s*"
+    r"Pixels:\s*(?P<pixels>\d+(?:,\d{3})*)\s*\|\s*"
+    r"Conf:\s*(?P<confidence>\d+(?:\.\d+)?)\s*$",
     re.IGNORECASE,
 )
+
+
+@dataclass(frozen=True)
+class DamageModelDetection:
+    source_evidence_id: int
+    annotated_evidence_id: int
+    vehicle_part: str | None
+    damage_type: str | None
+    damage_percentage: float
+    confidence: float
+    status: DamageDetectionStatus
 
 
 @dataclass(frozen=True)
@@ -30,6 +40,14 @@ class DamageDetail:
     pixels: int
     confidence: float
 
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "damage_type": self.damage_type,
+            "area_percentage": self.area_percentage,
+            "pixels": self.pixels,
+            "confidence": self.confidence,
+        }
+
 
 @dataclass(frozen=True)
 class DamagePart:
@@ -37,6 +55,14 @@ class DamagePart:
     total_damage_percentage: float
     part_confidence: float
     damage_details: tuple[DamageDetail, ...] = ()
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "vehicle_part": self.vehicle_part,
+            "total_damage_percentage": self.total_damage_percentage,
+            "part_confidence": self.part_confidence,
+            "damage_details": [detail.to_dict() for detail in self.damage_details],
+        }
 
 
 @dataclass(frozen=True)
@@ -66,6 +92,14 @@ class CarDamageRecord:
             )
             for part in self.parts
         ]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "source_evidence_id": self.source_evidence_id,
+            "annotated_evidence_id": self.annotated_evidence_id,
+            "raw_text": self.raw_text,
+            "parts": [part.to_dict() for part in self.parts],
+        }
 
 
 def _strip_tree_prefix(line: str) -> str:

@@ -50,10 +50,11 @@ router = APIRouter(prefix="/api/claims", tags=["claims"])
 
 
 def build_claim_service(session: Session, settings: Settings) -> ClaimService:
+    evidence_storage = LocalEvidenceStorage(settings)
     return ClaimService(
         session,
-        LocalEvidenceStorage(settings),
-        get_damage_model_adapter(settings),
+        evidence_storage,
+        get_damage_model_adapter(settings, evidence_storage),
         DamageAssessmentService(),
         AssessmentRuleService(AssessmentRuleRepository(session), settings),
         PartSearchService(get_part_price_provider(settings)),

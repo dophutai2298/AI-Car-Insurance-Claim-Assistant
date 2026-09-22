@@ -58,7 +58,9 @@ def test_parse_damage_text_ignores_malformed_lines_without_losing_valid_parts():
         """
         not a damage record
         Door | Total Damage: bad | Part Conf: 0.80
+        Door | Total Damage: 20..00% | Part Conf: 0.80
         Door | Total Damage: 20.00% | Part Conf: 0.80
+        dent | Area: 10% | Pixels: 1,,000 | Conf: 0.4
         malformed | Area: 10% | Pixels: nope | Conf: 0.4
         """
     )

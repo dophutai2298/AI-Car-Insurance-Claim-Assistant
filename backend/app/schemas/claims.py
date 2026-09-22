@@ -97,11 +97,40 @@ class DamageDetectionResponse(BaseModel):
     annotated_evidence: EvidenceResponse
 
 
+class DamageDetailResponse(BaseModel):
+    damage_type: str
+    area_percentage: float
+    pixels: int
+    confidence: float
+
+
+class DamagePartResponse(BaseModel):
+    vehicle_part: str
+    total_damage_percentage: float
+    part_confidence: float
+    damage_details: list[DamageDetailResponse] = Field(default_factory=list)
+
+
+class CarDamageRecordResponse(BaseModel):
+    source_evidence_ids: list[int] = Field(default_factory=list)
+    annotated_evidence_ids: list[int] = Field(default_factory=list)
+    raw_text: str
+    parts: list[DamagePartResponse] = Field(default_factory=list)
+
+
+class DamageModelOutputResponse(BaseModel):
+    adapter_name: str
+    part_identities: list[str] = Field(default_factory=list)
+    record: CarDamageRecordResponse
+    warnings: list[str] = Field(default_factory=list)
+
+
 class DamageAnalysisResponse(BaseModel):
     id: str
     assessment: DamageAssessment
     warning: str | None
     detections: list[DamageDetectionResponse]
+    model_output: DamageModelOutputResponse | None = None
     rules: AssessmentRuleValuesSchema | None = None
     reference_price_status: ReferencePriceLookupStatus
     reference_prices: list["ReferencePartPriceResponse"] = Field(default_factory=list)
