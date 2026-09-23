@@ -897,9 +897,15 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
     },
     copilot_review_history: [],
   } as unknown as ClaimDetail;
+  vi.stubGlobal("URL", {
+    createObjectURL: () => "blob:evidence-preview",
+    revokeObjectURL: () => undefined,
+  });
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     if (String(input).endsWith("/api/auth/me"))
       return new Response(JSON.stringify(adjusterSession.user));
+    if (String(input).endsWith("/content"))
+      return new Response(new Blob(["image"], { type: "image/jpeg" }));
     if (
       String(input).includes("/copilot-conclusions/8/review") &&
       init?.method === "POST"
@@ -935,6 +941,18 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
     within(failedPolicy).getByText(/ocr processing failed/i),
   ).toBeVisible();
   expect(screen.getAllByText("ID cards")).toHaveLength(2);
+  const annotatedDamage = screen.getByRole("group", {
+    name: "Annotated damage evidence",
+  });
+  const damagePreview = await within(annotatedDamage).findByRole("img", {
+    name: "vehicle_damage_image.jpg",
+  });
+  expect(damagePreview).toHaveClass("h-44");
+  expect(damagePreview.closest("a")).toHaveAttribute(
+    "href",
+    "blob:evidence-preview",
+  );
+  expect(damagePreview.closest("a")).toHaveAttribute("target", "_blank");
   const damageTable = screen.getByRole("table", {
     name: "Vehicle damage findings",
   });

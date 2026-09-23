@@ -21,6 +21,7 @@ import { useTranslation } from "react-i18next";
 
 import { useAuth } from "../auth/AuthProvider";
 import {
+  EvidenceImagePreview,
   requiredEvidenceCategories,
 } from "./EvidencePanel";
 import { ClaimsApiError } from "./claimsApi";
@@ -175,6 +176,15 @@ export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
 
 function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
   const { t } = useTranslation();
+  const annotatedEvidence = Array.from(
+    new Map(
+      analysis.detections.map((detection) => [
+        detection.annotated_evidence.id,
+        detection.annotated_evidence,
+      ]),
+    ).values(),
+  );
+
   return (
     <section className="grid gap-4">
       <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -208,42 +218,64 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
         </Alert>
       ) : null}
       {analysis.detections.length ? (
-        <div className="overflow-x-auto border border-slate-200">
-          <table
-            aria-label={t("analysis.damageTable")}
-            className="w-full min-w-[36rem] border-collapse text-left text-sm"
+        <div className="grid items-start gap-4 xl:grid-cols-[18rem_minmax(0,1fr)]">
+          <div
+            aria-label={t("analysis.annotatedEvidence")}
+            className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1"
+            role="group"
           >
-            <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-600">
-              <tr>
-                <th className="px-4 py-3" scope="col">
-                  {t("analysis.part")}
-                </th>
-                <th className="px-4 py-3" scope="col">
-                  {t("analysis.damageType")}
-                </th>
-                <th className="px-4 py-3 text-right" scope="col">
-                  {t("analysis.areaPercent")}
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 bg-white">
-              {analysis.detections.map((detection, index) => (
-                <tr key={`${detection.annotated_evidence.id}-${index}`}>
-                  <td className="px-4 py-3 font-semibold text-slate-950">
-                    {formatLabel(detection.vehicle_part) ||
-                      t("analysis.areaUnknown")}
-                  </td>
-                  <td className="px-4 py-3 text-slate-700">
-                    {formatLabel(detection.damage_type) ||
-                      t("analysis.damageUnknown")}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono font-semibold text-slate-950">
-                    {formatPercent(detection.damage_percentage)}
-                  </td>
+            {annotatedEvidence.map((item) => (
+              <figure
+                className="overflow-hidden border border-slate-200 bg-slate-50"
+                key={item.id}
+              >
+                <EvidenceImagePreview
+                  className="h-44 w-full object-contain"
+                  item={item}
+                />
+                <figcaption className="truncate border-t border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                  {item.original_filename}
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+          <div className="overflow-x-auto border border-slate-200">
+            <table
+              aria-label={t("analysis.damageTable")}
+              className="w-full min-w-[36rem] border-collapse text-left text-sm"
+            >
+              <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-600">
+                <tr>
+                  <th className="px-4 py-3" scope="col">
+                    {t("analysis.part")}
+                  </th>
+                  <th className="px-4 py-3" scope="col">
+                    {t("analysis.damageType")}
+                  </th>
+                  <th className="px-4 py-3 text-right" scope="col">
+                    {t("analysis.areaPercent")}
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-200 bg-white">
+                {analysis.detections.map((detection, index) => (
+                  <tr key={`${detection.annotated_evidence.id}-${index}`}>
+                    <td className="px-4 py-3 font-semibold text-slate-950">
+                      {formatLabel(detection.vehicle_part) ||
+                        t("analysis.areaUnknown")}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {formatLabel(detection.damage_type) ||
+                        t("analysis.damageUnknown")}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono font-semibold text-slate-950">
+                      {formatPercent(detection.damage_percentage)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
         <div className="flex min-h-24 items-center justify-center gap-2 border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-600">
