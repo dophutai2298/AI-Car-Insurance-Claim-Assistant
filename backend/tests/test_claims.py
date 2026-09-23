@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+import json
 
 import pytest
 from fastapi.testclient import TestClient
@@ -1428,18 +1429,12 @@ def test_shared_extraction_replaces_legacy_field_validation_without_blocking_ai_
     )
 
     assert reviewed.status_code == 200
-    registration_context = next(
-        item
-        for item in captured_context["document_analysis"]
-        if item["document_type"] == "VEHICLE_REGISTRATION"
-    )
+    registration_context = captured_context["documents"]["VEHICLE_REGISTRATION"]
     assert "field_validations" not in registration_context
-    confirmed_fields = {
-        field["field_key"]: field
-        for field in registration_context["confirmed_fields"]
+    assert registration_context["fields"]["vehicle_brand"] == {
+        "value": "Toyota",
+        "consistency": "MATCH",
     }
-    assert confirmed_fields["vehicle_brand"]["confirmed_value"] == "Toyota"
-    assert confirmed_fields["vehicle_brand"]["comparison"]["status"] == "MATCH"
 
 
 def test_adjuster_can_confirm_registration_field_without_changing_ai_or_ocr_values(
@@ -1531,19 +1526,11 @@ def test_adjuster_can_confirm_registration_field_without_changing_ai_or_ocr_valu
         headers=adjuster_headers(client),
     )
     assert reviewed.status_code == 200
-    registration_context = next(
-        item
-        for item in captured_context["document_analysis"]
-        if item["document_type"] == "VEHICLE_REGISTRATION"
-    )
-    confirmed_plate = next(
-        field
-        for field in registration_context["confirmed_fields"]
-        if field["field_key"] == "license_plate"
-    )
-    assert confirmed_plate["ai_extracted_value"] == "51H-123.45"
-    assert confirmed_plate["confirmed_value"] == "51H-123.45"
-    assert confirmed_plate["comparison"]["status"] == "MATCH"
+    registration_context = captured_context["documents"]["VEHICLE_REGISTRATION"]
+    assert registration_context["fields"]["license_plate"] == {
+        "value": "51H-123.45",
+        "consistency": "MATCH",
+    }
 
     locked = client.patch(
         f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields/{plate['id']}",
@@ -1636,18 +1623,44 @@ def test_adjuster_can_correct_document_fields_then_run_structured_ai_review(clie
     assert conclusion["review_status"] == "REVIEW_REQUIRED"
     assert len(conclusion["evidence_references"]) == 5
     assert conclusion["summary"]
-    assert captured_context["claim"] == {"id": claim["id"], "status": "REVIEW_REQUIRED"}
+    assert captured_context["claim"] == {
+        "claim_number": claim["id"],
+        "status": "REVIEW_REQUIRED",
+        "claimant_name": "Mai Nguyen",
+    }
     assert captured_context["incident"]["location"] == "District 1, Ho Chi Minh City"
-    registration_payload = next(
-        item
-        for item in captured_context["document_analysis"]
-        if item["document_type"] == "VEHICLE_REGISTRATION"
+    assert captured_context["documents"]["VEHICLE_REGISTRATION"]["fields"][
+        "license_plate"
+    ] == {"value": "51H-123.45", "consistency": "MATCH"}
+    assert captured_context["damage"]["findings"][0] == {
+        "part": "rear_bumper",
+        "damage_type": "dent",
+        "area_percentage": 32.5,
+    }
+    serialized_context = json.dumps(captured_context)
+    for excluded in (
+        "source_evidence_id",
+        "annotated_evidence_id",
+        "content_url",
+        "source_url",
+        "raw_text",
+        "confidence",
+    ):
+        assert excluded not in serialized_context
+    assert conclusion["structured_review"]["human_review_required"] is True
+    assert conclusion["structured_review"]["recommended_next_step"]
+    assert conclusion["prompt_version"] == "ai-review-v2"
+    assert conclusion["schema_version"] == "ai-review-schema-v2"
+
+    reloaded = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
     )
-    assert next(
-        field
-        for field in registration_payload["confirmed_fields"]
-        if field["field_key"] == "license_plate"
-    )["confirmed_value"] == "51H-123.45"
+
+    assert reloaded.status_code == 200
+    persisted = reloaded.json()["latest_damage_analysis"]["copilot_conclusion"]
+    assert persisted["structured_review"] == conclusion["structured_review"]
+    assert persisted["prompt_version"] == "ai-review-v2"
+    assert persisted["schema_version"] == "ai-review-schema-v2"
 
 
 def test_ai_review_rejects_analysis_run_after_claim_inputs_change(client: TestClient):

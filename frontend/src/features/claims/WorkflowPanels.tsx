@@ -21,7 +21,6 @@ import { useTranslation } from "react-i18next";
 
 import { useAuth } from "../auth/AuthProvider";
 import {
-  EvidenceImagePreview,
   requiredEvidenceCategories,
 } from "./EvidencePanel";
 import { ClaimsApiError } from "./claimsApi";
@@ -209,47 +208,42 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
         </Alert>
       ) : null}
       {analysis.detections.length ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {analysis.detections.map((detection, index) => (
-            <article
-              className="grid overflow-hidden border border-slate-200 sm:grid-cols-[10rem_minmax(0,1fr)]"
-              key={`${detection.annotated_evidence.id}-${index}`}
-            >
-              <div className="flex min-h-36 items-center justify-center bg-slate-100">
-                <EvidenceImagePreview item={detection.annotated_evidence} />
-              </div>
-              <div className="grid content-start gap-3 p-4">
-                <div>
-                  <p className="text-sm font-semibold text-slate-950">
+        <div className="overflow-x-auto border border-slate-200">
+          <table
+            aria-label={t("analysis.damageTable")}
+            className="w-full min-w-[36rem] border-collapse text-left text-sm"
+          >
+            <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-600">
+              <tr>
+                <th className="px-4 py-3" scope="col">
+                  {t("analysis.part")}
+                </th>
+                <th className="px-4 py-3" scope="col">
+                  {t("analysis.damageType")}
+                </th>
+                <th className="px-4 py-3 text-right" scope="col">
+                  {t("analysis.areaPercent")}
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 bg-white">
+              {analysis.detections.map((detection, index) => (
+                <tr key={`${detection.annotated_evidence.id}-${index}`}>
+                  <td className="px-4 py-3 font-semibold text-slate-950">
                     {formatLabel(detection.vehicle_part) ||
                       t("analysis.areaUnknown")}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
+                  </td>
+                  <td className="px-4 py-3 text-slate-700">
                     {formatLabel(detection.damage_type) ||
                       t("analysis.damageUnknown")}
-                  </p>
-                </div>
-                <dl className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <dt className="text-xs text-slate-500">
-                      {t("analysis.damage")}
-                    </dt>
-                    <dd className="font-semibold">
-                      {formatPercent(detection.damage_percentage)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-slate-500">
-                      {t("analysis.confidence")}
-                    </dt>
-                    <dd className="font-semibold">
-                      {formatPercent(detection.confidence * 100)}
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-            </article>
-          ))}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono font-semibold text-slate-950">
+                    {formatPercent(detection.damage_percentage)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : (
         <div className="flex min-h-24 items-center justify-center gap-2 border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-600">
@@ -350,6 +344,13 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
 
 function AiReviewResult({ conclusion }: { conclusion: CopilotConclusion }) {
   const { t } = useTranslation();
+  const warnings = Array.from(
+    new Set([
+      ...conclusion.warnings,
+      ...(conclusion.structured_review?.warnings ?? []),
+    ]),
+  );
+
   return (
     <div className="grid gap-5">
       <div className="grid gap-4 border-b border-slate-100 pb-5 sm:grid-cols-[12rem_minmax(0,1fr)]">
@@ -399,11 +400,45 @@ function AiReviewResult({ conclusion }: { conclusion: CopilotConclusion }) {
           </Alert.Description>
         </Alert>
       ) : null}
-      {conclusion.warnings.length ? (
+      {conclusion.structured_review ? (
+        <div className="grid gap-3">
+          <dl className="divide-y divide-slate-200 border-y border-slate-200">
+            {[
+              [
+                t("aiReview.assessmentInterpretation"),
+                conclusion.structured_review.assessment_interpretation,
+              ],
+              [
+                t("aiReview.damagedPartsSummary"),
+                conclusion.structured_review.damaged_parts_summary,
+              ],
+              [
+                t("aiReview.documentConsistency"),
+                conclusion.structured_review.document_consistency_summary,
+              ],
+              [
+                t("aiReview.recommendedNextStep"),
+                conclusion.structured_review.recommended_next_step,
+              ],
+            ].map(([label, value]) => (
+              <div className="grid gap-1 py-3 sm:grid-cols-[13rem_minmax(0,1fr)]" key={label}>
+                <dt className="text-xs font-semibold text-slate-600">{label}</dt>
+                <dd className="text-sm leading-6 text-slate-800">{value}</dd>
+              </div>
+            ))}
+          </dl>
+          {conclusion.structured_review.human_review_required ? (
+            <p className="border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-950">
+              {t("aiReview.humanReviewRequired")}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {warnings.length ? (
         <Alert status="warning">
           <WarningAlt size={18} />
           <Alert.Title>{t("aiReview.warnings")}</Alert.Title>
-          <Alert.Description>{conclusion.warnings.join(" ")}</Alert.Description>
+          <Alert.Description>{warnings.join(" ")}</Alert.Description>
         </Alert>
       ) : null}
       <div>

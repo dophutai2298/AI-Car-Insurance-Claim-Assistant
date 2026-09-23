@@ -699,8 +699,17 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
   });
   const damageAnalysis = {
     id: "DA-000008",
-    assessment: "NO_DAMAGE" as const,
-    detections: [],
+    assessment: "REPAIR_LIKELY" as const,
+    detections: [
+      {
+        vehicle_part: "rear_bumper",
+        damage_type: "dent",
+        damage_percentage: 32.5,
+        confidence: 0.91,
+        status: "DETECTED" as const,
+        annotated_evidence: evidence[0],
+      },
+    ],
     warning: null,
     rules: {
       confidence_threshold: 0.7,
@@ -721,6 +730,20 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
       findings: [],
       warnings: [],
       reference_prices: [],
+      structured_review: {
+        summary: "The confirmed claim requires manual review.",
+        assessment_interpretation:
+          "The deterministic assessment is repair likely.",
+        damaged_parts_summary: "Rear bumper dent affects 32.5% of the part.",
+        document_consistency_summary:
+          "Confirmed document values require adjuster verification.",
+        warnings: ["Reference prices require adjuster verification."],
+        recommended_next_step:
+          "Verify the damage evidence before making a decision.",
+        human_review_required: true,
+      },
+      prompt_version: "ai-review-v2",
+      schema_version: "ai-review-schema-v2",
       review_history: [],
       validity_percentage: 85,
       review_status: "REVIEW_REQUIRED",
@@ -912,7 +935,32 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
     within(failedPolicy).getByText(/ocr processing failed/i),
   ).toBeVisible();
   expect(screen.getAllByText("ID cards")).toHaveLength(2);
-  expect(screen.getByText("No significant damage detections")).toBeVisible();
+  const damageTable = screen.getByRole("table", {
+    name: "Vehicle damage findings",
+  });
+  expect(within(damageTable).getByRole("columnheader", { name: "Part" })).toBeVisible();
+  expect(
+    within(damageTable).getByRole("columnheader", { name: "Damage type" }),
+  ).toBeVisible();
+  expect(
+    within(damageTable).getByRole("columnheader", { name: "Area %" }),
+  ).toBeVisible();
+  expect(within(damageTable).getByText("Rear Bumper")).toBeVisible();
+  expect(within(damageTable).getByText("Dent")).toBeVisible();
+  expect(within(damageTable).getByText("32.5%")).toBeVisible();
+  expect(within(damageTable).queryByText("91%")).not.toBeInTheDocument();
+  expect(within(damageTable).queryByText(/pixels/i)).not.toBeInTheDocument();
+  expect(screen.getByText("Assessment interpretation")).toBeVisible();
+  expect(
+    screen.getByText("The deterministic assessment is repair likely."),
+  ).toBeVisible();
+  expect(screen.getByText("Damaged parts summary")).toBeVisible();
+  expect(screen.getByText("Document consistency")).toBeVisible();
+  expect(screen.getByText("Recommended next step")).toBeVisible();
+  expect(screen.getByText("Human review is required")).toBeVisible();
+  expect(
+    screen.getByText("Reference prices require adjuster verification."),
+  ).toBeVisible();
   expect(screen.getByText("85%")).toBeVisible();
   expect(
     screen.getByText(/not an automatic approval probability/i),

@@ -72,6 +72,7 @@ from app.schemas.claims import (
     WorkflowAnalysisRunResponse,
     AnalysisBlockedReasonResponse,
     AnalysisReadinessResponse,
+    AiReviewStructuredResponse,
     ConfirmedAnalysisSnapshotResponse,
 )
 from app.schemas.admin import AssessmentRuleValuesSchema
@@ -81,9 +82,16 @@ from app.services.damage_assessment import DamageAssessmentService
 from app.services.damage_model import DamageModelAdapter, DamageModelDetection
 from app.services.part_search import PartSearchService, ReferencePartPriceResult
 from app.services.llm_copilot import (
+    AiReviewClaimFacts,
+    AiReviewContext,
+    AiReviewDamage,
+    AiReviewDamageFinding,
+    AiReviewDocument,
+    AiReviewDocumentField,
+    AiReviewIncidentFacts,
+    AiReviewReferencePrice,
+    AiReviewVehicleFacts,
     CopilotInput,
-    CopilotReferencePrice,
-    CopilotStructuredFinding,
     LlmCopilotService,
 )
 from app.services.vehicle_manufacturers import VehicleManufacturerService
@@ -920,45 +928,9 @@ class ClaimService:
             )
 
         payload = json.loads(snapshot.payload_json)
-        damage_payload = payload["damage"]
         warnings = payload.get("warnings", [])
         evidence_references = payload.get("evidence_references", [])
-        input_data = CopilotInput(
-            vehicle_summary=(
-                f"{payload['vehicle']['year']} {payload['vehicle']['make']} "
-                f"{payload['vehicle']['model']}"
-            ),
-            assessment=damage_payload["assessment"],
-            warning=damage_payload.get("warning"),
-            findings=[
-                CopilotStructuredFinding(
-                    vehicle_part=item.get("vehicle_part"),
-                    damage_type=item.get("damage_type"),
-                    damage_percentage=item["damage_percentage"],
-                    confidence=item["confidence"],
-                )
-                for item in damage_payload.get("findings", [])
-            ],
-            reference_prices=[
-                CopilotReferencePrice(
-                    part_identity=price["part_identity"],
-                    amount=price.get("amount"),
-                    currency=price.get("currency"),
-                    source_name=price.get("source_name"),
-                    source_url=price.get("source_url"),
-                    price_type=price["price_type"],
-                    status=price["status"],
-                )
-                for price in damage_payload.get("reference_prices", [])
-            ],
-            claim=payload.get("claim"),
-            vehicle=payload.get("vehicle"),
-            claimant=payload.get("claimant"),
-            incident=payload.get("incident"),
-            document_analysis=payload.get("documents", []),
-            warnings=warnings,
-            evidence_references=evidence_references,
-        )
+        input_data = self._copilot_input_from_snapshot(payload)
         result = self.llm_copilot.generate(input_data)
         provider_model = self.llm_model if result.status is CopilotConclusionStatus.GENERATED else None
         conclusion = self.copilot_conclusions.create(damage, result, provider_model)
@@ -1542,6 +1514,75 @@ class ClaimService:
         )
 
     @staticmethod
+    def _copilot_input_from_snapshot(payload: dict[str, object]) -> CopilotInput:
+        claim_payload = payload["claim"]
+        claimant_payload = payload["claimant"]
+        vehicle_payload = payload["vehicle"]
+        incident_payload = payload.get("incident")
+        damage_payload = payload["damage"]
+        documents: dict[str, AiReviewDocument] = {}
+        for document in payload.get("documents", []):
+            fields: dict[str, AiReviewDocumentField] = {}
+            for field in document.get("confirmed_fields", []):
+                comparison = field.get("comparison") or {}
+                fields[field["field_key"]] = AiReviewDocumentField(
+                    value=field.get("confirmed_value"),
+                    consistency=comparison.get("status"),
+                )
+            documents[document["document_type"]] = AiReviewDocument(fields=fields)
+
+        return CopilotInput(
+            context=AiReviewContext(
+                claim=AiReviewClaimFacts(
+                    claim_number=claim_payload["id"],
+                    status=claim_payload["status"],
+                    claimant_name=claimant_payload["name"],
+                ),
+                vehicle=AiReviewVehicleFacts(
+                    make=vehicle_payload["make"],
+                    model=vehicle_payload["model"],
+                    year=vehicle_payload["year"],
+                    license_plate=vehicle_payload.get("license_plate"),
+                    vin=vehicle_payload.get("vin"),
+                ),
+                incident=(
+                    AiReviewIncidentFacts(
+                        occurred_at=incident_payload.get("occurred_at"),
+                        location=incident_payload.get("location"),
+                        description=incident_payload.get("description"),
+                    )
+                    if incident_payload
+                    else None
+                ),
+                documents=documents,
+                damage=AiReviewDamage(
+                    assessment=damage_payload["assessment"],
+                    warning=damage_payload.get("warning"),
+                    findings=[
+                        AiReviewDamageFinding(
+                            part=item.get("vehicle_part"),
+                            damage_type=item.get("damage_type"),
+                            area_percentage=item["damage_percentage"],
+                        )
+                        for item in damage_payload.get("findings", [])
+                    ],
+                ),
+                warnings=payload.get("warnings", []),
+                reference_prices=[
+                    AiReviewReferencePrice(
+                        part=price["part_identity"],
+                        amount=price.get("amount"),
+                        currency=price.get("currency"),
+                        source_name=price.get("source_name"),
+                        price_type=price["price_type"],
+                        status=price["status"],
+                    )
+                    for price in damage_payload.get("reference_prices", [])
+                ],
+            )
+        )
+
+    @staticmethod
     def _copilot_input(
         claim: Claim,
         assessment: DamageAssessment,
@@ -1550,30 +1591,45 @@ class ClaimService:
         reference_prices: list[ReferencePartPriceResult],
     ) -> CopilotInput:
         return CopilotInput(
-            vehicle_summary=f"{claim.vehicle_year} {claim.vehicle_make} {claim.vehicle_model}",
-            assessment=assessment,
-            warning=warning,
-            findings=[
-                CopilotStructuredFinding(
-                    vehicle_part=detection.vehicle_part,
-                    damage_type=detection.damage_type,
-                    damage_percentage=detection.damage_percentage,
-                    confidence=detection.confidence,
-                )
-                for detection in detections
-            ],
-            reference_prices=[
-                CopilotReferencePrice(
-                    part_identity=price.part_identity,
-                    amount=price.amount,
-                    currency=price.currency,
-                    source_name=price.source_name,
-                    source_url=price.source_url,
-                    price_type=price.price_type,
-                    status=price.status,
-                )
-                for price in reference_prices
-            ],
+            context=AiReviewContext(
+                claim=AiReviewClaimFacts(
+                    claim_number=claim.claim_number,
+                    status=claim.status.value,
+                    claimant_name=claim.claimant_name,
+                ),
+                vehicle=AiReviewVehicleFacts(
+                    make=claim.vehicle_make,
+                    model=claim.vehicle_model,
+                    year=claim.vehicle_year,
+                    license_plate=claim.license_plate,
+                    vin=claim.vin,
+                ),
+                documents={},
+                damage=AiReviewDamage(
+                    assessment=assessment.value,
+                    warning=warning,
+                    findings=[
+                        AiReviewDamageFinding(
+                            part=detection.vehicle_part,
+                            damage_type=detection.damage_type,
+                            area_percentage=detection.damage_percentage,
+                        )
+                        for detection in detections
+                    ],
+                ),
+                warnings=[warning] if warning else [],
+                reference_prices=[
+                    AiReviewReferencePrice(
+                        part=price.part_identity,
+                        amount=price.amount,
+                        currency=price.currency,
+                        source_name=price.source_name,
+                        price_type=price.price_type,
+                        status=price.status.value,
+                    )
+                    for price in reference_prices
+                ],
+            )
         )
 
     def _to_copilot_conclusion_response(
@@ -1586,6 +1642,7 @@ class ClaimService:
     ) -> CopilotConclusionResponse | None:
         if conclusion is None:
             return None
+        review_output = self.copilot_conclusions.review_output(conclusion.id)
         workflow_review = self.workflow_ai_reviews.find_for_conclusion(conclusion.id)
         workflow_warnings = json.loads(workflow_review.warnings_json) if workflow_review else []
         evidence_references = (
@@ -1623,6 +1680,15 @@ class ClaimService:
             validity_percentage=workflow_review.validity_percentage if workflow_review else None,
             review_status=workflow_review.review_status if workflow_review else None,
             evidence_references=evidence_references,
+            structured_review=(
+                AiReviewStructuredResponse.model_validate(
+                    json.loads(review_output.review_json)
+                )
+                if review_output
+                else None
+            ),
+            prompt_version=review_output.prompt_version if review_output else None,
+            schema_version=review_output.schema_version if review_output else None,
         )
 
     def _to_copilot_conclusion_review_response(

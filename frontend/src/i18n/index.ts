@@ -150,6 +150,10 @@ const en = {
     damageUnknown: "Damage type not identified",
     damage: "Damage",
     confidence: "Confidence",
+    damageTable: "Vehicle damage findings",
+    part: "Part",
+    damageType: "Damage type",
+    areaPercent: "Area %",
     noDamage: "No significant damage detections",
     status: {
       PENDING: "Pending",
@@ -276,6 +280,11 @@ const en = {
     unavailable: "AI unavailable",
     warnings: "Warnings",
     evidenceReferences: "Evidence references",
+    assessmentInterpretation: "Assessment interpretation",
+    damagedPartsSummary: "Damaged parts summary",
+    documentConsistency: "Document consistency",
+    recommendedNextStep: "Recommended next step",
+    humanReviewRequired: "Human review is required",
   },
   humanReview: {
     description:
@@ -521,6 +530,10 @@ const vi = {
 
     damage: "Hư hỏng",
     confidence: "Độ tin cậy",
+    damageTable: "Các hạng mục hư hỏng của xe",
+    part: "Bộ phận",
+    damageType: "Loại hư hỏng",
+    areaPercent: "Diện tích %",
 
     noDamage: "Không phát hiện hư hỏng đáng kể",
 
@@ -667,6 +680,11 @@ const vi = {
 
     warnings: "Cảnh báo",
     evidenceReferences: "Bằng chứng tham chiếu",
+    assessmentInterpretation: "Diễn giải đánh giá",
+    damagedPartsSummary: "Tóm tắt bộ phận hư hỏng",
+    documentConsistency: "Tính nhất quán của giấy tờ",
+    recommendedNextStep: "Bước tiếp theo được đề xuất",
+    humanReviewRequired: "Bắt buộc có chuyên viên thẩm định",
   },
 
   humanReview: {

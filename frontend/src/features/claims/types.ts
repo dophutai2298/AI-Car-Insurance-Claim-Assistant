@@ -296,6 +296,19 @@ export type CopilotConclusion = {
     category: EvidenceCategory;
     original_filename: string;
   }>;
+  structured_review?: AiReviewStructuredResult | null;
+  prompt_version?: string | null;
+  schema_version?: string | null;
+};
+
+export type AiReviewStructuredResult = {
+  summary: string;
+  assessment_interpretation: string;
+  damaged_parts_summary: string;
+  document_consistency_summary: string;
+  warnings: string[];
+  recommended_next_step: string;
+  human_review_required: boolean;
 };
 
 export type CopilotConclusionReviewStatus = "APPROVED" | "REJECTED";

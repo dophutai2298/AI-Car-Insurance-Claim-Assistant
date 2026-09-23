@@ -326,6 +326,16 @@ class CopilotFindingResponse(BaseModel):
     annotated_evidence: EvidenceResponse
 
 
+class AiReviewStructuredResponse(BaseModel):
+    summary: str
+    assessment_interpretation: str
+    damaged_parts_summary: str
+    document_consistency_summary: str
+    warnings: list[str] = Field(default_factory=list)
+    recommended_next_step: str
+    human_review_required: bool
+
+
 class CopilotConclusionResponse(BaseModel):
     id: int
     status: CopilotConclusionStatus
@@ -341,6 +351,9 @@ class CopilotConclusionResponse(BaseModel):
     validity_percentage: int | None = Field(default=None, ge=0, le=100)
     review_status: str | None = None
     evidence_references: list["EvidenceReferenceResponse"] = Field(default_factory=list)
+    structured_review: AiReviewStructuredResponse | None = None
+    prompt_version: str | None = None
+    schema_version: str | None = None
 
 
 class EvidenceReferenceResponse(BaseModel):
