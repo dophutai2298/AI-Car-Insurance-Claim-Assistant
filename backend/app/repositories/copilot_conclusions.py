@@ -1,7 +1,9 @@
+import json
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Claim, CopilotConclusion, DamageAnalysis
+from app.models import Claim, CopilotConclusion, CopilotReviewOutput, DamageAnalysis
 from app.services.llm_copilot import CopilotConclusionResult
 
 
@@ -25,6 +27,18 @@ class CopilotConclusionRepository:
             provider_model=provider_model,
         )
         self.session.add(record)
+        self.session.flush()
+        self.session.add(
+            CopilotReviewOutput(
+                conclusion_id=record.id,
+                review_json=json.dumps(
+                    conclusion.structured_review.model_dump(mode="json"),
+                    ensure_ascii=False,
+                ),
+                prompt_version=conclusion.prompt_version,
+                schema_version=conclusion.schema_version,
+            )
+        )
         self.session.commit()
         self.session.refresh(record)
         return record
@@ -41,3 +55,10 @@ class CopilotConclusionRepository:
             .where(Claim.id == claim_id, CopilotConclusion.id == conclusion_id)
         )
         return self.session.scalar(statement)
+
+    def review_output(self, conclusion_id: int) -> CopilotReviewOutput | None:
+        return self.session.scalar(
+            select(CopilotReviewOutput).where(
+                CopilotReviewOutput.conclusion_id == conclusion_id
+            )
+        )

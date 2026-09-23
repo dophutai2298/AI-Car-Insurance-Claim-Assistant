@@ -25,8 +25,9 @@ class Settings(BaseSettings):
     max_evidence_file_size_bytes: int = Field(
         default=10 * 1024 * 1024, ge=1, validation_alias="MAX_EVIDENCE_FILE_SIZE_BYTES"
     )
-    damage_model_mode: Literal["mock", "http"] = Field(default="mock", validation_alias="DAMAGE_MODEL_MODE")
-    damage_model_url: str | None = Field(default=None, validation_alias="DAMAGE_MODEL_URL")
+    damage_model_mode: Literal["mock", "local"] = Field(
+        default="mock", validation_alias="DAMAGE_MODEL_MODE"
+    )
     damage_confidence_threshold: float = Field(
         default=0.70, ge=0, le=1, validation_alias="DAMAGE_CONFIDENCE_THRESHOLD"
     )

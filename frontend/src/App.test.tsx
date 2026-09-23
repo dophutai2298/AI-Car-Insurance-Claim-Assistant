@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router";
 import { expect, test, vi } from "vitest";
 
 import { AppRoutes } from "./App";
+import i18n from "./i18n";
 import { AuthProvider } from "./features/auth/AuthProvider";
 import type { AssessmentRuleConfiguration } from "./features/admin/types";
 import type {
@@ -698,8 +699,17 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
   });
   const damageAnalysis = {
     id: "DA-000008",
-    assessment: "NO_DAMAGE" as const,
-    detections: [],
+    assessment: "REPAIR_LIKELY" as const,
+    detections: [
+      {
+        vehicle_part: "rear_bumper",
+        damage_type: "dent",
+        damage_percentage: 32.5,
+        confidence: 0.91,
+        status: "DETECTED" as const,
+        annotated_evidence: evidence[0],
+      },
+    ],
     warning: null,
     rules: {
       confidence_threshold: 0.7,
@@ -720,6 +730,20 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
       findings: [],
       warnings: [],
       reference_prices: [],
+      structured_review: {
+        summary: "The confirmed claim requires manual review.",
+        assessment_interpretation:
+          "The deterministic assessment is repair likely.",
+        damaged_parts_summary: "Rear bumper dent affects 32.5% of the part.",
+        document_consistency_summary:
+          "Confirmed document values require adjuster verification.",
+        warnings: ["Reference prices require adjuster verification."],
+        recommended_next_step:
+          "Verify the damage evidence before making a decision.",
+        human_review_required: true,
+      },
+      prompt_version: "ai-review-v2",
+      schema_version: "ai-review-schema-v2",
       review_history: [],
       validity_percentage: 85,
       review_status: "REVIEW_REQUIRED",
@@ -873,9 +897,15 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
     },
     copilot_review_history: [],
   } as unknown as ClaimDetail;
+  vi.stubGlobal("URL", {
+    createObjectURL: () => "blob:evidence-preview",
+    revokeObjectURL: () => undefined,
+  });
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     if (String(input).endsWith("/api/auth/me"))
       return new Response(JSON.stringify(adjusterSession.user));
+    if (String(input).endsWith("/content"))
+      return new Response(new Blob(["image"], { type: "image/jpeg" }));
     if (
       String(input).includes("/copilot-conclusions/8/review") &&
       init?.method === "POST"
@@ -911,7 +941,44 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
     within(failedPolicy).getByText(/ocr processing failed/i),
   ).toBeVisible();
   expect(screen.getAllByText("ID cards")).toHaveLength(2);
-  expect(screen.getByText("No significant damage detections")).toBeVisible();
+  const annotatedDamage = screen.getByRole("group", {
+    name: "Annotated damage evidence",
+  });
+  const damagePreview = await within(annotatedDamage).findByRole("img", {
+    name: "vehicle_damage_image.jpg",
+  });
+  expect(damagePreview).toHaveClass("h-44");
+  expect(damagePreview.closest("a")).toHaveAttribute(
+    "href",
+    "blob:evidence-preview",
+  );
+  expect(damagePreview.closest("a")).toHaveAttribute("target", "_blank");
+  const damageTable = screen.getByRole("table", {
+    name: "Vehicle damage findings",
+  });
+  expect(within(damageTable).getByRole("columnheader", { name: "Part" })).toBeVisible();
+  expect(
+    within(damageTable).getByRole("columnheader", { name: "Damage type" }),
+  ).toBeVisible();
+  expect(
+    within(damageTable).getByRole("columnheader", { name: "Area %" }),
+  ).toBeVisible();
+  expect(within(damageTable).getByText("Rear Bumper")).toBeVisible();
+  expect(within(damageTable).getByText("Dent")).toBeVisible();
+  expect(within(damageTable).getByText("32.5%")).toBeVisible();
+  expect(within(damageTable).queryByText("91%")).not.toBeInTheDocument();
+  expect(within(damageTable).queryByText(/pixels/i)).not.toBeInTheDocument();
+  expect(screen.getByText("Assessment interpretation")).toBeVisible();
+  expect(
+    screen.getByText("The deterministic assessment is repair likely."),
+  ).toBeVisible();
+  expect(screen.getByText("Damaged parts summary")).toBeVisible();
+  expect(screen.getByText("Document consistency")).toBeVisible();
+  expect(screen.getByText("Recommended next step")).toBeVisible();
+  expect(screen.getByText("Human review is required")).toBeVisible();
+  expect(
+    screen.getByText("Reference prices require adjuster verification."),
+  ).toBeVisible();
   expect(screen.getByText("85%")).toBeVisible();
   expect(
     screen.getByText(/not an automatic approval probability/i),
@@ -959,6 +1026,21 @@ test("adjuster reviews persisted identity extraction without a confidence score"
         "Document value differs from Claim Information and requires manual review.",
     },
   };
+  const damageAnalysis = {
+    id: "DA-000009",
+    assessment: "NO_DAMAGE",
+    detections: [],
+    warning: null,
+    rules: {
+      confidence_threshold: 0.7,
+      repair_max_percentage: 40,
+      replacement_min_percentage: 60,
+    },
+    reference_price_status: "NOT_REQUESTED",
+    reference_prices: [],
+    copilot_conclusion: null,
+    created_at: "2026-09-08T00:00:02Z",
+  };
   const claim = {
     id: "CLM-000082",
     claimant_name: "Mai Nguyen",
@@ -978,12 +1060,12 @@ test("adjuster reviews persisted identity extraction without a confidence score"
     created_at: "2026-09-08T00:00:00Z",
     updated_at: "2026-09-08T00:01:00Z",
     evidence: [evidence],
-    latest_damage_analysis: null,
+    latest_damage_analysis: damageAnalysis,
     latest_analysis_run: {
       id: 9,
       status: "COMPLETED",
-      damage_status: "FAILED",
-      damage_analysis: null,
+      damage_status: "COMPLETED",
+      damage_analysis: damageAnalysis,
       document_analyses: [],
       document_ocr_results: [
         {
@@ -1017,6 +1099,19 @@ test("adjuster reviews persisted identity extraction without a confidence score"
         },
       ],
       consistency_checks: [],
+      analysis_readiness: {
+        status: "BLOCKED",
+        blocked_reasons: [
+          {
+            code: "COMPARISON_MISMATCH",
+            message: "Document value differs from Claim Information.",
+            category: "ID_CARD",
+            field_id: 202,
+            field_key: "full_name",
+          },
+        ],
+      },
+      analysis_snapshot: null,
       failure_reason: null,
       created_at: "2026-09-08T00:00:00Z",
       started_at: "2026-09-08T00:00:01Z",
@@ -1038,6 +1133,10 @@ test("adjuster reviews persisted identity extraction without a confidence score"
           fields: Array<{ id: number; confirmed_value: string }>;
         }
       ).fields.find((item) => item.id === field.id)!.confirmed_value;
+      claim.latest_analysis_run!.analysis_readiness = {
+        status: "READY",
+        blocked_reasons: [],
+      };
     }
     return new Response(JSON.stringify(claim));
   });
@@ -1056,14 +1155,42 @@ test("adjuster reviews persisted identity extraction without a confidence score"
   expect(within(identitySection).getByText("Nguyen Van A")).toBeVisible();
   expect(within(identitySection).queryByText("97%")).not.toBeInTheDocument();
   expect(within(identitySection).getByText("Mismatch")).toBeVisible();
+  expect(
+    within(identitySection).getByText(
+      "Full name does not match Claim Information.",
+    ),
+  ).toBeVisible();
+  expect(screen.getByRole("button", { name: "Save all fields" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Run AI review" })).toBeDisabled();
   await user.clear(input);
   await user.type(input, "Mai Nguyen");
+  expect(within(identitySection).queryByText("Mismatch")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Save all fields" })).toBeEnabled();
   await user.click(screen.getByRole("button", { name: "Save all fields" }));
 
   expect(submittedField).toEqual({
     fields: [{ id: 202, confirmed_value: "Mai Nguyen" }],
   });
   expect(input).toHaveValue("Mai Nguyen");
+  expect(
+    await screen.findByRole("button", { name: "Run AI review" }),
+  ).toBeEnabled();
+});
+
+test("analysis gate messages are available in English and Vietnamese", async () => {
+  await i18n.changeLanguage("en");
+  expect(
+    i18n.t("documents.blockReasons.COMPARISON_MISMATCH", {
+      field: "Full name",
+    }),
+  ).toBe("Full name does not match Claim Information.");
+  await i18n.changeLanguage("vi");
+  expect(
+    i18n.t("documents.blockReasons.COMPARISON_MISMATCH", {
+      field: "Họ và tên",
+    }),
+  ).toBe("Họ và tên không khớp với Thông tin hồ sơ.");
+  await i18n.changeLanguage("en");
 });
 
 test("adjuster reviews registration and driver license extraction fields", async () => {

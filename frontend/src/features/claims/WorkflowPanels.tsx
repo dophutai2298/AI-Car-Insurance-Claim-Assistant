@@ -176,6 +176,15 @@ export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
 
 function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
   const { t } = useTranslation();
+  const annotatedEvidence = Array.from(
+    new Map(
+      analysis.detections.map((detection) => [
+        detection.annotated_evidence.id,
+        detection.annotated_evidence,
+      ]),
+    ).values(),
+  );
+
   return (
     <section className="grid gap-4">
       <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -209,47 +218,64 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
         </Alert>
       ) : null}
       {analysis.detections.length ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {analysis.detections.map((detection, index) => (
-            <article
-              className="grid overflow-hidden border border-slate-200 sm:grid-cols-[10rem_minmax(0,1fr)]"
-              key={`${detection.annotated_evidence.id}-${index}`}
+        <div className="grid items-start gap-4 xl:grid-cols-[18rem_minmax(0,1fr)]">
+          <div
+            aria-label={t("analysis.annotatedEvidence")}
+            className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1"
+            role="group"
+          >
+            {annotatedEvidence.map((item) => (
+              <figure
+                className="overflow-hidden border border-slate-200 bg-slate-50"
+                key={item.id}
+              >
+                <EvidenceImagePreview
+                  className="h-44 w-full object-contain"
+                  item={item}
+                />
+                <figcaption className="truncate border-t border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                  {item.original_filename}
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+          <div className="overflow-x-auto border border-slate-200">
+            <table
+              aria-label={t("analysis.damageTable")}
+              className="w-full min-w-[36rem] border-collapse text-left text-sm"
             >
-              <div className="flex min-h-36 items-center justify-center bg-slate-100">
-                <EvidenceImagePreview item={detection.annotated_evidence} />
-              </div>
-              <div className="grid content-start gap-3 p-4">
-                <div>
-                  <p className="text-sm font-semibold text-slate-950">
-                    {formatLabel(detection.vehicle_part) ||
-                      t("analysis.areaUnknown")}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {formatLabel(detection.damage_type) ||
-                      t("analysis.damageUnknown")}
-                  </p>
-                </div>
-                <dl className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <dt className="text-xs text-slate-500">
-                      {t("analysis.damage")}
-                    </dt>
-                    <dd className="font-semibold">
+              <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-600">
+                <tr>
+                  <th className="px-4 py-3" scope="col">
+                    {t("analysis.part")}
+                  </th>
+                  <th className="px-4 py-3" scope="col">
+                    {t("analysis.damageType")}
+                  </th>
+                  <th className="px-4 py-3 text-right" scope="col">
+                    {t("analysis.areaPercent")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 bg-white">
+                {analysis.detections.map((detection, index) => (
+                  <tr key={`${detection.annotated_evidence.id}-${index}`}>
+                    <td className="px-4 py-3 font-semibold text-slate-950">
+                      {formatLabel(detection.vehicle_part) ||
+                        t("analysis.areaUnknown")}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {formatLabel(detection.damage_type) ||
+                        t("analysis.damageUnknown")}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono font-semibold text-slate-950">
                       {formatPercent(detection.damage_percentage)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-slate-500">
-                      {t("analysis.confidence")}
-                    </dt>
-                    <dd className="font-semibold">
-                      {formatPercent(detection.confidence * 100)}
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-            </article>
-          ))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
         <div className="flex min-h-24 items-center justify-center gap-2 border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-600">
@@ -272,8 +298,10 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
     run &&
     !run.inputs_changed &&
     ["COMPLETED", "PARTIAL"].includes(run.status) &&
-    run.damage_analysis,
+    run.damage_analysis &&
+    (!run.analysis_readiness || run.analysis_readiness.status === "READY"),
   );
+  const blockedReasons = run?.analysis_readiness?.blocked_reasons ?? [];
   return (
     <Card
       className="rounded-lg border border-slate-200 bg-white shadow-sm"
@@ -318,9 +346,28 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
         {conclusion ? (
           <AiReviewResult conclusion={conclusion} />
         ) : (
-          <p className="text-sm text-slate-500">
-            {ready ? t("aiReview.ready") : t("aiReview.blocked")}
-          </p>
+          <div className="grid gap-2 text-sm text-slate-500">
+            <p>{ready ? t("aiReview.ready") : t("aiReview.blocked")}</p>
+            {!ready && blockedReasons.length ? (
+              <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
+                {blockedReasons.map((reason, index) => (
+                  <li key={`${reason.code}-${reason.field_id ?? index}`}>
+                    {t(`documents.blockReasons.${reason.code}`, {
+                      defaultValue: reason.message,
+                      field: reason.field_key
+                        ? t(`documents.fields.${reason.field_key}`, {
+                            defaultValue: reason.field_key,
+                          })
+                        : "",
+                      category: reason.category
+                        ? t(`evidence.categories.${reason.category}`)
+                        : "",
+                    })}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
         )}
       </Card.Content>
     </Card>
@@ -329,6 +376,13 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
 
 function AiReviewResult({ conclusion }: { conclusion: CopilotConclusion }) {
   const { t } = useTranslation();
+  const warnings = Array.from(
+    new Set([
+      ...conclusion.warnings,
+      ...(conclusion.structured_review?.warnings ?? []),
+    ]),
+  );
+
   return (
     <div className="grid gap-5">
       <div className="grid gap-4 border-b border-slate-100 pb-5 sm:grid-cols-[12rem_minmax(0,1fr)]">
@@ -378,11 +432,45 @@ function AiReviewResult({ conclusion }: { conclusion: CopilotConclusion }) {
           </Alert.Description>
         </Alert>
       ) : null}
-      {conclusion.warnings.length ? (
+      {conclusion.structured_review ? (
+        <div className="grid gap-3">
+          <dl className="divide-y divide-slate-200 border-y border-slate-200">
+            {[
+              [
+                t("aiReview.assessmentInterpretation"),
+                conclusion.structured_review.assessment_interpretation,
+              ],
+              [
+                t("aiReview.damagedPartsSummary"),
+                conclusion.structured_review.damaged_parts_summary,
+              ],
+              [
+                t("aiReview.documentConsistency"),
+                conclusion.structured_review.document_consistency_summary,
+              ],
+              [
+                t("aiReview.recommendedNextStep"),
+                conclusion.structured_review.recommended_next_step,
+              ],
+            ].map(([label, value]) => (
+              <div className="grid gap-1 py-3 sm:grid-cols-[13rem_minmax(0,1fr)]" key={label}>
+                <dt className="text-xs font-semibold text-slate-600">{label}</dt>
+                <dd className="text-sm leading-6 text-slate-800">{value}</dd>
+              </div>
+            ))}
+          </dl>
+          {conclusion.structured_review.human_review_required ? (
+            <p className="border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-950">
+              {t("aiReview.humanReviewRequired")}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {warnings.length ? (
         <Alert status="warning">
           <WarningAlt size={18} />
           <Alert.Title>{t("aiReview.warnings")}</Alert.Title>
-          <Alert.Description>{conclusion.warnings.join(" ")}</Alert.Description>
+          <Alert.Description>{warnings.join(" ")}</Alert.Description>
         </Alert>
       ) : null}
       <div>

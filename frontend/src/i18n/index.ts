@@ -150,6 +150,11 @@ const en = {
     damageUnknown: "Damage type not identified",
     damage: "Damage",
     confidence: "Confidence",
+    damageTable: "Vehicle damage findings",
+    annotatedEvidence: "Annotated damage evidence",
+    part: "Part",
+    damageType: "Damage type",
+    areaPercent: "Area %",
     noDamage: "No significant damage detections",
     status: {
       PENDING: "Pending",
@@ -190,6 +195,18 @@ const en = {
     saveAll: "Save all fields",
     saveAllSuccess: "All document field values were saved.",
     saveAllFailed: "Document field values could not be saved.",
+    saveAllBlocked: "Resolve these issues before saving the analysis",
+    blockReasons: {
+      SNAPSHOT_MISSING: "Save all confirmed document values before AI review.",
+      SNAPSHOT_STALE: "The confirmed analysis is stale. Save all fields again.",
+      INPUTS_CHANGED: "Claim information or evidence changed. Run analysis again.",
+      DAMAGE_ANALYSIS_UNAVAILABLE: "Vehicle damage analysis is unavailable.",
+      DOCUMENT_CATEGORY_MISSING: "{{category}} is missing.",
+      DOCUMENT_CATEGORY_FAILED: "{{category}} did not complete successfully.",
+      REQUIRED_VALUE_MISSING: "{{field}} requires a confirmed value.",
+      COMPARISON_MISMATCH: "{{field}} does not match Claim Information.",
+      COMPARISON_UNAVAILABLE: "{{field}} cannot be compared with Claim Information.",
+    },
     rawOcr: "Raw OCR text",
     structuredExtraction: "Structured extraction",
     reviewNotice:
@@ -264,6 +281,11 @@ const en = {
     unavailable: "AI unavailable",
     warnings: "Warnings",
     evidenceReferences: "Evidence references",
+    assessmentInterpretation: "Assessment interpretation",
+    damagedPartsSummary: "Damaged parts summary",
+    documentConsistency: "Document consistency",
+    recommendedNextStep: "Recommended next step",
+    humanReviewRequired: "Human review is required",
   },
   humanReview: {
     description:
@@ -509,6 +531,11 @@ const vi = {
 
     damage: "Hư hỏng",
     confidence: "Độ tin cậy",
+    damageTable: "Các hạng mục hư hỏng của xe",
+    annotatedEvidence: "Hình ảnh hư hỏng đã đánh dấu",
+    part: "Bộ phận",
+    damageType: "Loại hư hỏng",
+    areaPercent: "Diện tích %",
 
     noDamage: "Không phát hiện hư hỏng đáng kể",
 
@@ -554,6 +581,18 @@ const vi = {
     saveAll: "Lưu tất cả trường",
     saveAllSuccess: "Đã lưu tất cả giá trị giấy tờ.",
     saveAllFailed: "Không thể lưu các giá trị giấy tờ.",
+    saveAllBlocked: "Khắc phục các vấn đề sau trước khi lưu phân tích",
+    blockReasons: {
+      SNAPSHOT_MISSING: "Hãy lưu tất cả giá trị tài liệu đã xác nhận trước khi đánh giá AI.",
+      SNAPSHOT_STALE: "Kết quả xác nhận đã cũ. Hãy lưu lại tất cả trường.",
+      INPUTS_CHANGED: "Thông tin hồ sơ hoặc bằng chứng đã thay đổi. Hãy chạy lại phân tích.",
+      DAMAGE_ANALYSIS_UNAVAILABLE: "Kết quả phân tích hư hỏng xe chưa khả dụng.",
+      DOCUMENT_CATEGORY_MISSING: "Thiếu {{category}}.",
+      DOCUMENT_CATEGORY_FAILED: "{{category}} chưa được xử lý thành công.",
+      REQUIRED_VALUE_MISSING: "{{field}} cần có giá trị xác nhận.",
+      COMPARISON_MISMATCH: "{{field}} không khớp với Thông tin hồ sơ.",
+      COMPARISON_UNAVAILABLE: "Không thể đối chiếu {{field}} với Thông tin hồ sơ.",
+    },
     rawOcr: "Văn bản OCR gốc",
     structuredExtraction: "Dữ liệu trích xuất có cấu trúc",
     reviewNotice:
@@ -643,6 +682,11 @@ const vi = {
 
     warnings: "Cảnh báo",
     evidenceReferences: "Bằng chứng tham chiếu",
+    assessmentInterpretation: "Diễn giải đánh giá",
+    damagedPartsSummary: "Tóm tắt bộ phận hư hỏng",
+    documentConsistency: "Tính nhất quán của giấy tờ",
+    recommendedNextStep: "Bước tiếp theo được đề xuất",
+    humanReviewRequired: "Bắt buộc có chuyên viên thẩm định",
   },
 
   humanReview: {

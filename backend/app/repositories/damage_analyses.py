@@ -1,3 +1,5 @@
+import json
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -8,10 +10,11 @@ from app.models import (
     DamageAnalysis,
     DamageAnalysisRuleSnapshot,
     DamageDetection,
+    DamageModelOutput,
     ReferencePartPrice,
 )
 from app.services.damage_assessment import AssessmentResult
-from app.services.damage_model import DamageModelDetection
+from app.services.damage_model import DamageModelAnalysisResult, DamageModelDetection
 from app.services.part_search import ReferencePartPriceResult
 
 
@@ -23,6 +26,7 @@ class DamageAnalysisRepository:
         self,
         claim: Claim,
         assessment: AssessmentResult,
+        model_result: DamageModelAnalysisResult,
         detections: list[DamageModelDetection],
         rules: AssessmentRuleValues,
         reference_prices: list[ReferencePartPriceResult],
@@ -46,6 +50,14 @@ class DamageAnalysisRepository:
                 )
                 for detection in detections
             ]
+        )
+        self.session.add(
+            DamageModelOutput(
+                analysis_id=analysis.id,
+                adapter_name=model_result.adapter_name,
+                output_json=json.dumps(model_result.to_dict(), ensure_ascii=False),
+                warnings_json=json.dumps(list(model_result.warnings), ensure_ascii=False),
+            )
         )
         self.session.add(
             DamageAnalysisRuleSnapshot(
@@ -89,6 +101,12 @@ class DamageAnalysisRepository:
     def rule_snapshot(self, analysis_id: int) -> DamageAnalysisRuleSnapshot | None:
         statement = select(DamageAnalysisRuleSnapshot).where(
             DamageAnalysisRuleSnapshot.analysis_id == analysis_id
+        )
+        return self.session.scalar(statement)
+
+    def model_output(self, analysis_id: int) -> DamageModelOutput | None:
+        statement = select(DamageModelOutput).where(
+            DamageModelOutput.analysis_id == analysis_id
         )
         return self.session.scalar(statement)
 

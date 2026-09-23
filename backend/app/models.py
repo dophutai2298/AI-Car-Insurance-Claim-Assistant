@@ -119,6 +119,11 @@ class ConsistencyStatus(str, Enum):
     UNAVAILABLE = "UNAVAILABLE"
 
 
+class AnalysisSnapshotStatus(str, Enum):
+    READY = "READY"
+    STALE = "STALE"
+
+
 class CopilotConclusionRejectionCategory(str, Enum):
     DOCUMENT_INFORMATION_INCOMPLETE = "DOCUMENT_INFORMATION_INCOMPLETE"
     DOCUMENT_INFORMATION_INCORRECT = "DOCUMENT_INFORMATION_INCORRECT"
@@ -280,6 +285,29 @@ class WorkflowAnalysisDamage(Base):
     )
     damage_analysis_id: Mapped[int] = mapped_column(
         ForeignKey("damage_analyses.id"), unique=True, index=True
+    )
+
+
+class ConfirmedAnalysisSnapshot(Base):
+    __tablename__ = "confirmed_analysis_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    analysis_run_id: Mapped[int] = mapped_column(
+        ForeignKey("workflow_analysis_runs.id"), unique=True, index=True
+    )
+    input_revision: Mapped[int] = mapped_column(Integer)
+    status: Mapped[AnalysisSnapshotStatus] = mapped_column(
+        SqlEnum(AnalysisSnapshotStatus, native_enum=False),
+        default=AnalysisSnapshotStatus.READY,
+    )
+    payload_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
 
@@ -450,6 +478,21 @@ class DamageDetection(Base):
     )
 
 
+class DamageModelOutput(Base):
+    __tablename__ = "damage_model_outputs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    analysis_id: Mapped[int] = mapped_column(
+        ForeignKey("damage_analyses.id"), unique=True, index=True
+    )
+    adapter_name: Mapped[str] = mapped_column(String(80))
+    output_json: Mapped[str] = mapped_column(Text)
+    warnings_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
 class DamageAnalysisRuleSnapshot(Base):
     __tablename__ = "damage_analysis_rule_snapshots"
 
@@ -491,6 +534,21 @@ class CopilotConclusion(Base):
     fallback_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     provider_model: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class CopilotReviewOutput(Base):
+    __tablename__ = "copilot_review_outputs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conclusion_id: Mapped[int] = mapped_column(
+        ForeignKey("copilot_conclusions.id"), unique=True, index=True
+    )
+    review_json: Mapped[str] = mapped_column(Text)
+    prompt_version: Mapped[str] = mapped_column(String(80))
+    schema_version: Mapped[str] = mapped_column(String(80))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

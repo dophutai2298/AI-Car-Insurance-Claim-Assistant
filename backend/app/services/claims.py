@@ -8,7 +8,9 @@ from sqlalchemy.orm import Session
 from app.models import (
     AnalysisResultStatus,
     AnalysisRunStatus,
+    AnalysisSnapshotStatus,
     Claim,
+    DocumentExtractedField,
     DocumentFieldValidation,
     ClaimStatus,
     CopilotConclusionStatus,
@@ -27,6 +29,7 @@ from app.models import (
     WorkflowAnalysisRun,
 )
 from app.repositories.analysis_runs import AnalysisRunRepository
+from app.repositories.analysis_snapshots import AnalysisSnapshotRepository
 from app.repositories.claims import ClaimRepository
 from app.repositories.claim_incidents import ClaimIncidentRepository
 from app.repositories.damage_analyses import DamageAnalysisRepository
@@ -67,6 +70,10 @@ from app.schemas.claims import (
     ReferencePartPriceResponse,
     VehicleMetadata,
     WorkflowAnalysisRunResponse,
+    AnalysisBlockedReasonResponse,
+    AnalysisReadinessResponse,
+    AiReviewStructuredResponse,
+    ConfirmedAnalysisSnapshotResponse,
 )
 from app.schemas.admin import AssessmentRuleValuesSchema
 from app.services.assessment_rules import AssessmentRuleService
@@ -75,9 +82,16 @@ from app.services.damage_assessment import DamageAssessmentService
 from app.services.damage_model import DamageModelAdapter, DamageModelDetection
 from app.services.part_search import PartSearchService, ReferencePartPriceResult
 from app.services.llm_copilot import (
+    AiReviewClaimFacts,
+    AiReviewContext,
+    AiReviewDamage,
+    AiReviewDamageFinding,
+    AiReviewDocument,
+    AiReviewDocumentField,
+    AiReviewIncidentFacts,
+    AiReviewReferencePrice,
+    AiReviewVehicleFacts,
     CopilotInput,
-    CopilotReferencePrice,
-    CopilotStructuredFinding,
     LlmCopilotService,
 )
 from app.services.vehicle_manufacturers import VehicleManufacturerService
@@ -114,6 +128,18 @@ SUPPORTED_DOCUMENT_IMAGE_EXTENSIONS = {".bmp", ".jpeg", ".jpg", ".png", ".tif", 
 
 class EvidencePersistenceError(Exception):
     pass
+
+
+class AnalysisConfirmationBlockedError(Exception):
+    def __init__(self, reasons: list[AnalysisBlockedReasonResponse]):
+        super().__init__("Analysis confirmation is blocked")
+        self.reasons = reasons
+
+    def detail(self) -> dict[str, object]:
+        return {
+            "message": str(self),
+            "blocked_reasons": [reason.model_dump(mode="json") for reason in self.reasons],
+        }
 
 
 class ClaimService:
@@ -157,6 +183,7 @@ class ClaimService:
         self.document_field_validation = document_field_validation
         self.claim_consistency = claim_consistency
         self.analysis_runs = AnalysisRunRepository(session)
+        self.analysis_snapshots = AnalysisSnapshotRepository(session)
 
     def create_claim(self, data: ClaimCreateRequest, created_by: User) -> ClaimResponse:
         if not self.vehicle_manufacturers.is_active_name(data.vehicle.make):
@@ -252,7 +279,10 @@ class ClaimService:
         }
 
         try:
-            detections = self.damage_model.analyze(by_category[EvidenceCategory.VEHICLE_DAMAGE_IMAGE])
+            model_result = self.damage_model.analyze(
+                by_category[EvidenceCategory.VEHICLE_DAMAGE_IMAGE]
+            )
+            detections = model_result.detections
             rules = self.rules.active_values()
             assessment = self.assessment.assess(detections, rules)
             reference_prices = self.part_search.lookup_for_assessment(
@@ -266,6 +296,7 @@ class ClaimService:
             damage_analysis = self.damage_analyses.create(
                 claim,
                 assessment,
+                model_result,
                 detections,
                 rules,
                 reference_prices,
@@ -508,6 +539,7 @@ class ClaimService:
             raise ValueError("Re-run analysis before changing fields after AI review")
         if self.analysis_runs.update_field(document, field_id, request.reviewed_value) is None:
             raise LookupError("Document analysis field not found")
+        self.analysis_snapshots.mark_stale(document.analysis_run_id)
         return self._to_response(claim)
 
     def update_document_field_validation(
@@ -553,6 +585,7 @@ class ClaimService:
         )
         if consistency:
             self.analysis_runs.update_consistency_check(validation, consistency[0])
+        self.analysis_snapshots.mark_stale(run_id)
         return self._to_response(claim)
 
     def update_document_extracted_field(
@@ -573,6 +606,7 @@ class ClaimService:
         if self.workflow_ai_reviews.find_for_run(run_id):
             raise ValueError("Re-run analysis before changing fields after AI review")
         self.analysis_runs.update_extracted_field(field, request.confirmed_value)
+        self.analysis_snapshots.mark_stale(run_id)
         return self._to_response(claim)
 
     def update_document_extracted_fields(
@@ -586,17 +620,266 @@ class ClaimService:
             return None
         if self.workflow_ai_reviews.find_for_run(run_id):
             raise ValueError("Re-run analysis before changing fields after AI review")
+        run = self.analysis_runs.find(run_id)
+        if run is None or run.claim_id != claim.id:
+            raise LookupError("Analysis run not found")
         field_ids = [item.id for item in request.fields]
         fields = self.analysis_runs.find_extracted_fields_for_claim(
             claim.id, run_id, field_ids
         )
         if len(fields) != len(field_ids):
             raise LookupError("One or more document extracted fields were not found")
-        self.analysis_runs.update_extracted_fields(
-            fields,
-            {item.id: item.confirmed_value for item in request.fields},
-        )
+        all_fields = self.analysis_runs.extracted_fields(run_id)
+        if set(field_ids) != {field.id for field in all_fields}:
+            raise AnalysisConfirmationBlockedError(
+                [
+                    AnalysisBlockedReasonResponse(
+                        code="REQUIRED_VALUE_MISSING",
+                        message="Save All must include every extracted document field.",
+                    )
+                ]
+            )
+        values_by_id = {
+            item.id: item.confirmed_value.strip() if item.confirmed_value else ""
+            for item in request.fields
+        }
+        reasons = self._analysis_blocked_reasons(claim, run, values_by_id)
+        if reasons:
+            raise AnalysisConfirmationBlockedError(reasons)
+        payload = self._build_analysis_snapshot_payload(claim, run, values_by_id)
+        self.analysis_snapshots.save_ready(run, all_fields, values_by_id, payload)
         return self._to_response(claim)
+
+    def _analysis_blocked_reasons(
+        self,
+        claim: Claim,
+        run: WorkflowAnalysisRun,
+        values_by_id: dict[int, str],
+    ) -> list[AnalysisBlockedReasonResponse]:
+        reasons: list[AnalysisBlockedReasonResponse] = []
+        incident = self.claim_incidents.find_for_claim(claim.id)
+        if incident is None or incident.input_revision != run.input_revision:
+            reasons.append(
+                AnalysisBlockedReasonResponse(
+                    code="INPUTS_CHANGED",
+                    message="Claim information or evidence changed; run analysis again.",
+                )
+            )
+        damage = self.analysis_runs.damage_analysis(run.id)
+        if run.damage_status is not AnalysisResultStatus.COMPLETED or damage is None:
+            reasons.append(
+                AnalysisBlockedReasonResponse(
+                    code="DAMAGE_ANALYSIS_UNAVAILABLE",
+                    message="Vehicle damage analysis must complete before Save All.",
+                )
+            )
+
+        documents = {
+            item.document_type: item
+            for item in self.analysis_runs.documents(run.id)
+        }
+        fields_by_category = self._extracted_fields_by_category(run.id)
+        claim_facts = ClaimFacts(
+            claimant_name=claim.claimant_name,
+            vehicle_make=claim.vehicle_make,
+            license_plate=claim.license_plate,
+        )
+        for category in DOCUMENT_EVIDENCE_CATEGORIES:
+            document = documents.get(category)
+            category_fields = fields_by_category.get(category, [])
+            if document is None:
+                reasons.append(
+                    AnalysisBlockedReasonResponse(
+                        code="DOCUMENT_CATEGORY_MISSING",
+                        category=category,
+                        message=f"{category.value} analysis is missing.",
+                    )
+                )
+                continue
+            if document.status is not AnalysisResultStatus.COMPLETED or not category_fields:
+                reasons.append(
+                    AnalysisBlockedReasonResponse(
+                        code="DOCUMENT_CATEGORY_FAILED",
+                        category=category,
+                        message=f"{category.value} analysis is incomplete or failed.",
+                    )
+                )
+                continue
+            for field in category_fields:
+                proposed_value = values_by_id.get(field.id, "").strip()
+                if not proposed_value:
+                    reasons.append(
+                        AnalysisBlockedReasonResponse(
+                            code="REQUIRED_VALUE_MISSING",
+                            category=category,
+                            field_id=field.id,
+                            field_key=field.field_key,
+                            message=f"{field.field_key} requires a confirmed value.",
+                        )
+                    )
+                    continue
+                comparison = self.claim_consistency.compare_value(
+                    claim_facts,
+                    field.field_key,
+                    field.source_evidence_id,
+                    proposed_value,
+                )
+                if (
+                    comparison is not None
+                    and comparison.status is not ConsistencyStatus.MATCH
+                ):
+                    reasons.append(
+                        AnalysisBlockedReasonResponse(
+                            code=(
+                                "COMPARISON_MISMATCH"
+                                if comparison.status is ConsistencyStatus.MISMATCH
+                                else "COMPARISON_UNAVAILABLE"
+                            ),
+                            category=category,
+                            field_id=field.id,
+                            field_key=field.field_key,
+                            message=comparison.explanation,
+                        )
+                    )
+        return reasons
+
+    def _extracted_fields_by_category(
+        self, run_id: int
+    ) -> dict[EvidenceCategory, list[DocumentExtractedField]]:
+        fields_by_category: dict[EvidenceCategory, list[DocumentExtractedField]] = {}
+        for ocr_result in self.analysis_runs.document_ocr_results(run_id):
+            extraction = self.analysis_runs.document_extraction_for_ocr(ocr_result.id)
+            if extraction is None:
+                continue
+            fields_by_category.setdefault(ocr_result.document_type, []).extend(
+                self.analysis_runs.extracted_fields_for_result(extraction.id)
+            )
+        return fields_by_category
+
+    def _build_analysis_snapshot_payload(
+        self,
+        claim: Claim,
+        run: WorkflowAnalysisRun,
+        values_by_id: dict[int, str],
+    ) -> dict[str, object]:
+        claim_facts = ClaimFacts(
+            claimant_name=claim.claimant_name,
+            vehicle_make=claim.vehicle_make,
+            license_plate=claim.license_plate,
+        )
+        fields_by_category = self._extracted_fields_by_category(run.id)
+        documents_by_category = {
+            item.document_type: item for item in self.analysis_runs.documents(run.id)
+        }
+        ocr_results = self.analysis_runs.document_ocr_results(run.id)
+        documents: list[dict[str, object]] = []
+        warnings: list[str] = []
+        for category in DOCUMENT_EVIDENCE_CATEGORIES:
+            document = documents_by_category[category]
+            document_warnings = json.loads(document.warnings_json)
+            warnings.extend(document_warnings)
+            documents.append(
+                {
+                    "document_type": category.value,
+                    "status": document.status.value,
+                    "source_evidence_ids": [
+                        result.evidence_id
+                        for result in ocr_results
+                        if result.document_type is category
+                    ],
+                    "confirmed_fields": [
+                        {
+                            "field_id": field.id,
+                            "field_key": field.field_key,
+                            "source_evidence_id": field.source_evidence_id,
+                            "ai_extracted_value": field.ai_extracted_value,
+                            "confirmed_value": values_by_id[field.id],
+                            "comparison": (
+                                comparison.model_dump(mode="json")
+                                if (
+                                    comparison := self._comparison_response(
+                                        self.claim_consistency.compare_value(
+                                            claim_facts,
+                                            field.field_key,
+                                            field.source_evidence_id,
+                                            values_by_id[field.id],
+                                        )
+                                    )
+                                )
+                                else None
+                            ),
+                            "prompt_version": field.prompt_version,
+                            "schema_version": field.schema_version,
+                        }
+                        for field in fields_by_category[category]
+                    ],
+                    "warnings": document_warnings,
+                }
+            )
+
+        damage = self.analysis_runs.damage_analysis(run.id)
+        if damage is None:
+            raise ValueError("Damage analysis is required for an analysis snapshot")
+        detections = self.damage_analyses.list_detections(damage.id)
+        model_output = self.damage_analyses.model_output(damage.id)
+        reference_prices = self.damage_analyses.reference_prices(damage.id)
+        if damage.warning:
+            warnings.append(damage.warning)
+        if model_output is not None:
+            warnings.extend(json.loads(model_output.warnings_json))
+        evidence_references = [
+            {
+                "id": item.id,
+                "category": item.category.value,
+                "original_filename": item.original_filename,
+            }
+            for item in self.evidence.list_for_claim(claim.id)
+        ]
+        incident = self._incident_response(claim.id)
+        return {
+            "documents": documents,
+            "damage": {
+                "analysis_id": damage.analysis_number,
+                "assessment": damage.assessment.value,
+                "warning": damage.warning,
+                "findings": [
+                    {
+                        "vehicle_part": item.vehicle_part,
+                        "damage_type": item.damage_type,
+                        "damage_percentage": item.damage_percentage,
+                        "confidence": item.confidence,
+                        "source_evidence_id": item.source_evidence_id,
+                        "annotated_evidence_id": item.annotated_evidence_id,
+                    }
+                    for item in detections
+                ],
+                "model_output": json.loads(model_output.output_json) if model_output else None,
+                "reference_prices": [
+                    {
+                        "part_identity": price.part_identity,
+                        "amount": price.amount,
+                        "currency": price.currency,
+                        "source_name": price.source_name,
+                        "source_url": price.source_url,
+                        "price_type": price.price_type,
+                        "status": price.status.value,
+                    }
+                    for price in reference_prices
+                ],
+            },
+            "claim": {"id": claim.claim_number, "status": claim.status.value},
+            "vehicle": {
+                "make": claim.vehicle_make,
+                "model": claim.vehicle_model,
+                "year": claim.vehicle_year,
+                "license_plate": claim.license_plate,
+                "vin": claim.vin,
+            },
+            "claimant": {"name": claim.claimant_name},
+            "incident": incident.model_dump(mode="json") if incident else None,
+            "warnings": list(dict.fromkeys(warnings)),
+            "evidence_references": evidence_references,
+        }
 
     def run_workflow_ai_review(self, claim_number: str, run_id: int) -> ClaimResponse | None:
         claim = self.claims.find_by_claim_number(claim_number)
@@ -609,154 +892,51 @@ class ClaimService:
             raise ValueError("Analysis results are not ready for AI review")
         if self.workflow_ai_reviews.find_for_run(run.id):
             raise RuntimeError("AI review has already been generated for this analysis")
+        snapshot = self.analysis_snapshots.find_for_run(run.id)
         incident_record = self.claim_incidents.find_for_claim(claim.id)
-        if incident_record is None or incident_record.input_revision != run.input_revision:
-            raise ValueError("Claim information or evidence changed; run analysis again")
+        if snapshot is None:
+            raise AnalysisConfirmationBlockedError(
+                [
+                    AnalysisBlockedReasonResponse(
+                        code="SNAPSHOT_MISSING",
+                        message="Save All is required before AI Review.",
+                    )
+                ]
+            )
+        if (
+            snapshot.status is AnalysisSnapshotStatus.STALE
+            or incident_record is None
+            or snapshot.input_revision != incident_record.input_revision
+        ):
+            raise AnalysisConfirmationBlockedError(
+                [
+                    AnalysisBlockedReasonResponse(
+                        code="SNAPSHOT_STALE",
+                        message="Confirmed analysis is stale; save the corrected analysis again.",
+                    )
+                ]
+            )
         damage = self.analysis_runs.damage_analysis(run.id)
         if damage is None:
-            raise ValueError("Damage analysis is required before AI review")
-
-        detections = self.damage_analyses.list_detections(damage.id)
-        reference_prices = self.damage_analyses.reference_prices(damage.id)
-        documents = self.analysis_runs.documents(run.id)
-        ocr_results = self.analysis_runs.document_ocr_results(run.id)
-        ocr_by_id = {item.id: item for item in ocr_results}
-        field_validations = self.analysis_runs.field_validations(run.id)
-        consistency_checks = self.analysis_runs.consistency_checks(run.id)
-        claim_facts = ClaimFacts(
-            claimant_name=claim.claimant_name,
-            vehicle_make=claim.vehicle_make,
-            license_plate=claim.license_plate,
-        )
-        confirmed_fields_by_category = self._confirmed_fields_by_category(
-            ocr_results, claim_facts
-        )
-        document_payload: list[dict[str, object]] = []
-        warnings = [damage.warning] if damage.warning else []
-        warnings.extend(
-            check.explanation
-            for check in consistency_checks
-            if check.status.value == "MISMATCH"
-        )
-        warnings.extend(
-            field["comparison"]["explanation"]
-            for fields in confirmed_fields_by_category.values()
-            for field in fields
-            if field.get("comparison")
-            and field["comparison"]["status"] == ConsistencyStatus.MISMATCH.value
-        )
-        for document in documents:
-            document_warnings = json.loads(document.warnings_json)
-            warnings.extend(document_warnings)
-            document_validations = [
-                validation
-                for validation in field_validations
-                if ocr_by_id[validation.document_ocr_result_id].document_type
-                is document.document_type
-            ]
-            for validation in document_validations:
-                warnings.extend(json.loads(validation.warnings_json))
-            validation_ids = {item.id for item in document_validations}
-            document_payload.append(
-                {
-                    "document_type": document.document_type.value,
-                    "status": document.status.value,
-                    "fields": [
-                        {
-                            "key": field.key,
-                            "original_ai_value": field.original_ai_value,
-                            "reviewed_value": field.reviewed_value,
-                            "confidence": field.confidence,
-                            "status": field.status.value,
-                        }
-                        for field in self.analysis_runs.fields(document.id)
-                    ],
-                    "field_validations": [
-                        {
-                            "field_key": validation.field_key,
-                            "source_evidence_id": validation.source_evidence_id,
-                            "ocr_value": validation.ocr_value,
-                            "normalized_value": validation.normalized_value,
-                            "status": validation.status.value,
-                            "confidence": validation.confidence,
-                            "summary": validation.summary,
-                            "warnings": json.loads(validation.warnings_json),
-                            "prompt_version": validation.prompt_version,
-                        }
-                        for validation in document_validations
-                    ],
-                    "consistency_checks": [
-                        {
-                            "field_key": check.field_key,
-                            "source_evidence_id": check.source_evidence_id,
-                            "claim_value": check.claim_value,
-                            "document_value": check.document_value,
-                            "status": check.status.value,
-                            "explanation": check.explanation,
-                        }
-                        for check in consistency_checks
-                        if check.field_validation_id in validation_ids
-                    ],
-                    "confirmed_fields": confirmed_fields_by_category.get(
-                        document.document_type, []
-                    ),
-                    "warnings": document_warnings,
-                }
+            raise AnalysisConfirmationBlockedError(
+                [
+                    AnalysisBlockedReasonResponse(
+                        code="DAMAGE_ANALYSIS_UNAVAILABLE",
+                        message="Damage analysis is required before AI Review.",
+                    )
+                ]
             )
-        evidence = self.evidence.list_for_claim(claim.id)
-        evidence_references = [
-            {
-                "id": item.id,
-                "category": item.category.value,
-                "original_filename": item.original_filename,
-            }
-            for item in evidence
-        ]
-        incident = self._incident_response(claim.id)
-        input_data = CopilotInput(
-            vehicle_summary=f"{claim.vehicle_year} {claim.vehicle_make} {claim.vehicle_model}",
-            assessment=damage.assessment,
-            warning=damage.warning,
-            findings=[
-                CopilotStructuredFinding(
-                    vehicle_part=item.vehicle_part,
-                    damage_type=item.damage_type,
-                    damage_percentage=item.damage_percentage,
-                    confidence=item.confidence,
-                )
-                for item in detections
-            ],
-            reference_prices=[
-                CopilotReferencePrice(
-                    part_identity=price.part_identity,
-                    amount=price.amount,
-                    currency=price.currency,
-                    source_name=price.source_name,
-                    source_url=price.source_url,
-                    price_type=price.price_type,
-                    status=price.status,
-                )
-                for price in reference_prices
-            ],
-            claim={"id": claim.claim_number, "status": claim.status.value},
-            vehicle={
-                "make": claim.vehicle_make,
-                "model": claim.vehicle_model,
-                "year": claim.vehicle_year,
-                "license_plate": claim.license_plate,
-                "vin": claim.vin,
-            },
-            claimant={"name": claim.claimant_name},
-            incident=incident.model_dump(mode="json") if incident else None,
-            document_analysis=document_payload,
-            warnings=warnings,
-            evidence_references=evidence_references,
-        )
+
+        payload = json.loads(snapshot.payload_json)
+        warnings = payload.get("warnings", [])
+        evidence_references = payload.get("evidence_references", [])
+        input_data = self._copilot_input_from_snapshot(payload)
         result = self.llm_copilot.generate(input_data)
         provider_model = self.llm_model if result.status is CopilotConclusionStatus.GENERATED else None
         conclusion = self.copilot_conclusions.create(damage, result, provider_model)
         failed_documents = sum(
-            document.status is AnalysisResultStatus.FAILED for document in documents
+            document["status"] == AnalysisResultStatus.FAILED.value
+            for document in payload.get("documents", [])
         )
         validity_percentage = max(0, min(100, 85 - failed_documents * 15 - len(warnings) * 5))
         self.workflow_ai_reviews.create(
@@ -887,7 +1067,8 @@ class ClaimService:
         ]
         if not images:
             raise ValueError("Upload at least one vehicle damage image before running analysis")
-        detections = self.damage_model.analyze(images)
+        model_result = self.damage_model.analyze(images)
+        detections = model_result.detections
         rules = self.rules.active_values()
         assessment = self.assessment.assess(detections, rules)
         reference_prices = self.part_search.lookup_for_assessment(
@@ -901,6 +1082,7 @@ class ClaimService:
         analysis = self.damage_analyses.create(
             claim,
             assessment,
+            model_result,
             detections,
             rules,
             reference_prices,
@@ -978,6 +1160,9 @@ class ClaimService:
             claimant_name=claim.claimant_name,
             vehicle_make=claim.vehicle_make,
             license_plate=claim.license_plate,
+        )
+        analysis_readiness, analysis_snapshot = self._analysis_snapshot_state(
+            claim, run
         )
         return WorkflowAnalysisRunResponse(
             id=run.id,
@@ -1064,11 +1249,65 @@ class ClaimService:
                 )
                 for check in self.analysis_runs.consistency_checks(run.id)
             ],
+            analysis_readiness=analysis_readiness,
+            analysis_snapshot=analysis_snapshot,
             failure_reason=run.failure_reason,
             created_at=run.created_at,
             started_at=run.started_at,
             completed_at=run.completed_at,
             inputs_changed=incident is None or incident.input_revision != run.input_revision,
+        )
+
+    def _analysis_snapshot_state(
+        self, claim: Claim, run: WorkflowAnalysisRun
+    ) -> tuple[AnalysisReadinessResponse, ConfirmedAnalysisSnapshotResponse | None]:
+        snapshot = self.analysis_snapshots.find_for_run(run.id)
+        incident = self.claim_incidents.find_for_claim(claim.id)
+        if snapshot is not None:
+            payload = json.loads(snapshot.payload_json)
+            stale = (
+                snapshot.status is AnalysisSnapshotStatus.STALE
+                or incident is None
+                or snapshot.input_revision != incident.input_revision
+            )
+            status = "STALE" if stale else "READY"
+            reasons = (
+                [
+                    AnalysisBlockedReasonResponse(
+                        code="SNAPSHOT_STALE",
+                        message="Confirmed analysis is stale; save the corrected analysis again.",
+                    )
+                ]
+                if stale
+                else []
+            )
+            return (
+                AnalysisReadinessResponse(status=status, blocked_reasons=reasons),
+                ConfirmedAnalysisSnapshotResponse(
+                    status=status,
+                    documents=payload.get("documents", []),
+                    damage=payload.get("damage", {}),
+                    warnings=payload.get("warnings", []),
+                    evidence_references=payload.get("evidence_references", []),
+                    saved_at=snapshot.updated_at,
+                ),
+            )
+
+        current_values = {
+            field.id: (field.confirmed_value or "")
+            for field in self.analysis_runs.extracted_fields(run.id)
+        }
+        reasons = self._analysis_blocked_reasons(claim, run, current_values)
+        missing_snapshot = AnalysisBlockedReasonResponse(
+            code="SNAPSHOT_MISSING",
+            message="Save All is required before AI Review.",
+        )
+        return (
+            AnalysisReadinessResponse(
+                status="BLOCKED" if reasons else "NOT_SAVED",
+                blocked_reasons=[missing_snapshot, *reasons],
+            ),
+            None,
         )
 
     def _document_extraction_response(
@@ -1221,11 +1460,22 @@ class ClaimService:
             )
         reference_prices = self.damage_analyses.reference_prices(analysis.id)
         reference_price_responses = [self._to_reference_price_response(price) for price in reference_prices]
+        model_output = self.damage_analyses.model_output(analysis.id)
+        model_output_response = None
+        if model_output is not None:
+            output_payload = json.loads(model_output.output_json)
+            model_output_response = {
+                "adapter_name": model_output.adapter_name,
+                "part_identities": output_payload.get("part_identities", []),
+                "record": output_payload["record"],
+                "warnings": json.loads(model_output.warnings_json),
+            }
         return DamageAnalysisResponse(
             id=analysis.analysis_number,
             assessment=analysis.assessment,
             warning=analysis.warning,
             detections=detections,
+            model_output=model_output_response,
             rules=self._rules_for_analysis(analysis.id),
             reference_price_status=self._reference_price_status(reference_prices),
             reference_prices=reference_price_responses,
@@ -1264,6 +1514,75 @@ class ClaimService:
         )
 
     @staticmethod
+    def _copilot_input_from_snapshot(payload: dict[str, object]) -> CopilotInput:
+        claim_payload = payload["claim"]
+        claimant_payload = payload["claimant"]
+        vehicle_payload = payload["vehicle"]
+        incident_payload = payload.get("incident")
+        damage_payload = payload["damage"]
+        documents: dict[str, AiReviewDocument] = {}
+        for document in payload.get("documents", []):
+            fields: dict[str, AiReviewDocumentField] = {}
+            for field in document.get("confirmed_fields", []):
+                comparison = field.get("comparison") or {}
+                fields[field["field_key"]] = AiReviewDocumentField(
+                    value=field.get("confirmed_value"),
+                    consistency=comparison.get("status"),
+                )
+            documents[document["document_type"]] = AiReviewDocument(fields=fields)
+
+        return CopilotInput(
+            context=AiReviewContext(
+                claim=AiReviewClaimFacts(
+                    claim_number=claim_payload["id"],
+                    status=claim_payload["status"],
+                    claimant_name=claimant_payload["name"],
+                ),
+                vehicle=AiReviewVehicleFacts(
+                    make=vehicle_payload["make"],
+                    model=vehicle_payload["model"],
+                    year=vehicle_payload["year"],
+                    license_plate=vehicle_payload.get("license_plate"),
+                    vin=vehicle_payload.get("vin"),
+                ),
+                incident=(
+                    AiReviewIncidentFacts(
+                        occurred_at=incident_payload.get("occurred_at"),
+                        location=incident_payload.get("location"),
+                        description=incident_payload.get("description"),
+                    )
+                    if incident_payload
+                    else None
+                ),
+                documents=documents,
+                damage=AiReviewDamage(
+                    assessment=damage_payload["assessment"],
+                    warning=damage_payload.get("warning"),
+                    findings=[
+                        AiReviewDamageFinding(
+                            part=item.get("vehicle_part"),
+                            damage_type=item.get("damage_type"),
+                            area_percentage=item["damage_percentage"],
+                        )
+                        for item in damage_payload.get("findings", [])
+                    ],
+                ),
+                warnings=payload.get("warnings", []),
+                reference_prices=[
+                    AiReviewReferencePrice(
+                        part=price["part_identity"],
+                        amount=price.get("amount"),
+                        currency=price.get("currency"),
+                        source_name=price.get("source_name"),
+                        price_type=price["price_type"],
+                        status=price["status"],
+                    )
+                    for price in damage_payload.get("reference_prices", [])
+                ],
+            )
+        )
+
+    @staticmethod
     def _copilot_input(
         claim: Claim,
         assessment: DamageAssessment,
@@ -1272,30 +1591,45 @@ class ClaimService:
         reference_prices: list[ReferencePartPriceResult],
     ) -> CopilotInput:
         return CopilotInput(
-            vehicle_summary=f"{claim.vehicle_year} {claim.vehicle_make} {claim.vehicle_model}",
-            assessment=assessment,
-            warning=warning,
-            findings=[
-                CopilotStructuredFinding(
-                    vehicle_part=detection.vehicle_part,
-                    damage_type=detection.damage_type,
-                    damage_percentage=detection.damage_percentage,
-                    confidence=detection.confidence,
-                )
-                for detection in detections
-            ],
-            reference_prices=[
-                CopilotReferencePrice(
-                    part_identity=price.part_identity,
-                    amount=price.amount,
-                    currency=price.currency,
-                    source_name=price.source_name,
-                    source_url=price.source_url,
-                    price_type=price.price_type,
-                    status=price.status,
-                )
-                for price in reference_prices
-            ],
+            context=AiReviewContext(
+                claim=AiReviewClaimFacts(
+                    claim_number=claim.claim_number,
+                    status=claim.status.value,
+                    claimant_name=claim.claimant_name,
+                ),
+                vehicle=AiReviewVehicleFacts(
+                    make=claim.vehicle_make,
+                    model=claim.vehicle_model,
+                    year=claim.vehicle_year,
+                    license_plate=claim.license_plate,
+                    vin=claim.vin,
+                ),
+                documents={},
+                damage=AiReviewDamage(
+                    assessment=assessment.value,
+                    warning=warning,
+                    findings=[
+                        AiReviewDamageFinding(
+                            part=detection.vehicle_part,
+                            damage_type=detection.damage_type,
+                            area_percentage=detection.damage_percentage,
+                        )
+                        for detection in detections
+                    ],
+                ),
+                warnings=[warning] if warning else [],
+                reference_prices=[
+                    AiReviewReferencePrice(
+                        part=price.part_identity,
+                        amount=price.amount,
+                        currency=price.currency,
+                        source_name=price.source_name,
+                        price_type=price.price_type,
+                        status=price.status.value,
+                    )
+                    for price in reference_prices
+                ],
+            )
         )
 
     def _to_copilot_conclusion_response(
@@ -1308,6 +1642,7 @@ class ClaimService:
     ) -> CopilotConclusionResponse | None:
         if conclusion is None:
             return None
+        review_output = self.copilot_conclusions.review_output(conclusion.id)
         workflow_review = self.workflow_ai_reviews.find_for_conclusion(conclusion.id)
         workflow_warnings = json.loads(workflow_review.warnings_json) if workflow_review else []
         evidence_references = (
@@ -1345,6 +1680,15 @@ class ClaimService:
             validity_percentage=workflow_review.validity_percentage if workflow_review else None,
             review_status=workflow_review.review_status if workflow_review else None,
             evidence_references=evidence_references,
+            structured_review=(
+                AiReviewStructuredResponse.model_validate(
+                    json.loads(review_output.review_json)
+                )
+                if review_output
+                else None
+            ),
+            prompt_version=review_output.prompt_version if review_output else None,
+            schema_version=review_output.schema_version if review_output else None,
         )
 
     def _to_copilot_conclusion_review_response(

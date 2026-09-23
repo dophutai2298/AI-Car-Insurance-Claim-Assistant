@@ -6,7 +6,7 @@ import {
   WarningAlt,
 } from "@carbon/icons-react";
 import { Alert, Button, Chip, Input, Label } from "@heroui/react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { EvidenceImagePreview } from "./EvidencePanel";
@@ -17,6 +17,7 @@ import {
 } from "./useClaims";
 import type {
   ClaimConsistencyCheck,
+  AnalysisBlockedReason,
   ClaimDetail,
   DocumentExtractedField,
   DocumentFieldComparison,
@@ -39,7 +40,9 @@ const comparableFieldKeys = new Set([
   "insured_name",
   "owner_name",
   "holder_name",
+  "vehicle_owner",
   "vehicle_make",
+  "vehicle_brand",
   "license_plate",
 ]);
 
@@ -73,6 +76,25 @@ export function DocumentAnalysisResults({
     );
     saveAll.reset();
   }, [extractedFieldIds, run.id]);
+  const draftBlockedReasons = useMemo(
+    () =>
+      run.analysis_readiness
+        ? getDraftBlockedReasons(claim, run, extractedFields, draftValues)
+        : [],
+    [claim, draftValues, extractedFieldIds, run],
+  );
+  const serverBlockedReasons =
+    saveAll.error instanceof ClaimsApiError
+      ? saveAll.error.blockedReasons
+      : [];
+  const blockedReasons = serverBlockedReasons.length
+    ? serverBlockedReasons
+    : draftBlockedReasons;
+  const blockedByField = new Map(
+    blockedReasons
+      .filter((reason) => reason.field_id !== null)
+      .map((reason) => [reason.field_id, reason]),
+  );
 
   return (
     <section className="grid gap-5 border-t border-slate-200 pt-5">
@@ -111,6 +133,7 @@ export function DocumentAnalysisResults({
               editable={editable}
               evidence={categoryEvidence}
               draftValues={draftValues}
+              blockedByField={blockedByField}
               isRunActive={["PENDING", "PROCESSING"].includes(run.status)}
               key={category}
               onDraftChange={(fieldId, value) => {
@@ -127,38 +150,67 @@ export function DocumentAnalysisResults({
       </div>
 
       {extractedFields.length ? (
-        <div className="flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <div aria-live="polite" className="text-xs">
-            {saveAll.isSuccess ? (
-              <span className="text-emerald-700">
-                {t("documents.saveAllSuccess")}
-              </span>
-            ) : saveAll.error ? (
-              <span className="text-red-700">
-                {saveAll.error instanceof ClaimsApiError
-                  ? saveAll.error.message
-                  : t("documents.saveAllFailed")}
-              </span>
-            ) : null}
+        <div className="grid gap-3 border-t border-slate-200 pt-4">
+          {blockedReasons.length ? (
+            <Alert status="warning">
+              <WarningAlt size={17} />
+              <Alert.Title>{t("documents.saveAllBlocked")}</Alert.Title>
+              <Alert.Description>
+                <ul className="mt-1 list-disc space-y-1 pl-4">
+                  {blockedReasons.map((reason, index) => (
+                    <li key={`${reason.code}-${reason.field_id ?? index}`}>
+                      {t(`documents.blockReasons.${reason.code}`, {
+                        defaultValue: reason.message,
+                        field: reason.field_key
+                          ? t(`documents.fields.${reason.field_key}`, {
+                              defaultValue: reason.field_key,
+                            })
+                          : "",
+                        category: reason.category
+                          ? t(`evidence.categories.${reason.category}`)
+                          : "",
+                      })}
+                    </li>
+                  ))}
+                </ul>
+              </Alert.Description>
+            </Alert>
+          ) : null}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div aria-live="polite" className="text-xs">
+              {saveAll.isSuccess ? (
+                <span className="text-emerald-700">
+                  {t("documents.saveAllSuccess")}
+                </span>
+              ) : saveAll.error ? (
+                <span className="text-red-700">
+                  {saveAll.error instanceof ClaimsApiError
+                    ? saveAll.error.message
+                    : t("documents.saveAllFailed")}
+                </span>
+              ) : null}
+            </div>
+            <Button
+              isDisabled={
+                !editable ||
+                blockedReasons.length > 0 ||
+                ["PENDING", "PROCESSING"].includes(run.status)
+              }
+              isPending={saveAll.isPending}
+              onPress={() =>
+                saveAll.mutate(
+                  extractedFields.map((field) => ({
+                    id: field.id,
+                    confirmed_value: draftValues[field.id]?.trim() || null,
+                  })),
+                )
+              }
+              variant="primary"
+            >
+              <Save size={16} />
+              {t("documents.saveAll")}
+            </Button>
           </div>
-          <Button
-            isDisabled={
-              !editable || ["PENDING", "PROCESSING"].includes(run.status)
-            }
-            isPending={saveAll.isPending}
-            onPress={() =>
-              saveAll.mutate(
-                extractedFields.map((field) => ({
-                  id: field.id,
-                  confirmed_value: draftValues[field.id]?.trim() || null,
-                })),
-              )
-            }
-            variant="primary"
-          >
-            <Save size={16} />
-            {t("documents.saveAll")}
-          </Button>
         </div>
       ) : null}
 
@@ -179,6 +231,7 @@ function DocumentCategoryResults({
   editable,
   draftValues,
   onDraftChange,
+  blockedByField,
 }: {
   category: EvidenceCategory;
   evidence: EvidenceItem[];
@@ -189,6 +242,7 @@ function DocumentCategoryResults({
   editable: boolean;
   draftValues: Record<number, string>;
   onDraftChange: (fieldId: number, value: string) => void;
+  blockedByField: Map<number | null, AnalysisBlockedReason>;
 }) {
   const { t } = useTranslation();
   const resultsByEvidence = new Map(
@@ -242,6 +296,7 @@ function DocumentCategoryResults({
               draftValues={draftValues}
               editable={editable}
               extraction={extraction}
+              blockedByField={blockedByField}
               onDraftChange={onDraftChange}
             />
           ) : null}
@@ -383,11 +438,13 @@ function ExtractionResult({
   editable,
   draftValues,
   onDraftChange,
+  blockedByField,
 }: {
   extraction: NonNullable<DocumentOcrResult["extraction"]>;
   editable: boolean;
   draftValues: Record<number, string>;
   onDraftChange: (fieldId: number, value: string) => void;
+  blockedByField: Map<number | null, AnalysisBlockedReason>;
 }) {
   const { t } = useTranslation();
   return (
@@ -428,6 +485,7 @@ function ExtractionResult({
             <ExtractedFieldEditor
               editable={editable}
               field={field}
+              blockedReason={blockedByField.get(field.id)}
               key={field.id}
               onChange={(value) => onDraftChange(field.id, value)}
               value={draftValues[field.id] ?? field.confirmed_value ?? ""}
@@ -446,11 +504,13 @@ function ExtractedFieldEditor({
   editable,
   value,
   onChange,
+  blockedReason,
 }: {
   field: DocumentExtractedField;
   editable: boolean;
   value: string;
   onChange: (value: string) => void;
+  blockedReason?: AnalysisBlockedReason;
 }) {
   const { t } = useTranslation();
   const label = t(`documents.fields.${field.field_key}`, {
@@ -480,9 +540,99 @@ function ExtractedFieldEditor({
           </dd>
         </div>
       </dl>
-      {field.comparison ? <ConsistencyResult check={field.comparison} /> : null}
+      {blockedReason ? (
+        <div className="border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+          {t(`documents.blockReasons.${blockedReason.code}`, {
+            defaultValue: blockedReason.message,
+            field: label,
+          })}
+        </div>
+      ) : null}
+      {field.comparison &&
+      value.trim() === (field.confirmed_value ?? "").trim() ? (
+        <ConsistencyResult check={field.comparison} />
+      ) : null}
     </div>
   );
+}
+
+function getDraftBlockedReasons(
+  claim: ClaimDetail,
+  run: WorkflowAnalysisRun,
+  fields: DocumentExtractedField[],
+  draftValues: Record<number, string>,
+): AnalysisBlockedReason[] {
+  const reasons = (run.analysis_readiness?.blocked_reasons ?? []).filter(
+    (reason) =>
+      reason.field_id === null &&
+      !["SNAPSHOT_MISSING", "SNAPSHOT_STALE"].includes(reason.code),
+  );
+  for (const category of documentCategories) {
+    const categoryFields = fields.filter((field) =>
+      (run.document_ocr_results ?? []).some(
+        (result) =>
+          result.document_type === category &&
+          result.extraction?.id === field.extraction_result_id,
+      ),
+    );
+    for (const field of categoryFields) {
+      const value = (draftValues[field.id] ?? field.confirmed_value ?? "").trim();
+      if (!value) {
+        reasons.push(
+          blockedReason("REQUIRED_VALUE_MISSING", category, field),
+        );
+        continue;
+      }
+      const claimValue = claimValueForField(claim, field.field_key);
+      if (
+        claimValue !== null &&
+        normalizeComparisonValue(claimValue) !== normalizeComparisonValue(value)
+      ) {
+        reasons.push(
+          blockedReason("COMPARISON_MISMATCH", category, field),
+        );
+      }
+    }
+  }
+  return reasons;
+}
+
+function claimValueForField(claim: ClaimDetail, fieldKey: string) {
+  if (
+    [
+      "full_name",
+      "insured_name",
+      "owner_name",
+      "holder_name",
+      "vehicle_owner",
+    ].includes(fieldKey)
+  )
+    return claim.claimant_name;
+  if (["vehicle_make", "vehicle_brand"].includes(fieldKey)) return claim.vehicle.make;
+  if (fieldKey === "license_plate") return claim.vehicle.license_plate;
+  return null;
+}
+
+function normalizeComparisonValue(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function blockedReason(
+  code: string,
+  category: EvidenceCategory | null = null,
+  field?: DocumentExtractedField,
+): AnalysisBlockedReason {
+  return {
+    code,
+    message: code,
+    category,
+    field_id: field?.id ?? null,
+    field_key: field?.field_key ?? null,
+  };
 }
 
 function ValidatedField({

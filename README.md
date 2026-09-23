@@ -13,6 +13,12 @@
 
 Copy `.env.example` to `.env` and adjust values if needed. The defaults run the PoC in mock mode for the damage model, part search, and LLM.
 
+Vehicle damage analysis supports `DAMAGE_MODEL_MODE=mock` for deterministic demos
+and `DAMAGE_MODEL_MODE=local` for the local `damage_car` package boundary. The
+local package's public inference API is still a focused TODO; until it is wired,
+local mode reports an unavailable model instead of fabricating results. No damage
+model URL is required because this integration runs in the backend process.
+
 Document OCR defaults to the locally installed `deepdoc_vietocr` package. Set
 `DOCUMENT_OCR_MODE=mock` only for deterministic local demos and automated tests.
 

@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -97,11 +98,40 @@ class DamageDetectionResponse(BaseModel):
     annotated_evidence: EvidenceResponse
 
 
+class DamageDetailResponse(BaseModel):
+    damage_type: str
+    area_percentage: float
+    pixels: int
+    confidence: float
+
+
+class DamagePartResponse(BaseModel):
+    vehicle_part: str
+    total_damage_percentage: float
+    part_confidence: float
+    damage_details: list[DamageDetailResponse] = Field(default_factory=list)
+
+
+class CarDamageRecordResponse(BaseModel):
+    source_evidence_ids: list[int] = Field(default_factory=list)
+    annotated_evidence_ids: list[int] = Field(default_factory=list)
+    raw_text: str
+    parts: list[DamagePartResponse] = Field(default_factory=list)
+
+
+class DamageModelOutputResponse(BaseModel):
+    adapter_name: str
+    part_identities: list[str] = Field(default_factory=list)
+    record: CarDamageRecordResponse
+    warnings: list[str] = Field(default_factory=list)
+
+
 class DamageAnalysisResponse(BaseModel):
     id: str
     assessment: DamageAssessment
     warning: str | None
     detections: list[DamageDetectionResponse]
+    model_output: DamageModelOutputResponse | None = None
     rules: AssessmentRuleValuesSchema | None = None
     reference_price_status: ReferencePriceLookupStatus
     reference_prices: list["ReferencePartPriceResponse"] = Field(default_factory=list)
@@ -237,6 +267,28 @@ class ClaimConsistencyCheckResponse(BaseModel):
     explanation: str
 
 
+class AnalysisBlockedReasonResponse(BaseModel):
+    code: str
+    message: str
+    category: EvidenceCategory | None = None
+    field_id: int | None = None
+    field_key: str | None = None
+
+
+class AnalysisReadinessResponse(BaseModel):
+    status: Literal["NOT_SAVED", "BLOCKED", "READY", "STALE"]
+    blocked_reasons: list[AnalysisBlockedReasonResponse] = Field(default_factory=list)
+
+
+class ConfirmedAnalysisSnapshotResponse(BaseModel):
+    status: Literal["READY", "STALE"]
+    documents: list[dict[str, object]] = Field(default_factory=list)
+    damage: dict[str, object]
+    warnings: list[str] = Field(default_factory=list)
+    evidence_references: list[dict[str, object]] = Field(default_factory=list)
+    saved_at: datetime
+
+
 class WorkflowAnalysisRunResponse(BaseModel):
     id: int
     status: AnalysisRunStatus
@@ -245,6 +297,8 @@ class WorkflowAnalysisRunResponse(BaseModel):
     document_analyses: list[DocumentAnalysisResponse] = Field(default_factory=list)
     document_ocr_results: list[DocumentOcrResultResponse] = Field(default_factory=list)
     consistency_checks: list[ClaimConsistencyCheckResponse] = Field(default_factory=list)
+    analysis_readiness: AnalysisReadinessResponse
+    analysis_snapshot: ConfirmedAnalysisSnapshotResponse | None = None
     failure_reason: str | None = None
     created_at: datetime
     started_at: datetime | None = None
@@ -272,6 +326,16 @@ class CopilotFindingResponse(BaseModel):
     annotated_evidence: EvidenceResponse
 
 
+class AiReviewStructuredResponse(BaseModel):
+    summary: str
+    assessment_interpretation: str
+    damaged_parts_summary: str
+    document_consistency_summary: str
+    warnings: list[str] = Field(default_factory=list)
+    recommended_next_step: str
+    human_review_required: bool
+
+
 class CopilotConclusionResponse(BaseModel):
     id: int
     status: CopilotConclusionStatus
@@ -287,6 +351,9 @@ class CopilotConclusionResponse(BaseModel):
     validity_percentage: int | None = Field(default=None, ge=0, le=100)
     review_status: str | None = None
     evidence_references: list["EvidenceReferenceResponse"] = Field(default_factory=list)
+    structured_review: AiReviewStructuredResponse | None = None
+    prompt_version: str | None = None
+    schema_version: str | None = None
 
 
 class EvidenceReferenceResponse(BaseModel):

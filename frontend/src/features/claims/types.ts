@@ -173,6 +173,8 @@ export type WorkflowAnalysisRun = {
   document_analyses: DocumentAnalysis[];
   document_ocr_results?: DocumentOcrResult[];
   consistency_checks?: ClaimConsistencyCheck[];
+  analysis_readiness?: AnalysisReadiness;
+  analysis_snapshot?: ConfirmedAnalysisSnapshot | null;
   failure_reason: string | null;
   created_at: string;
   started_at: string | null;
@@ -194,11 +196,62 @@ export type DamageDetection = {
   annotated_evidence: EvidenceItem;
 };
 
+export type AnalysisBlockedReason = {
+  code: string;
+  message: string;
+  category: EvidenceCategory | null;
+  field_id: number | null;
+  field_key: string | null;
+};
+
+export type AnalysisReadiness = {
+  status: "NOT_SAVED" | "BLOCKED" | "READY" | "STALE";
+  blocked_reasons: AnalysisBlockedReason[];
+};
+
+export type ConfirmedAnalysisSnapshot = {
+  status: "READY" | "STALE";
+  documents: Array<Record<string, unknown>>;
+  damage: Record<string, unknown>;
+  warnings: string[];
+  evidence_references: Array<Record<string, unknown>>;
+  saved_at: string;
+};
+
+export type DamageDetail = {
+  damage_type: string;
+  area_percentage: number;
+  pixels: number;
+  confidence: number;
+};
+
+export type DamagePart = {
+  vehicle_part: string;
+  total_damage_percentage: number;
+  part_confidence: number;
+  damage_details: DamageDetail[];
+};
+
+export type CarDamageRecord = {
+  source_evidence_ids: number[];
+  annotated_evidence_ids: number[];
+  raw_text: string;
+  parts: DamagePart[];
+};
+
+export type DamageModelOutput = {
+  adapter_name: string;
+  part_identities: string[];
+  record: CarDamageRecord;
+  warnings: string[];
+};
+
 export type DamageAnalysis = {
   id: string;
   assessment: DamageAssessment;
   warning: string | null;
   detections: DamageDetection[];
+  model_output?: DamageModelOutput | null;
   rules: {
     confidence_threshold: number;
     repair_max_percentage: number;
@@ -243,6 +296,19 @@ export type CopilotConclusion = {
     category: EvidenceCategory;
     original_filename: string;
   }>;
+  structured_review?: AiReviewStructuredResult | null;
+  prompt_version?: string | null;
+  schema_version?: string | null;
+};
+
+export type AiReviewStructuredResult = {
+  summary: string;
+  assessment_interpretation: string;
+  damaged_parts_summary: string;
+  document_consistency_summary: string;
+  warnings: string[];
+  recommended_next_step: string;
+  human_review_required: boolean;
 };
 
 export type CopilotConclusionReviewStatus = "APPROVED" | "REJECTED";

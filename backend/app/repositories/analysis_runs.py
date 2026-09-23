@@ -434,6 +434,15 @@ class AnalysisRunRepository:
             )
         )
 
+    def extracted_fields(self, run_id: int) -> list[DocumentExtractedField]:
+        return list(
+            self.session.scalars(
+                select(DocumentExtractedField)
+                .where(DocumentExtractedField.analysis_run_id == run_id)
+                .order_by(DocumentExtractedField.id)
+            )
+        )
+
     def update_extracted_field(
         self, field: DocumentExtractedField, confirmed_value: str | None
     ) -> DocumentExtractedField:
