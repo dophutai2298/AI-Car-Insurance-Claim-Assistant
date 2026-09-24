@@ -1777,11 +1777,16 @@ def test_damage_analysis_returns_normalized_repair_fixture_and_persists_it(clien
     assert analysis["assessment"] == "REPAIR_LIKELY"
     assert analysis["model_output"]["adapter_name"] == "mock"
     assert analysis["model_output"]["part_identities"] == ["rear_bumper"]
-    assert analysis["model_output"]["record"]["raw_text"]
+    assert "raw_text" not in analysis["model_output"]["record"]
     evidence_id = analysis["detections"][0]["annotated_evidence"]["id"]
     assert analysis["model_output"]["record"]["source_evidence_ids"] == [evidence_id]
     assert analysis["model_output"]["record"]["annotated_evidence_ids"] == [evidence_id]
-    assert analysis["model_output"]["record"]["parts"][0]["vehicle_part"] == "rear_bumper"
+    assert analysis["model_output"]["record"]["parts"][0] == {
+        "part": "rear_bumper",
+        "main_damage": "dent",
+        "damage_percent": 32.5,
+        "damage_types": [{"type": "dent", "percent": 32.5}],
+    }
     assert analysis["detections"] == [{
         "vehicle_part": "rear_bumper",
         "damage_type": "dent",

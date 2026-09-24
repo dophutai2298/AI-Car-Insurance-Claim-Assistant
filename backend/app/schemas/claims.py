@@ -98,24 +98,21 @@ class DamageDetectionResponse(BaseModel):
     annotated_evidence: EvidenceResponse
 
 
-class DamageDetailResponse(BaseModel):
-    damage_type: str
-    area_percentage: float
-    pixels: int
-    confidence: float
+class DamageTypeResponse(BaseModel):
+    type: str
+    percent: float
 
 
 class DamagePartResponse(BaseModel):
-    vehicle_part: str
-    total_damage_percentage: float
-    part_confidence: float
-    damage_details: list[DamageDetailResponse] = Field(default_factory=list)
+    part: str
+    main_damage: str
+    damage_percent: float
+    damage_types: list[DamageTypeResponse] = Field(default_factory=list)
 
 
 class CarDamageRecordResponse(BaseModel):
     source_evidence_ids: list[int] = Field(default_factory=list)
     annotated_evidence_ids: list[int] = Field(default_factory=list)
-    raw_text: str
     parts: list[DamagePartResponse] = Field(default_factory=list)
 
 
