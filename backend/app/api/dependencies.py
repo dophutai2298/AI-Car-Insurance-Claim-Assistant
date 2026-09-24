@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.db import get_db
-from app.models import User, UserRole
+from app.models import User
+from app.api.permissions import Permission, has_permission
 from app.services.auth import AuthService
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -32,18 +33,25 @@ def get_current_user(
     return user
 
 
-def require_admin(current_user: Annotated[User, Depends(get_current_user)]) -> User:
-    if current_user.role is not UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Admin access required")
-    return current_user
+def require_permission(permission: Permission):
+    def check(current_user: Annotated[User, Depends(get_current_user)]) -> User:
+        if not has_permission(current_user.role, permission):
+            detail = "Admin access required" if permission is Permission.ADMIN else "Insufficient permissions"
+            raise HTTPException(status_code=403, detail=detail)
+        return current_user
+
+    return check
 
 
-def require_adjuster(current_user: Annotated[User, Depends(get_current_user)]) -> User:
-    if current_user.role not in {UserRole.ADJUSTER, UserRole.ADMIN}:
-        raise HTTPException(status_code=403, detail="Adjuster or Admin access required")
-    return current_user
+require_admin = require_permission(Permission.ADMIN)
+require_analysis = require_permission(Permission.ANALYSIS)
+require_ai_review = require_permission(Permission.AI_REVIEW)
+require_human_review = require_permission(Permission.HUMAN_REVIEW)
+require_analysis_support = require_permission(Permission.ANALYSIS_SUPPORT)
 
 
-CurrentUser = Annotated[User, Depends(get_current_user)]
 AdminUser = Annotated[User, Depends(require_admin)]
-AdjusterUser = Annotated[User, Depends(require_adjuster)]
+AnalysisUser = Annotated[User, Depends(require_analysis)]
+AiReviewUser = Annotated[User, Depends(require_ai_review)]
+HumanReviewUser = Annotated[User, Depends(require_human_review)]
+AnalysisSupportUser = Annotated[User, Depends(require_analysis_support)]

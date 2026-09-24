@@ -90,6 +90,12 @@ Set the demo credentials before the first database startup through the correspon
 To reseed changed credentials locally, recreate the development Postgres volume.
 Authentication endpoints are available at `POST /api/auth/login` and `GET /api/auth/me`.
 
+`ADMIN` can use all protected APIs. `ADJUSTER` can run Analysis, AI Review, and Human
+Review, and can read its own session, a claim detail, and its evidence content to
+support those workflows. Claim creation/listing, evidence changes, account management,
+and configuration require `ADMIN`. An admin must prepare a claim before an adjuster
+opens its detail URL; the current dashboard claim list is admin-only.
+
 ### DeepDoc Vietnamese document analysis
 
 This project can use the local `deepdoc_vietocr` package for CPU-optimized document

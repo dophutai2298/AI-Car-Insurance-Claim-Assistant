@@ -1,9 +1,12 @@
 from contextlib import asynccontextmanager
+import logging
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import admin, auth, claims, vehicle_makes
+from app.api.dependencies import require_admin
 from app.core.config import get_settings
 from app.db import Base, create_database_engine, create_session_factory, ping_database
 from app.services.auth import seed_demo_users
@@ -15,6 +18,7 @@ OPENAPI_TAGS = [
     {"name": "admin", "description": "Administrator-only assessment rule configuration."},
     {"name": "system", "description": "Service health and runtime configuration."},
 ]
+logger = logging.getLogger(__name__)
 
 
 def create_app() -> FastAPI:
@@ -53,6 +57,11 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.exception_handler(Exception)
+    async def unexpected_error(request: Request, error: Exception) -> JSONResponse:
+        logger.exception("Unexpected API error for %s %s", request.method, request.url.path, exc_info=error)
+        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
     app.include_router(auth.router)
     app.include_router(admin.router)
     app.include_router(claims.router)
@@ -64,7 +73,11 @@ def create_app() -> FastAPI:
 
         if settings.check_database_on_health:
             try:
-                database_status = "ok" if ping_database(create_database_engine(settings)) else "unavailable"
+                engine = create_database_engine(settings)
+                try:
+                    database_status = "ok" if ping_database(engine) else "unavailable"
+                finally:
+                    engine.dispose()
             except Exception:
                 database_status = "unavailable"
 
@@ -72,10 +85,9 @@ def create_app() -> FastAPI:
             "status": "ok",
             "service": "ai-car-claim-assistant-api",
             "database": {"status": database_status},
-            "runtime": settings.public_runtime(),
         }
 
-    @app.get("/api/runtime-config", tags=["system"])
+    @app.get("/api/runtime-config", tags=["system"], dependencies=[Depends(require_admin)])
     def runtime_config() -> dict[str, str]:
         return settings.public_runtime()
 

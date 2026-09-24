@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import logging
 from datetime import datetime, timezone
 from typing import Protocol
 
@@ -7,6 +8,7 @@ from app.models import DamageAssessment, ReferencePriceStatus
 from app.services.damage_model import DamageModelDetection
 
 REFERENCE_OEM_PART_PRICE = "REFERENCE_OEM_PART_PRICE"
+logger = logging.getLogger(__name__)
 
 
 class PartSearchUnavailableError(Exception):
@@ -95,7 +97,8 @@ class PartSearchService:
     def _lookup_part(self, request: PartPriceRequest) -> ReferencePartPriceResult:
         try:
             return self.provider.lookup(request)
-        except Exception as error:
+        except Exception:
+            logger.exception("Reference part price lookup failed for %s", request.part_identity)
             return ReferencePartPriceResult(
                 part_identity=request.part_identity,
                 amount=None,
@@ -105,7 +108,7 @@ class PartSearchService:
                 price_type=REFERENCE_OEM_PART_PRICE,
                 retrieved_at=datetime.now(timezone.utc),
                 status=ReferencePriceStatus.UNAVAILABLE,
-                failure_reason=str(error),
+                failure_reason="Reference part price lookup unavailable",
             )
 
 

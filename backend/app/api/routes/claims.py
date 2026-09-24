@@ -4,7 +4,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import AdjusterUser, CurrentUser
+from app.api.dependencies import AdminUser, AiReviewUser, AnalysisSupportUser, AnalysisUser, HumanReviewUser
+from app.api.composition import build_claim_service
 from app.core.config import Settings, get_settings
 from app.db import get_db
 from app.models import EvidenceCategory
@@ -24,56 +25,15 @@ from app.schemas.claims import (
     WorkflowAnalysisRunResponse,
 )
 from app.services.claims import (
-    AnalysisConfirmationBlockedError,
     ClaimService,
     EvidencePersistenceError,
 )
-from app.repositories.assessment_rules import AssessmentRuleRepository
-from app.services.assessment_rules import AssessmentRuleService
-from app.services.damage_assessment import DamageAssessmentService
-from app.services.damage_model import DamageModelUnavailableError, get_damage_model_adapter
-from app.services.evidence_storage import EvidenceStorageError, LocalEvidenceStorage
-from app.services.part_search import PartSearchService, get_part_price_provider
-from app.services.llm_copilot import LlmCopilotService, get_llm_copilot_adapter
-from app.repositories.vehicle_manufacturers import VehicleManufacturerRepository
-from app.services.vehicle_manufacturers import VehicleManufacturerService
-from app.services.document_analysis import MockDocumentAnalysisAdapter
-from app.services.document_ocr import get_document_ocr_adapter
-from app.services.document_consistency import ClaimConsistencyService
-from app.services.document_extraction import (
-    DocumentExtractionService,
-    DocumentPromptResolver,
-    get_document_extraction_adapter,
-)
-from app.services.document_field_validation import (
-    DocumentFieldValidationService,
-    get_document_field_validation_adapter,
-)
+from app.services.analysis_errors import AnalysisConfirmationBlockedError
+from app.services.claim_errors import ClaimConflictError, ClaimResourceNotFoundError, ClaimValidationError
+from app.services.damage_model import DamageModelUnavailableError
+from app.services.evidence_storage import EvidenceStorageError, EvidenceValidationError, detect_safe_media_type
 
 router = APIRouter(prefix="/api/claims", tags=["claims"])
-
-
-def build_claim_service(session: Session, settings: Settings) -> ClaimService:
-    evidence_storage = LocalEvidenceStorage(settings)
-    return ClaimService(
-        session,
-        evidence_storage,
-        get_damage_model_adapter(settings, evidence_storage),
-        DamageAssessmentService(),
-        AssessmentRuleService(AssessmentRuleRepository(session), settings),
-        PartSearchService(get_part_price_provider(settings)),
-        LlmCopilotService(get_llm_copilot_adapter(settings)),
-        settings.openai_model,
-        VehicleManufacturerService(VehicleManufacturerRepository(session)),
-        MockDocumentAnalysisAdapter(),
-        get_document_ocr_adapter(settings.document_ocr_mode),
-        settings.document_ocr_mode == "mock",
-        DocumentExtractionService(
-            get_document_extraction_adapter(settings), DocumentPromptResolver()
-        ),
-        DocumentFieldValidationService(get_document_field_validation_adapter(settings)),
-        ClaimConsistencyService(),
-    )
 
 
 def get_claim_service(
@@ -94,18 +54,18 @@ ClaimServiceDependency = Annotated[ClaimService, Depends(get_claim_service)]
 @router.post("", response_model=ClaimResponse, status_code=status.HTTP_201_CREATED)
 def create_claim(
     request: ClaimCreateRequest,
-    current_user: CurrentUser,
+    current_user: AdminUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
     try:
         return service.create_claim(request, current_user)
-    except ValueError as error:
+    except ClaimValidationError as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
 
 
 @router.get("", response_model=list[ClaimListItem])
 def list_claims(
-    _current_user: CurrentUser,
+    _current_user: AdminUser,
     service: ClaimServiceDependency,
 ) -> list[ClaimListItem]:
     return service.list_claims()
@@ -114,7 +74,7 @@ def list_claims(
 @router.get("/{claim_number}", response_model=ClaimResponse)
 def get_claim(
     claim_number: str,
-    _current_user: CurrentUser,
+    _current_user: AnalysisSupportUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
     claim = service.get_claim(claim_number)
@@ -127,12 +87,12 @@ def get_claim(
 def transition_claim_status(
     claim_number: str,
     request: ClaimStatusUpdateRequest,
-    _current_user: CurrentUser,
+    _current_user: AdminUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
     try:
         claim = service.transition_claim(claim_number, request.status)
-    except ValueError as error:
+    except ClaimValidationError as error:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Invalid claim lifecycle transition"
         ) from error
@@ -146,16 +106,18 @@ def upload_evidence(
     claim_number: str,
     files: Annotated[list[UploadFile], File()],
     categories: Annotated[list[EvidenceCategory], Form()],
-    _current_user: CurrentUser,
+    _current_user: AdminUser,
     service: ClaimServiceDependency,
     other_document_label: Annotated[str | None, Form()] = None,
 ) -> ClaimResponse:
     try:
         claim = service.upload_evidence(claim_number, categories, files, other_document_label)
-    except ValueError as error:
+    except ClaimValidationError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
+    except EvidenceValidationError as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
     except (EvidenceStorageError, EvidencePersistenceError) as error:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(error)) from error
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Evidence upload failed") from error
     if claim is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
     return claim
@@ -165,7 +127,7 @@ def upload_evidence(
 def get_evidence_content(
     claim_number: str,
     evidence_id: int,
-    _current_user: CurrentUser,
+    _current_user: AnalysisSupportUser,
     service: ClaimServiceDependency,
 ) -> FileResponse:
     evidence_with_path = service.evidence_content_path(claim_number, evidence_id)
@@ -173,19 +135,29 @@ def get_evidence_content(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evidence not found")
 
     evidence, path = evidence_with_path
-    return FileResponse(path, media_type=evidence.content_type, filename=evidence.original_filename)
+    safe_type = detect_safe_media_type(path, evidence.original_filename)
+    if safe_type is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evidence not found")
+    is_image = safe_type.startswith("image/")
+    return FileResponse(
+        path,
+        media_type=safe_type if is_image else "application/octet-stream",
+        filename=evidence.original_filename,
+        content_disposition_type="inline" if is_image else "attachment",
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
 
 
 @router.post("/{claim_number}/damage-analysis", response_model=DamageAnalysisResponse)
 def run_damage_analysis(
     claim_number: str,
-    _current_user: CurrentUser,
+    _current_user: AnalysisUser,
     service: ClaimServiceDependency,
     force_reference_price_lookup: bool = False,
 ) -> DamageAnalysisResponse:
     try:
         analysis = service.run_damage_analysis(claim_number, force_reference_price_lookup)
-    except ValueError as error:
+    except ClaimValidationError as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
     except DamageModelUnavailableError as error:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
@@ -199,16 +171,16 @@ def review_copilot_conclusion(
     claim_number: str,
     conclusion_id: int,
     request: CopilotConclusionReviewRequest,
-    current_user: AdjusterUser,
+    current_user: HumanReviewUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
     try:
         claim = service.review_copilot_conclusion(claim_number, conclusion_id, request, current_user)
-    except LookupError as error:
+    except ClaimResourceNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="AI conclusion not found") from error
-    except RuntimeError as error:
+    except ClaimConflictError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
-    except ValueError as error:
+    except ClaimValidationError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     if claim is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
@@ -219,14 +191,14 @@ def review_copilot_conclusion(
 def delete_evidence(
     claim_number: str,
     evidence_id: int,
-    _current_user: AdjusterUser,
+    _current_user: AdminUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
     try:
         claim = service.delete_evidence(claim_number, evidence_id)
-    except LookupError as error:
+    except ClaimResourceNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
-    except ValueError as error:
+    except ClaimValidationError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     if claim is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
@@ -237,12 +209,12 @@ def delete_evidence(
 def update_claim_information(
     claim_number: str,
     request: ClaimInformationUpdateRequest,
-    _current_user: AdjusterUser,
+    _current_user: AdminUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
     try:
         claim = service.update_claim_information(claim_number, request)
-    except ValueError as error:
+    except ClaimValidationError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     if claim is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
@@ -258,15 +230,15 @@ def start_workflow_analysis(
     claim_number: str,
     background_tasks: BackgroundTasks,
     request: Request,
-    _current_user: AdjusterUser,
+    _current_user: AnalysisUser,
     service: ClaimServiceDependency,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> WorkflowAnalysisRunResponse:
     try:
         run = service.start_workflow_analysis(claim_number)
-    except ValueError as error:
+    except ClaimValidationError as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
-    except RuntimeError as error:
+    except ClaimConflictError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
@@ -288,16 +260,16 @@ def update_document_analysis_field(
     document_analysis_id: int,
     field_id: int,
     request: DocumentAnalysisFieldUpdateRequest,
-    _current_user: AdjusterUser,
+    _current_user: AnalysisUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
     try:
         claim = service.update_document_analysis_field(
             claim_number, document_analysis_id, field_id, request
         )
-    except LookupError as error:
+    except ClaimResourceNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
-    except ValueError as error:
+    except ClaimValidationError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     if claim is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
@@ -313,16 +285,16 @@ def update_document_field_validation(
     run_id: int,
     field_validation_id: int,
     request: DocumentFieldValidationUpdateRequest,
-    _current_user: AdjusterUser,
+    _current_user: AnalysisUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
     try:
         claim = service.update_document_field_validation(
             claim_number, run_id, field_validation_id, request
         )
-    except LookupError as error:
+    except ClaimResourceNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
-    except ValueError as error:
+    except ClaimValidationError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     if claim is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
@@ -338,16 +310,16 @@ def update_document_extracted_field(
     run_id: int,
     extracted_field_id: int,
     request: DocumentExtractedFieldUpdateRequest,
-    _current_user: AdjusterUser,
+    _current_user: AnalysisUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
     try:
         claim = service.update_document_extracted_field(
             claim_number, run_id, extracted_field_id, request
         )
-    except LookupError as error:
+    except ClaimResourceNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
-    except ValueError as error:
+    except ClaimValidationError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     if claim is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
@@ -362,7 +334,7 @@ def update_document_extracted_fields(
     claim_number: str,
     run_id: int,
     request: DocumentExtractedFieldsBatchUpdateRequest,
-    _current_user: AdjusterUser,
+    _current_user: AnalysisUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
     try:
@@ -371,9 +343,9 @@ def update_document_extracted_fields(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=error.detail()
         ) from error
-    except LookupError as error:
+    except ClaimResourceNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
-    except ValueError as error:
+    except ClaimValidationError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     if claim is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
@@ -387,7 +359,7 @@ def update_document_extracted_fields(
 def run_workflow_ai_review(
     claim_number: str,
     run_id: int,
-    _current_user: AdjusterUser,
+    _current_user: AiReviewUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
     try:
@@ -397,11 +369,11 @@ def run_workflow_ai_review(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=error.detail(),
         ) from error
-    except LookupError as error:
+    except ClaimResourceNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
-    except RuntimeError as error:
+    except ClaimConflictError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
-    except ValueError as error:
+    except ClaimValidationError as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
     if claim is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
@@ -416,16 +388,16 @@ def revert_copilot_conclusion_review(
     claim_number: str,
     conclusion_id: int,
     request: CopilotConclusionReviewRevertRequest,
-    current_user: AdjusterUser,
+    current_user: HumanReviewUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
     try:
         claim = service.revert_copilot_conclusion_review(
             claim_number, conclusion_id, request, current_user
         )
-    except LookupError as error:
+    except ClaimResourceNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
-    except RuntimeError as error:
+    except ClaimConflictError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     if claim is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")

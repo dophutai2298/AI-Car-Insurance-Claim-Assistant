@@ -246,13 +246,14 @@ class LlmCopilotService:
         fallback = DeterministicLlmCopilotAdapter().generate_review(input_data)
         try:
             review = self.adapter.generate_review(input_data)
-        except Exception as error:
+        except Exception:
+            logger.exception("AI review generation failed")
             return CopilotConclusionResult(
                 status=CopilotConclusionStatus.LLM_UNAVAILABLE,
                 recommendation=MANUAL_ADJUSTER_REVIEW,
                 structured_review=fallback,
                 fallback_summary=fallback.summary,
-                failure_reason=str(error) or "LLM generation failed",
+                failure_reason="LLM generation failed",
             )
 
         is_fallback = isinstance(self.adapter, DeterministicLlmCopilotAdapter)

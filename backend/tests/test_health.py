@@ -15,7 +15,7 @@ def call_registered_route(path: str):
     return route.endpoint()
 
 
-def test_health_endpoint_reports_service_and_runtime_config(monkeypatch):
+def test_health_endpoint_reports_only_service_and_database_status(monkeypatch):
     monkeypatch.setenv("JWT_SECRET", "test-secret-that-is-long-enough-for-health-tests")
     monkeypatch.setenv("CHECK_DATABASE_ON_HEALTH", "false")
     monkeypatch.setenv("LLM_MODE", "mock")
@@ -29,15 +29,6 @@ def test_health_endpoint_reports_service_and_runtime_config(monkeypatch):
         "status": "ok",
         "service": "ai-car-claim-assistant-api",
         "database": {"status": "not_checked"},
-        "runtime": {
-            "damage_model_mode": "mock",
-            "damage_confidence_threshold": "0.7",
-            "part_search_mode": "mock",
-            "document_ocr_mode": "mock",
-            "llm_mode": "mock",
-            "llm_model": "",
-            "upload_root": "uploads",
-        },
     }
 
 
