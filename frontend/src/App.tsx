@@ -15,6 +15,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  LabelList,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -41,6 +42,16 @@ import { ClaimCreatePage } from "./features/claims/ClaimCreatePage";
 import { ClaimDetailPage } from "./features/claims/ClaimDetailPage";
 import { AdminConfigPage } from "./features/admin/AdminConfigPage";
 import { statusLabel, statusTone } from "./features/claims/statusPresentation";
+import type { ClaimStatus } from "./features/claims/types";
+
+const claimStatusChartColor: Record<ClaimStatus, string> = {
+  DRAFT: "#64748b",
+  ANALYZING: "#2563eb",
+  REVIEW_REQUIRED: "#d97706",
+  AI_APPROVED: "#059669",
+  AI_REJECTED: "#dc2626",
+  FAILED: "#dc2626",
+};
 
 function AppShell() {
   const { logout, session } = useAuth();
@@ -141,6 +152,7 @@ function DashboardPage() {
   const chartData =
     data?.queueMix.map((point) => ({
       name: statusLabel[point.status],
+      status: point.status,
       value: point.value,
     })) ?? [];
   const canCreateClaim = session?.user.role === "ADMIN";
@@ -223,24 +235,38 @@ function DashboardPage() {
               <ResponsiveContainer height="100%" width="100%">
                 <BarChart
                   data={chartData}
-                  margin={{ left: -20, right: 12, top: 12, bottom: 12 }}
+                  layout="vertical"
+                  margin={{ left: 0, right: 28, top: 4, bottom: 4 }}
                 >
                   <CartesianGrid stroke="#e2e8f0" vertical={false} />
                   <XAxis
-                    dataKey="name"
-                    fontSize={12}
-                    interval={0}
-                    stroke="#64748b"
-                    tickLine={false}
-                  />
-                  <YAxis
                     allowDecimals={false}
                     fontSize={12}
                     stroke="#64748b"
                     tickLine={false}
+                    type="number"
+                  />
+                  <YAxis
+                    dataKey="name"
+                    fontSize={12}
+                    stroke="#64748b"
+                    tickLine={false}
+                    type="category"
+                    width={132}
                   />
                   <Tooltip cursor={{ fill: "#f1f5f9" }} />
-                  <Bar dataKey="value" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                  <Bar
+                    barSize={22}
+                    dataKey="value"
+                    radius={[0, 4, 4, 0]}
+                    shape={<ClaimStatusBar />}
+                  >
+                    <LabelList
+                      className="fill-slate-700 text-xs font-semibold"
+                      dataKey="value"
+                      position="right"
+                    />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             ) : null}
@@ -338,6 +364,32 @@ function DashboardPage() {
         </Card.Content>
       </Card>
     </div>
+  );
+}
+
+function ClaimStatusBar({
+  height = 0,
+  payload,
+  width = 0,
+  x = 0,
+  y = 0,
+}: {
+  height?: number;
+  payload?: { status: ClaimStatus };
+  width?: number;
+  x?: number;
+  y?: number;
+}) {
+  return (
+    <rect
+      fill={payload ? claimStatusChartColor[payload.status] : "#2563eb"}
+      height={height}
+      rx={4}
+      ry={4}
+      width={width}
+      x={x}
+      y={y}
+    />
   );
 }
 
