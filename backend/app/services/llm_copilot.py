@@ -20,7 +20,10 @@ document consistency values are authoritative. Never infer missing values, inven
 prices, evidence, policy terms, claim outcomes, or legal conclusions. Reference prices are
 informational only and are not repair costs, payouts, or guaranteed replacement costs.
 Always state that a human adjuster must review the case. You support the adjuster; you do
-not approve or reject the insurance claim. Return the required structured output only."""
+not approve or reject the insurance claim. Return a JSON object only, with exactly these
+keys: summary, assessment_interpretation, damaged_parts_summary,
+document_consistency_summary, warnings, recommended_next_step, and
+human_review_required."""
 
 
 class LlmGenerationError(Exception):
@@ -224,6 +227,7 @@ class LangChainOpenAiAdapter:
             model = ChatOpenAI(**chat_options)
             structured_model = model.with_structured_output(
                 AiReviewStructuredResult,
+                method="json_mode",
                 include_raw=True,
             )
             response = structured_model.invoke(
@@ -244,8 +248,22 @@ class LangChainOpenAiAdapter:
                 model=self.model,
                 response=response,
             )
-            parsed = response.get("parsed") if isinstance(response, dict) else response
+            parsed = (
+                response.get("parsed") if isinstance(response, dict) else response
+            )
+            if parsed is None:
+                parsing_error = (
+                    response.get("parsing_error") if isinstance(response, dict) else None
+                )
+                logger.warning(
+                    "OpenAI AI Review structured output parsing failed for model %s (%s)",
+                    self.model,
+                    type(parsing_error).__name__ if parsing_error else "NoParsedOutput",
+                )
+                raise LlmGenerationError("LLM structured output parsing failed")
             return AiReviewStructuredResult.model_validate(parsed)
+        except LlmGenerationError:
+            raise
         except Exception as error:
             logger.warning(
                 "OpenAI AI Review generation failed for model %s (%s)",
