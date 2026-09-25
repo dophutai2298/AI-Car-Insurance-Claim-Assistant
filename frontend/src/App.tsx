@@ -3,7 +3,6 @@ import {
   CarFront,
   ChartColumn,
   CheckmarkOutline,
-  ChevronRight,
   CloudUpload,
   Document,
   ErrorOutline,
@@ -11,7 +10,7 @@ import {
   SettingsAdjust,
   WarningAlt,
 } from "@carbon/icons-react";
-import { Alert, Button, Card, Chip, EmptyState, Skeleton } from "@heroui/react";
+import { Button, Card, Chip, EmptyState, Skeleton } from "@heroui/react";
 import {
   Bar,
   BarChart,
@@ -22,6 +21,7 @@ import {
   YAxis,
 } from "recharts";
 import {
+  Link,
   Navigate,
   NavLink,
   Outlet,
@@ -32,7 +32,6 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { ClaimQueueTable } from "./features/dashboard/ClaimQueueTable";
-import type { CapabilityState } from "./features/dashboard/types";
 import { useDashboardOverview } from "./features/dashboard/useDashboardOverview";
 import { LoginPage } from "./features/auth/LoginPage";
 import { useAuth } from "./features/auth/AuthProvider";
@@ -41,15 +40,7 @@ import { ProtectedRoute, RoleRoute } from "./features/auth/ProtectedRoute";
 import { ClaimCreatePage } from "./features/claims/ClaimCreatePage";
 import { ClaimDetailPage } from "./features/claims/ClaimDetailPage";
 import { AdminConfigPage } from "./features/admin/AdminConfigPage";
-
-const capabilityTone: Record<
-  CapabilityState,
-  "success" | "warning" | "default"
-> = {
-  ready: "success",
-  mock: "default",
-  warning: "warning",
-};
+import { statusLabel, statusTone } from "./features/claims/statusPresentation";
 
 function AppShell() {
   const { logout, session } = useAuth();
@@ -143,226 +134,218 @@ function AppShell() {
 
 function DashboardPage() {
   const { data, error, isPending } = useDashboardOverview();
+  const { session } = useAuth();
   const navigate = useNavigate();
+  const reviewQueue =
+    data?.claims.filter((claim) => claim.status === "REVIEW_REQUIRED") ?? [];
+  const chartData =
+    data?.queueMix.map((point) => ({
+      name: statusLabel[point.status],
+      value: point.value,
+    })) ?? [];
+  const canCreateClaim = session?.user.role === "ADMIN";
 
   return (
     <div className="mx-auto grid max-w-[1440px] gap-6">
-      <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 xl:flex-row xl:items-end xl:justify-between">
+      <header className="flex flex-col gap-4 border-b border-slate-200 pb-6 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <p className="mb-2 text-sm font-semibold text-slate-500">
-            PoC application shell
+            Claims operations
           </p>
-          <h1 className="max-w-3xl text-3xl font-semibold tracking-normal text-slate-950 sm:text-4xl">
-            AI-assisted claim review workspace
+          <h1 className="max-w-3xl text-3xl font-semibold text-slate-950 sm:text-4xl">
+            Claim review workspace
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-            A focused operating surface for upload intake, damage analysis,
-            policy review and adjuster decisions.
+            Monitor incoming claim files, focus the review queue, and open the
+            evidence record that needs attention.
           </p>
         </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Chip color="success" variant="soft">
-            Backend health ready
-          </Chip>
-          <Chip color="default" variant="soft">
-            Mock adapters active
-          </Chip>
-        </div>
+        {canCreateClaim ? (
+          <Button
+            className="w-full sm:w-auto"
+            onPress={() => navigate("/claims/new")}
+            variant="primary"
+          >
+            <CloudUpload size={18} />
+            New claim
+          </Button>
+        ) : null}
       </header>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           icon={Document}
-          label="Open claims"
+          label="Total claims"
           loading={isPending}
-          value={data?.metrics.openClaims}
+          value={data?.metrics.totalClaims}
         />
         <MetricCard
           icon={WarningAlt}
-          label="Review required"
+          label="Pending reviews"
           loading={isPending}
           tone="warning"
-          value={data?.metrics.reviewRequired}
-        />
-        <MetricCard
-          icon={Activity}
-          label="Avg model latency"
-          loading={isPending}
-          value={data?.metrics.avgModelLatency}
+          value={data?.metrics.pendingReviews}
         />
         <MetricCard
           icon={CheckmarkOutline}
-          label="AI conclusions"
+          label="AI review approved"
           loading={isPending}
           tone="success"
-          value={data?.metrics.aiConclusionReady}
+          value={data?.metrics.aiApproved}
+        />
+        <MetricCard
+          icon={ErrorOutline}
+          label="AI review rejected"
+          loading={isPending}
+          tone="danger"
+          value={data?.metrics.aiRejected}
         />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="grid gap-6">
-          <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
-            <Card.Header className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <Card.Title className="text-lg text-slate-950">
-                  Claim work queue
-                </Card.Title>
-                <Card.Description className="text-sm text-slate-500">
-                  Prioritized claim files ready for intake, AI review and
-                  adjuster action.
-                </Card.Description>
-              </div>
-              <Button
-                className="w-full sm:w-auto"
-                onPress={() => navigate("/claims/new")}
-                size="sm"
-                variant="primary"
-              >
-                <CloudUpload size={17} />
-                New claim
-              </Button>
-            </Card.Header>
-            <Card.Content className="p-5">
-              {isPending ? <QueueSkeleton /> : null}
-              {error ? (
-                <InlineError message="Dashboard data could not be loaded." />
-              ) : null}
-              {data && data.claims.length > 0 ? (
-                <ClaimQueueTable claims={data.claims} />
-              ) : null}
-              {data && data.claims.length === 0 ? (
-                <EmptyState>
-                  <div className="text-sm font-semibold text-slate-950">
-                    No claims in the queue
-                  </div>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Upload claim evidence to create the first review file.
-                  </p>
-                </EmptyState>
-              ) : null}
-            </Card.Content>
-          </Card>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
+          <Card.Header className="border-b border-slate-100 px-5 py-4">
+            <Card.Title className="flex items-center gap-2 text-lg text-slate-950">
+              <ChartColumn size={20} />
+              Claim status overview
+            </Card.Title>
+            <Card.Description className="text-sm text-slate-500">
+              Current volume by workflow status. AI outcomes are not final
+              insurer decisions.
+            </Card.Description>
+          </Card.Header>
+          <Card.Content className="h-72 p-5">
+            {isPending ? <Skeleton className="h-full rounded-lg" /> : null}
+            {error ? (
+              <InlineError message="Dashboard data could not be loaded." />
+            ) : null}
+            {data && chartData.length > 0 ? (
+              <ResponsiveContainer height="100%" width="100%">
+                <BarChart
+                  data={chartData}
+                  margin={{ left: -20, right: 12, top: 12, bottom: 12 }}
+                >
+                  <CartesianGrid stroke="#e2e8f0" vertical={false} />
+                  <XAxis
+                    dataKey="name"
+                    fontSize={12}
+                    interval={0}
+                    stroke="#64748b"
+                    tickLine={false}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    fontSize={12}
+                    stroke="#64748b"
+                    tickLine={false}
+                  />
+                  <Tooltip cursor={{ fill: "#f1f5f9" }} />
+                  <Bar dataKey="value" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : null}
+            {data && chartData.length === 0 ? (
+              <EmptyState>
+                <div className="text-sm font-semibold text-slate-950">
+                  No claim activity yet
+                </div>
+                <p className="mt-1 text-sm text-slate-500">
+                  Status counts will appear once a claim is created.
+                </p>
+              </EmptyState>
+            ) : null}
+          </Card.Content>
+        </Card>
 
-          <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
+        <aside>
+          <Card className="h-full rounded-lg border border-slate-200 bg-white shadow-sm">
             <Card.Header className="border-b border-slate-100 px-5 py-4">
               <Card.Title className="text-lg text-slate-950">
-                Review flow baseline
+                Needs review
               </Card.Title>
               <Card.Description className="text-sm text-slate-500">
-                The shell keeps the future workflow visible without implementing
-                later task scope.
+                Cases waiting for an adjuster decision.
               </Card.Description>
             </Card.Header>
-            <Card.Content className="grid gap-3 p-5 md:grid-cols-3">
-              {["Evidence intake", "Damage analysis", "Decision packet"].map(
-                (step) => (
-                  <div
-                    className="rounded-lg border border-slate-200 bg-slate-50 p-4"
-                    key={step}
-                  >
-                    <div className="mb-3 flex size-9 items-center justify-center rounded-lg bg-white text-blue-700 ring-1 ring-slate-200">
-                      <ChevronRight size={18} />
-                    </div>
-                    <div className="text-sm font-semibold text-slate-950">
-                      {step}
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Reserved surface for the end-to-end claim flow in upcoming
-                      tasks.
-                    </p>
-                  </div>
-                ),
-              )}
+            <Card.Content className="grid gap-2 p-3">
+              {isPending ? <QueueSkeleton /> : null}
+              {data && reviewQueue.length
+                ? reviewQueue.slice(0, 5).map((claim) => (
+                    <Link
+                      className="grid gap-1 rounded-lg px-3 py-3 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      key={claim.id}
+                      to={`/claims/${claim.id}`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-semibold text-blue-700">
+                          {claim.id}
+                        </span>
+                        <Chip
+                          color={statusTone[claim.status]}
+                          size="sm"
+                          variant="soft"
+                        >
+                          {statusLabel[claim.status]}
+                        </Chip>
+                      </div>
+                      <span className="truncate text-sm text-slate-700">
+                        {claim.claimant}
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        {claim.vehicle}
+                      </span>
+                    </Link>
+                  ))
+                : null}
+              {data && reviewQueue.length === 0 ? (
+                <p className="px-2 py-8 text-center text-sm text-slate-500">
+                  No claims currently require adjuster review.
+                </p>
+              ) : null}
             </Card.Content>
           </Card>
-        </div>
-
-        <aside className="grid content-start gap-6">
-          <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
-            <Card.Header className="border-b border-slate-100 px-5 py-4">
-              <Card.Title className="flex items-center gap-2 text-lg text-slate-950">
-                <ChartColumn size={20} />
-                Queue mix
-              </Card.Title>
-            </Card.Header>
-            <Card.Content className="h-64 p-5">
-              {data ? (
-                <ResponsiveContainer height="100%" width="100%">
-                  <BarChart
-                    data={data.queueMix}
-                    margin={{ left: -24, right: 4, top: 8 }}
-                  >
-                    <CartesianGrid stroke="#e2e8f0" vertical={false} />
-                    <XAxis
-                      dataKey="name"
-                      fontSize={12}
-                      stroke="#64748b"
-                      tickLine={false}
-                    />
-                    <YAxis
-                      allowDecimals={false}
-                      fontSize={12}
-                      stroke="#64748b"
-                      tickLine={false}
-                    />
-                    <Tooltip cursor={{ fill: "#eff6ff" }} />
-                    <Bar dataKey="value" fill="#2563eb" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <Skeleton className="h-full rounded-lg" />
-              )}
-            </Card.Content>
-          </Card>
-
-          <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
-            <Card.Header className="border-b border-slate-100 px-5 py-4">
-              <Card.Title className="text-lg text-slate-950">
-                Runtime readiness
-              </Card.Title>
-            </Card.Header>
-            <Card.Content className="grid gap-3 p-5">
-              {(data?.capabilities ?? []).map((item) => (
-                <div
-                  className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 px-3 py-3"
-                  key={item.name}
-                >
-                  <div>
-                    <div className="text-sm font-semibold text-slate-950">
-                      {item.name}
-                    </div>
-                    <div className="text-xs text-slate-500">{item.mode}</div>
-                  </div>
-                  <Chip
-                    color={capabilityTone[item.state]}
-                    size="sm"
-                    variant="soft"
-                  >
-                    {item.state}
-                  </Chip>
-                </div>
-              ))}
-              {isPending ? <Skeleton className="h-24 rounded-lg" /> : null}
-            </Card.Content>
-          </Card>
-
-          <Alert status="warning">
-            <Alert.Title>PoC safety boundary</Alert.Title>
-            <Alert.Description>
-              Sample data is isolated in the frontend repository layer. Connect
-              real APIs only through service boundaries in later tasks.
-            </Alert.Description>
-          </Alert>
         </aside>
       </div>
+
+      <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
+        <Card.Header className="border-b border-slate-100 px-5 py-4">
+          <Card.Title className="text-lg text-slate-950">
+            Recent claims
+          </Card.Title>
+          <Card.Description className="text-sm text-slate-500">
+            Latest activity first. Search by case details, then narrow the queue
+            by status or update date.
+          </Card.Description>
+        </Card.Header>
+        <Card.Content className="p-5">
+          {isPending ? <QueueSkeleton /> : null}
+          {error ? (
+            <InlineError message="Dashboard data could not be loaded." />
+          ) : null}
+          {data && data.claims.length > 0 ? (
+            <ClaimQueueTable claims={data.claims} />
+          ) : null}
+          {data && data.claims.length === 0 ? (
+            <EmptyState>
+              <div className="text-sm font-semibold text-slate-950">
+                No claims yet
+              </div>
+              <p className="mt-1 text-sm text-slate-500">
+                Create a claim to begin evidence intake.
+              </p>
+            </EmptyState>
+          ) : null}
+        </Card.Content>
+      </Card>
     </div>
   );
 }
 
 function ClaimsPage() {
   const { data, error, isPending } = useDashboardOverview();
+  const { session } = useAuth();
   const navigate = useNavigate();
+  const canCreateClaim = session?.user.role === "ADMIN";
 
   return (
     <div className="mx-auto grid max-w-[1440px] gap-6">
@@ -376,14 +359,16 @@ function ClaimsPage() {
             Review active intake cases and open their evidence records.
           </p>
         </div>
-        <Button
-          className="w-full sm:w-auto"
-          onPress={() => navigate("/claims/new")}
-          variant="primary"
-        >
-          <CloudUpload size={18} />
-          New claim
-        </Button>
+        {canCreateClaim ? (
+          <Button
+            className="w-full sm:w-auto"
+            onPress={() => navigate("/claims/new")}
+            variant="primary"
+          >
+            <CloudUpload size={18} />
+            New claim
+          </Button>
+        ) : null}
       </header>
 
       <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -480,7 +465,7 @@ type MetricCardProps = {
   icon: typeof Document;
   label: string;
   loading: boolean;
-  tone?: "default" | "success" | "warning";
+  tone?: "default" | "success" | "warning" | "danger";
   value?: number | string;
 };
 
@@ -495,6 +480,7 @@ function MetricCard({
     default: "bg-blue-50 text-blue-700 ring-blue-100",
     success: "bg-emerald-50 text-emerald-700 ring-emerald-100",
     warning: "bg-amber-50 text-amber-700 ring-amber-100",
+    danger: "bg-red-50 text-red-700 ring-red-100",
   };
 
   return (

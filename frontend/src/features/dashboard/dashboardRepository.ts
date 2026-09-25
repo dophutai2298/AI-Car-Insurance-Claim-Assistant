@@ -5,40 +5,43 @@ export async function getDashboardOverview(
   accessToken: string,
 ): Promise<DashboardOverview> {
   const claims = await listClaims(accessToken);
-  const reviewRequired = claims.filter(
+  const pendingReviews = claims.filter(
     (claim) => claim.status === "REVIEW_REQUIRED",
   ).length;
-  const aiConclusionReady = claims.filter((claim) =>
-    ["AI_APPROVED", "AI_REJECTED"].includes(claim.status),
+  const aiApproved = claims.filter(
+    (claim) => claim.status === "AI_APPROVED",
   ).length;
+  const aiRejected = claims.filter(
+    (claim) => claim.status === "AI_REJECTED",
+  ).length;
+  const sortedClaims = [...claims].sort(
+    (left, right) =>
+      new Date(right.updated_at).getTime() -
+      new Date(left.updated_at).getTime(),
+  );
 
   return {
     metrics: {
-      openClaims: claims.length,
-      reviewRequired,
-      avgModelLatency: "Not available",
-      aiConclusionReady,
+      totalClaims: claims.length,
+      pendingReviews,
+      aiApproved,
+      aiRejected,
     },
-    claims: claims.map((claim) => ({
+    claims: sortedClaims.map((claim) => ({
       id: claim.id,
       claimant: claim.claimant_name,
       vehicle: claim.vehicle_summary,
       status: claim.status,
-      evidenceCount: 0,
-      assessment: "Not assessed",
-      updatedAt: new Date(claim.updated_at).toLocaleString(),
+      updatedAt: claim.updated_at,
     })),
     queueMix: Object.entries(
       claims.reduce<Record<string, number>>((counts, claim) => {
         counts[claim.status] = (counts[claim.status] ?? 0) + 1;
         return counts;
       }, {}),
-    ).map(([name, value]) => ({ name: name.replaceAll("_", " "), value })),
-    capabilities: [
-      { name: "Damage model adapter", mode: "Not started", state: "warning" },
-      { name: "Postgres", mode: "Persistent claims", state: "ready" },
-      { name: "Part search", mode: "Not started", state: "warning" },
-      { name: "LLM", mode: "Not started", state: "warning" },
-    ],
+    ).map(([status, value]) => ({
+      status: status as DashboardOverview["claims"][number]["status"],
+      value,
+    })),
   };
 }

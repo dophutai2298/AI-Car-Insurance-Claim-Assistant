@@ -16,9 +16,19 @@ import {
   Label,
   TextField,
 } from "@heroui/react";
-import { useState, type FormEvent } from "react";
+import {
+  getCoreRowModel,
+  getFilteredRowModel,
+  type LegacyColumnDef,
+  useLegacyTable,
+} from "@tanstack/react-table/legacy";
+import { useMemo, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
+import {
+  DataTableToolbar,
+  TableFilterSelect,
+} from "../../components/DataTableToolbar";
 import { useAuth } from "../auth/AuthProvider";
 import {
   EvidenceImagePreview,
@@ -176,6 +186,8 @@ export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
 
 function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
   const { t } = useTranslation();
+  const [globalFilter, setGlobalFilter] = useState("");
+  const [damageTypeFilter, setDamageTypeFilter] = useState("ALL");
   const annotatedEvidence = Array.from(
     new Map(
       analysis.detections.map((detection) => [
@@ -184,6 +196,57 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
       ]),
     ).values(),
   );
+  const damageRows = useMemo<DamageFindingRow[]>(() => {
+    const modelParts = analysis.model_output?.record.parts ?? [];
+    if (modelParts.length) {
+      return modelParts.map((part, index) => ({
+        id: `${part.part}-${index}`,
+        part: part.part,
+        damageType: part.main_damage,
+        damagePercentage: part.damage_percent,
+      }));
+    }
+
+    return analysis.detections.map((detection, index) => ({
+      id: `${detection.annotated_evidence.id}-${index}`,
+      part: formatLabel(detection.vehicle_part) || t("analysis.areaUnknown"),
+      damageType:
+        formatLabel(detection.damage_type) || t("analysis.damageUnknown"),
+      damagePercentage: detection.damage_percentage,
+    }));
+  }, [analysis.detections, analysis.model_output?.record.parts, t]);
+  const columns = useMemo<LegacyColumnDef<DamageFindingRow>[]>(
+    () => [
+      { accessorKey: "part" },
+      {
+        accessorKey: "damageType",
+        filterFn: (row, columnId, value) =>
+          value === "ALL" || row.getValue(columnId) === value,
+      },
+      { accessorKey: "damagePercentage" },
+    ],
+    [],
+  );
+  const table = useLegacyTable({
+    data: damageRows,
+    columns,
+    state: {
+      globalFilter,
+      columnFilters:
+        damageTypeFilter === "ALL"
+          ? []
+          : [{ id: "damageType", value: damageTypeFilter }],
+    },
+    onGlobalFilterChange: setGlobalFilter,
+    globalFilterFn: "includesString",
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+  });
+  const rows = table.getRowModel().rows;
+  const damageTypes = Array.from(
+    new Set(damageRows.map((row) => row.damageType).filter(Boolean)),
+  );
+  const isFiltered = Boolean(globalFilter) || damageTypeFilter !== "ALL";
 
   return (
     <section className="grid gap-4">
@@ -217,64 +280,109 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
           <Alert.Description>{analysis.warning}</Alert.Description>
         </Alert>
       ) : null}
-      {analysis.detections.length ? (
-        <div className="grid items-start gap-4 xl:grid-cols-[18rem_minmax(0,1fr)]">
-          <div
-            aria-label={t("analysis.annotatedEvidence")}
-            className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1"
-            role="group"
-          >
-            {annotatedEvidence.map((item) => (
-              <figure
-                className="overflow-hidden border border-slate-200 bg-slate-50"
-                key={item.id}
-              >
-                <EvidenceImagePreview
-                  className="h-44 w-full object-contain"
-                  item={item}
-                />
-                <figcaption className="truncate border-t border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
-                  {item.original_filename}
-                </figcaption>
-              </figure>
-            ))}
-          </div>
-          <div className="overflow-x-auto border border-slate-200">
-            <table
-              aria-label={t("analysis.damageTable")}
-              className="w-full min-w-[36rem] border-collapse text-left text-sm"
+      {damageRows.length ? (
+        <div
+          className={`grid items-start gap-4 ${annotatedEvidence.length ? "xl:grid-cols-[18rem_minmax(0,1fr)]" : ""}`}
+        >
+          {annotatedEvidence.length ? (
+            <div
+              aria-label={t("analysis.annotatedEvidence")}
+              className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1"
+              role="group"
             >
-              <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-600">
-                <tr>
-                  <th className="px-4 py-3" scope="col">
-                    {t("analysis.part")}
-                  </th>
-                  <th className="px-4 py-3" scope="col">
-                    {t("analysis.damageType")}
-                  </th>
-                  <th className="px-4 py-3 text-right" scope="col">
-                    {t("analysis.areaPercent")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 bg-white">
-                {analysis.detections.map((detection, index) => (
-                  <tr key={`${detection.annotated_evidence.id}-${index}`}>
-                    <td className="px-4 py-3 font-semibold text-slate-950">
-                      {formatLabel(detection.vehicle_part) ||
-                        t("analysis.areaUnknown")}
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">
-                      {formatLabel(detection.damage_type) ||
-                        t("analysis.damageUnknown")}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono font-semibold text-slate-950">
-                      {formatPercent(detection.damage_percentage)}
-                    </td>
+              {annotatedEvidence.map((item) => (
+                <figure
+                  className="overflow-hidden border border-slate-200 bg-slate-50"
+                  key={item.id}
+                >
+                  <EvidenceImagePreview
+                    className="h-44 w-full object-contain"
+                    item={item}
+                  />
+                  <figcaption className="truncate border-t border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                    {item.original_filename}
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          ) : null}
+          <div className="grid gap-4">
+            <DataTableToolbar
+              clearLabel={t("common.clearFilters", {
+                defaultValue: "Clear filters",
+              })}
+              isFiltered={isFiltered}
+              onClear={() => {
+                setGlobalFilter("");
+                setDamageTypeFilter("ALL");
+              }}
+              onSearchChange={setGlobalFilter}
+              resultCount={rows.length}
+              resultLabel={
+                rows.length === 1 ? "finding shown" : "findings shown"
+              }
+              searchLabel="Search findings"
+              searchPlaceholder="Part or damage type"
+              searchValue={globalFilter}
+            >
+              <TableFilterSelect
+                label={t("analysis.damageType")}
+                onChange={setDamageTypeFilter}
+                options={[
+                  { label: "All damage types", value: "ALL" },
+                  ...damageTypes.map((damageType) => ({
+                    label: damageType,
+                    value: damageType,
+                  })),
+                ]}
+                value={damageTypeFilter}
+              />
+            </DataTableToolbar>
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table
+                aria-label={t("analysis.damageTable")}
+                className="w-full min-w-[36rem] border-collapse text-left text-sm"
+              >
+                <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-600">
+                  <tr>
+                    <th className="px-4 py-3" scope="col">
+                      {t("analysis.part")}
+                    </th>
+                    <th className="px-4 py-3" scope="col">
+                      {t("analysis.damageType")}
+                    </th>
+                    <th className="px-4 py-3 text-right" scope="col">
+                      {t("analysis.areaPercent")}
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-200 bg-white">
+                  {rows.map((row) => (
+                    <tr key={row.id}>
+                      <td className="px-4 py-3 font-semibold text-slate-950">
+                        {row.original.part}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {row.original.damageType}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono font-semibold text-slate-950">
+                        {formatPercent(row.original.damagePercentage)}
+                      </td>
+                    </tr>
+                  ))}
+                  {rows.length === 0 ? (
+                    <tr>
+                      <td
+                        className="px-4 py-10 text-center text-sm text-slate-500"
+                        colSpan={3}
+                      >
+                        No damage findings match the selected filters.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       ) : (
@@ -286,6 +394,13 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
     </section>
   );
 }
+
+type DamageFindingRow = {
+  id: string;
+  part: string;
+  damageType: string;
+  damagePercentage: number;
+};
 
 export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
   const { t } = useTranslation();
