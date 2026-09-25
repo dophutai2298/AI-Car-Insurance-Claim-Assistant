@@ -1,4 +1,3 @@
-import { CheckmarkOutline, WarningAlt } from "@carbon/icons-react";
 import { useTranslation } from "react-i18next";
 
 import { requiredEvidenceCategories } from "./EvidencePanel";
@@ -14,9 +13,9 @@ const styles: Record<
   { indicator: string; state: string; surface: string }
 > = {
   completed: {
-    indicator: "border-emerald-600 bg-emerald-600 text-white",
-    state: "text-emerald-700",
-    surface: "bg-white text-slate-950",
+    indicator: "border-blue-600 bg-blue-600 text-white",
+    state: "text-blue-700",
+    surface: "bg-blue-50 text-slate-950",
   },
   current: {
     indicator: "border-blue-600 bg-blue-600 text-white",
@@ -24,9 +23,9 @@ const styles: Record<
     surface: "bg-blue-50 text-slate-950",
   },
   available: {
-    indicator: "border-slate-300 bg-white text-slate-700",
-    state: "text-slate-600",
-    surface: "bg-white text-slate-950 hover:bg-slate-50",
+    indicator: "border-blue-200 bg-blue-100 text-blue-800",
+    state: "text-blue-700",
+    surface: "bg-blue-50 text-slate-950 hover:bg-blue-100/70",
   },
   blocked: {
     indicator: "border-slate-200 bg-slate-100 text-slate-400",
@@ -36,12 +35,12 @@ const styles: Record<
   warning: {
     indicator: "border-amber-500 bg-amber-100 text-amber-800",
     state: "text-amber-800",
-    surface: "bg-amber-50 text-slate-950 hover:bg-amber-100/70",
+    surface: "bg-blue-50 text-slate-950 hover:bg-blue-100/70",
   },
   error: {
     indicator: "border-red-600 bg-red-100 text-red-800",
     state: "text-red-700",
-    surface: "bg-red-50 text-slate-950 hover:bg-red-100/70",
+    surface: "bg-blue-50 text-slate-950 hover:bg-blue-100/70",
   },
 };
 
@@ -98,13 +97,7 @@ export function ClaimWorkflowStepper({
               <span
                 className={`flex size-8 shrink-0 items-center justify-center rounded-md border text-xs font-semibold ${style.indicator}`}
               >
-                {state === "completed" ? (
-                  <CheckmarkOutline size={16} />
-                ) : ["warning", "error"].includes(state) ? (
-                  <WarningAlt size={16} />
-                ) : (
-                  index + 1
-                )}
+                {index + 1}
               </span>
               <span className="min-w-0 text-left">
                 <span className="block text-sm font-semibold leading-5">
