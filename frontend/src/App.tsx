@@ -1,5 +1,6 @@
 import {
   Activity,
+  ArrowUp,
   CarFront,
   ChartColumn,
   CheckmarkOutline,
@@ -10,14 +11,21 @@ import {
   SettingsAdjust,
   WarningAlt,
 } from "@carbon/icons-react";
-import { Button, Card, Chip, EmptyState, Skeleton } from "@heroui/react";
+import {
+  Button,
+  Card,
+  Chip,
+  EmptyState,
+  Skeleton,
+  Tooltip,
+} from "@heroui/react";
 import {
   Bar,
   BarChart,
   CartesianGrid,
   LabelList,
   ResponsiveContainer,
-  Tooltip,
+  Tooltip as ChartTooltip,
   XAxis,
   YAxis,
 } from "recharts";
@@ -31,6 +39,7 @@ import {
   useNavigate,
 } from "react-router";
 import { useTranslation } from "react-i18next";
+import { useEffect, useRef, useState } from "react";
 
 import { ClaimQueueTable } from "./features/dashboard/ClaimQueueTable";
 import { useDashboardOverview } from "./features/dashboard/useDashboardOverview";
@@ -56,6 +65,8 @@ const claimStatusChartColor: Record<ClaimStatus, string> = {
 function AppShell() {
   const { logout, session } = useAuth();
   const { t } = useTranslation();
+  const scrollContainerRef = useRef<HTMLElement | null>(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
   const navigation = [
     { label: t("navigation.dashboard"), icon: Activity, path: "/dashboard" },
     { label: t("navigation.claims"), icon: Document, path: "/claims" },
@@ -69,6 +80,24 @@ function AppShell() {
   const visibleNavigation = navigation.filter(
     (item) => !item.adminOnly || session?.user.role === "ADMIN",
   );
+
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+
+    const updateBackToTopVisibility = () => {
+      setShowBackToTop(scrollContainer.scrollTop > 320);
+    };
+
+    updateBackToTopVisibility();
+    scrollContainer.addEventListener("scroll", updateBackToTopVisibility, {
+      passive: true,
+    });
+
+    return () => {
+      scrollContainer.removeEventListener("scroll", updateBackToTopVisibility);
+    };
+  }, []);
 
   return (
     <main className="h-dvh overflow-hidden bg-slate-100 text-slate-950">
@@ -135,9 +164,35 @@ function AppShell() {
           </div>
         </aside>
 
-        <section className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6 lg:px-8">
+        <section
+          className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6 lg:px-8"
+          ref={scrollContainerRef}
+        >
           <Outlet />
         </section>
+        {showBackToTop ? (
+          <div className="fixed bottom-5 right-5 z-30">
+            <Tooltip>
+              <Tooltip.Trigger>
+                <Button
+                  aria-label={t("common.backToTop")}
+                  isIconOnly
+                  onPress={() =>
+                    scrollContainerRef.current?.scrollTo({
+                      behavior: "smooth",
+                      top: 0,
+                    })
+                  }
+                  size="sm"
+                  variant="primary"
+                >
+                  <ArrowUp size={18} />
+                </Button>
+              </Tooltip.Trigger>
+              <Tooltip.Content>{t("common.backToTop")}</Tooltip.Content>
+            </Tooltip>
+          </div>
+        ) : null}
       </div>
     </main>
   );
@@ -254,7 +309,7 @@ function DashboardPage() {
                     type="category"
                     width={132}
                   />
-                  <Tooltip cursor={{ fill: "#f1f5f9" }} />
+                  <ChartTooltip cursor={{ fill: "#f1f5f9" }} />
                   <Bar
                     barSize={22}
                     dataKey="value"
