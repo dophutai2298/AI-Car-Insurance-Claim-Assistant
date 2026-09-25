@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.core.config import Settings
 from app.models import CopilotConclusionStatus
+from app.services.llm_token_usage import log_llm_token_usage
 
 AI_REVIEW_PROMPT_VERSION = "ai-review-v2"
 AI_REVIEW_SCHEMA_VERSION = "ai-review-schema-v2"
@@ -195,10 +196,17 @@ class UnavailableLlmCopilotAdapter:
 
 
 class LangChainOpenAiAdapter:
-    def __init__(self, base_url: str | None, api_key: str, model: str):
+    def __init__(
+        self,
+        base_url: str | None,
+        api_key: str,
+        model: str,
+        token_usage_logging_enabled: bool = False,
+    ):
         self.base_url = base_url
         self.api_key = api_key
         self.model = model
+        self.token_usage_logging_enabled = token_usage_logging_enabled
 
     def generate_review(self, input_data: CopilotInput) -> AiReviewStructuredResult:
         try:
@@ -214,7 +222,10 @@ class LangChainOpenAiAdapter:
             if self.base_url:
                 chat_options["base_url"] = self.base_url
             model = ChatOpenAI(**chat_options)
-            structured_model = model.with_structured_output(AiReviewStructuredResult)
+            structured_model = model.with_structured_output(
+                AiReviewStructuredResult,
+                include_raw=True,
+            )
             response = structured_model.invoke(
                 [
                     SystemMessage(content=AI_REVIEW_SYSTEM_PROMPT),
@@ -226,7 +237,15 @@ class LangChainOpenAiAdapter:
                     ),
                 ]
             )
-            return AiReviewStructuredResult.model_validate(response)
+            log_llm_token_usage(
+                enabled=self.token_usage_logging_enabled,
+                operation="ai_review",
+                claim_number=input_data.context.claim.claim_number,
+                model=self.model,
+                response=response,
+            )
+            parsed = response.get("parsed") if isinstance(response, dict) else response
+            return AiReviewStructuredResult.model_validate(parsed)
         except Exception as error:
             logger.warning(
                 "OpenAI AI Review generation failed for model %s (%s)",
@@ -281,4 +300,5 @@ def get_llm_copilot_adapter(settings: Settings) -> LlmCopilotAdapter:
         settings.llm_base_url,
         settings.openai_api_key,
         settings.openai_model,
+        settings.llm_token_usage_log_enabled,
     )

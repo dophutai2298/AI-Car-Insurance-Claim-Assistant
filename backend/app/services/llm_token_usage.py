@@ -52,7 +52,8 @@ def log_llm_token_usage(
     *,
     enabled: bool,
     operation: str,
-    document_type: str,
+    document_type: str | None = None,
+    claim_number: str | None = None,
     model: str,
     response: object,
     field_key: str | None = None,
@@ -61,10 +62,15 @@ def log_llm_token_usage(
     if not enabled:
         return
 
-    context = (
-        f"operation={operation} document={document_type} model={model}"
-        + (f" field={field_key}" if field_key else "")
-    )
+    context_parts = [f"operation={operation}"]
+    if document_type:
+        context_parts.append(f"document={document_type}")
+    if claim_number:
+        context_parts.append(f"claim={claim_number}")
+    context_parts.append(f"model={model}")
+    if field_key:
+        context_parts.append(f"field={field_key}")
+    context = " ".join(context_parts)
     usage = _usage_from_response(response)
     if usage is None:
         logger.info("[LLM_TOKEN_USAGE] %s status=unavailable", context)

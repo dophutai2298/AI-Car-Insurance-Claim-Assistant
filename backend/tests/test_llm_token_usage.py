@@ -58,6 +58,33 @@ def test_logs_openai_response_metadata_as_a_fallback(caplog):
     assert "input_tokens=80 output_tokens=12 total_tokens=92" in caplog.text
 
 
+def test_logs_usage_for_an_ai_review_claim(caplog):
+    response = {
+        "raw": SimpleNamespace(
+            usage_metadata={
+                "input_tokens": 480,
+                "output_tokens": 120,
+                "total_tokens": 600,
+            },
+            response_metadata={},
+        )
+    }
+
+    with caplog.at_level(logging.INFO):
+        log_llm_token_usage(
+            enabled=True,
+            operation="ai_review",
+            claim_number="CLM-000001",
+            model="gpt-test",
+            response=response,
+        )
+
+    assert (
+        "[LLM_TOKEN_USAGE] operation=ai_review claim=CLM-000001 model=gpt-test "
+        "input_tokens=480 output_tokens=120 total_tokens=600"
+    ) in caplog.text
+
+
 def test_does_not_log_when_token_usage_logging_is_disabled(caplog):
     response = SimpleNamespace(
         usage_metadata={"input_tokens": 1, "output_tokens": 2, "total_tokens": 3},
