@@ -46,3 +46,33 @@ test("filters claims by text and review status, then restores the queue", async 
   expect(screen.getByRole("link", { name: "CLM-000101" })).toBeVisible();
   expect(screen.getByRole("link", { name: "CLM-000102" })).toBeVisible();
 });
+
+test("paginates filtered claims and resets to the first page when page size changes", async () => {
+  const user = userEvent.setup();
+  const pagedClaims = Array.from({ length: 12 }, (_, index) => ({
+    id: `CLM-${String(index + 201).padStart(6, "0")}`,
+    claimant: `Claimant ${index + 1}`,
+    vehicle: "2024 Toyota Camry",
+    status: "DRAFT" as const,
+    updatedAt: "2026-09-24T08:00:00Z",
+  }));
+  render(
+    <MemoryRouter>
+      <ClaimQueueTable claims={pagedClaims} />
+    </MemoryRouter>,
+  );
+
+  expect(screen.getByText("Showing 1-10 of 12 claims")).toBeVisible();
+  expect(
+    screen.queryByRole("link", { name: "CLM-000211" }),
+  ).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Next page" }));
+  expect(screen.getByText(/^Page/)).toHaveTextContent("Page 2 of 2");
+  expect(screen.getByRole("link", { name: "CLM-000211" })).toBeVisible();
+
+  await user.selectOptions(screen.getByLabelText("Rows per page"), "20");
+  expect(await screen.findByText("Page 1 of 1")).toBeVisible();
+  expect(screen.getByRole("link", { name: "CLM-000201" })).toBeVisible();
+  expect(screen.getByRole("link", { name: "CLM-000212" })).toBeVisible();
+});

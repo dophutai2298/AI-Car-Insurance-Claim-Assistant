@@ -1,12 +1,14 @@
-import { Chip } from "@heroui/react";
-import { flexRender } from "@tanstack/react-table";
+import { ChevronLeft, ChevronRight } from "@carbon/icons-react";
+import { Button, Chip } from "@heroui/react";
+import { flexRender, type PaginationState } from "@tanstack/react-table";
 import {
   getCoreRowModel,
   getFilteredRowModel,
+  getPaginationRowModel,
   type LegacyColumnDef,
   useLegacyTable,
 } from "@tanstack/react-table/legacy";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 
 import {
@@ -36,6 +38,10 @@ export function ClaimQueueTable({
   const [globalFilter, setGlobalFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<ClaimStatus | "ALL">("ALL");
   const [dateRange, setDateRange] = useState<DateRange>("ALL");
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 10,
+  });
   const dateFilteredClaims = useMemo(
     () =>
       claims.filter((claim) => isWithinDateRange(claim.updatedAt, dateRange)),
@@ -92,15 +98,32 @@ export function ClaimQueueTable({
       globalFilter,
       columnFilters:
         statusFilter === "ALL" ? [] : [{ id: "status", value: statusFilter }],
+      pagination,
     },
     onGlobalFilterChange: setGlobalFilter,
     globalFilterFn: "includesString",
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
   });
   const rows = table.getRowModel().rows;
+  const totalRows = table.getFilteredRowModel().rows.length;
+  const firstVisibleRow = totalRows
+    ? pagination.pageIndex * pagination.pageSize + 1
+    : 0;
+  const lastVisibleRow = Math.min(
+    (pagination.pageIndex + 1) * pagination.pageSize,
+    totalRows,
+  );
+  const pageCount = table.getPageCount();
   const isFiltered =
     Boolean(globalFilter) || statusFilter !== "ALL" || dateRange !== "ALL";
+  const canGoToPreviousPage = pagination.pageIndex > 0;
+  const canGoToNextPage = pagination.pageIndex < pageCount - 1;
+
+  useEffect(() => {
+    setPagination((current) => ({ ...current, pageIndex: 0 }));
+  }, [globalFilter, statusFilter, dateRange]);
 
   return (
     <div className="grid gap-4">
@@ -184,6 +207,60 @@ export function ClaimQueueTable({
             ) : null}
           </tbody>
         </table>
+      </div>
+
+      <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-end sm:justify-between">
+        <p className="text-sm tabular-nums text-slate-600">
+          {totalRows
+            ? `Showing ${firstVisibleRow}-${lastVisibleRow} of ${totalRows} claims`
+            : "No claims to show"}
+        </p>
+        <div className="flex flex-wrap items-end gap-2">
+          <TableFilterSelect
+            label="Rows per page"
+            onChange={(value) =>
+              setPagination({ pageIndex: 0, pageSize: Number(value) })
+            }
+            options={[10, 20, 50, 100].map((pageSize) => ({
+              label: String(pageSize),
+              value: String(pageSize),
+            }))}
+            value={String(pagination.pageSize)}
+          />
+          <div className="flex items-center gap-1 pb-0.5">
+            <Button
+              aria-label="Previous page"
+              isDisabled={!canGoToPreviousPage}
+              onPress={() =>
+                setPagination((current) => ({
+                  ...current,
+                  pageIndex: Math.max(0, current.pageIndex - 1),
+                }))
+              }
+              size="sm"
+              variant="ghost"
+            >
+              <ChevronLeft size={18} />
+            </Button>
+            <span className="min-w-24 px-2 text-center text-sm font-medium tabular-nums text-slate-700">
+              Page {totalRows ? pagination.pageIndex + 1 : 0} of {pageCount}
+            </span>
+            <Button
+              aria-label="Next page"
+              isDisabled={!canGoToNextPage}
+              onPress={() =>
+                setPagination((current) => ({
+                  ...current,
+                  pageIndex: Math.min(pageCount - 1, current.pageIndex + 1),
+                }))
+              }
+              size="sm"
+              variant="ghost"
+            >
+              <ChevronRight size={18} />
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );
