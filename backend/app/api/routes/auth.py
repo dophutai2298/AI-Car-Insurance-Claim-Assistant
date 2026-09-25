@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import AdminUser, CurrentUser
+from app.api.dependencies import AdminUser, AnalysisSupportUser
 from app.core.config import Settings, get_settings
 from app.db import get_db
 from app.schemas.auth import LoginRequest, LoginResponse, UserCreateRequest, UserResponse
@@ -34,7 +34,7 @@ def login(
 
 
 @router.get("/me", response_model=UserResponse)
-def current_session(current_user: CurrentUser) -> UserResponse:
+def current_session(current_user: AnalysisSupportUser) -> UserResponse:
     return UserResponse.model_validate(current_user)
 
 

@@ -2,59 +2,110 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+
 from app.core.config import Settings
-from app.models import Evidence
-from app.services.damage_output import (
-    CarDamageRecord,
-    DamageDetail,
-    DamageModelDetection,
-    DamagePart,
-    normalize_damage_text,
-)
+from app.models import DamageDetectionStatus, Evidence
 
 
 class DamageModelUnavailableError(Exception):
     pass
 
 
+class DamageType(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+
+    type: str = Field(min_length=1)
+    percent: float = Field(ge=0, le=100)
+
+
+class DamagePart(BaseModel):
+    """One item from the damage model's structured JSON response."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+
+    part: str = Field(min_length=1)
+    main_damage: str = Field(min_length=1)
+    damage_percent: float = Field(ge=0, le=100)
+    damage_types: list[DamageType] = Field(min_length=1)
+    # Existing assessment rules still use confidence for mock fixtures. The local
+    # package does not expose it, so its structured output uses the neutral default.
+    assessment_confidence: float = Field(default=1.0, ge=0, le=1, exclude=True)
+
+
+STRUCTURED_DAMAGE_OUTPUT = TypeAdapter(list[DamagePart])
+
+
+@dataclass(frozen=True)
+class DamageModelDetection:
+    source_evidence_id: int
+    annotated_evidence_id: int
+    vehicle_part: str | None
+    damage_type: str | None
+    damage_percentage: float
+    confidence: float
+    status: DamageDetectionStatus
+
+
+@dataclass(frozen=True)
+class DamageModelImageResult:
+    source_evidence_id: int
+    annotated_evidence_id: int
+    parts: tuple[DamagePart, ...]
+
+    @property
+    def part_identities(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(part.part for part in self.parts))
+
+    def to_detections(self) -> list[DamageModelDetection]:
+        return [
+            DamageModelDetection(
+                source_evidence_id=self.source_evidence_id,
+                annotated_evidence_id=self.annotated_evidence_id,
+                vehicle_part=part.part,
+                damage_type=part.main_damage,
+                damage_percentage=part.damage_percent,
+                confidence=part.assessment_confidence,
+                status=DamageDetectionStatus.DETECTED,
+            )
+            for part in self.parts
+        ]
+
+
 @dataclass(frozen=True)
 class DamageModelAnalysisResult:
     adapter_name: str
-    records: tuple[CarDamageRecord, ...]
+    results: tuple[DamageModelImageResult, ...]
     warnings: tuple[str, ...] = ()
 
     @property
     def detections(self) -> list[DamageModelDetection]:
-        return [detection for record in self.records for detection in record.to_detections()]
+        return [detection for result in self.results for detection in result.to_detections()]
 
     @property
     def part_identities(self) -> tuple[str, ...]:
         return tuple(
             dict.fromkeys(
                 part
-                for record in self.records
-                for part in record.part_identities
+                for result in self.results
+                for part in result.part_identities
             )
         )
 
     def to_dict(self) -> dict[str, object]:
-        aggregate_record = {
-            "source_evidence_ids": [record.source_evidence_id for record in self.records],
-            "annotated_evidence_ids": [
-                record.annotated_evidence_id for record in self.records
-            ],
-            "raw_text": "\n\n".join(
-                record.raw_text for record in self.records if record.raw_text
-            ),
-            "parts": [
-                part.to_dict()
-                for record in self.records
-                for part in record.parts
-            ],
-        }
         return {
             "part_identities": list(self.part_identities),
-            "record": aggregate_record,
+            "record": {
+                "source_evidence_ids": [result.source_evidence_id for result in self.results],
+                "annotated_evidence_ids": [
+                    result.annotated_evidence_id for result in self.results
+                ],
+                "parts": [
+                    part.model_dump()
+                    for result in self.results
+                    for part in result.parts
+                ],
+            },
         }
 
 
@@ -67,11 +118,11 @@ class EvidencePathResolver(Protocol):
 
 
 class DamageCarPackageRunner(Protocol):
-    def analyze(self, image_path: Path) -> str: ...
+    def analyze(self, image_path: Path) -> object: ...
 
 
 class PendingDamageCarPackageRunner:
-    def analyze(self, image_path: Path) -> str:
+    def analyze(self, image_path: Path) -> object:
         # TODO(damage-car): replace this boundary with the package's public inference API.
         raise DamageModelUnavailableError(
             "The local damage_car package API has not been configured yet"
@@ -80,7 +131,7 @@ class PendingDamageCarPackageRunner:
 
 class MockDamageModelAdapter:
     def analyze(self, images: list[Evidence]) -> DamageModelAnalysisResult:
-        records: list[CarDamageRecord] = []
+        results: list[DamageModelImageResult] = []
         for image in images:
             fixture_name = image.original_filename.lower()
             if "no-damage" in fixture_name:
@@ -95,16 +146,20 @@ class MockDamageModelAdapter:
                     self._part("rear_left_door", "scratch", 12.4, 0.88),
                 )
             else:
-                parts = (self._part("rear_bumper", "dent", 32.5, 0.91),)
-            raw_text = self._format_raw_text(parts)
-            records.append(
-                normalize_damage_text(
-                    raw_text,
+                parts = (
+                    self._part("rear_bumper", "dent", 32.5, 0.91),
+                    self._part("rear_left_door", "scratch", 12.4, 0.88),
+                    self._part("front_left_fender", "dent", 18.7, 0.89),
+                    self._part("hood", "scratch", 8.3, 0.90),
+                )
+            results.append(
+                DamageModelImageResult(
                     source_evidence_id=image.id,
                     annotated_evidence_id=image.id,
+                    parts=parts,
                 )
             )
-        return DamageModelAnalysisResult(adapter_name="mock", records=tuple(records))
+        return DamageModelAnalysisResult(adapter_name="mock", results=tuple(results))
 
     @staticmethod
     def _part(
@@ -114,33 +169,12 @@ class MockDamageModelAdapter:
         confidence: float,
     ) -> DamagePart:
         return DamagePart(
-            vehicle_part=vehicle_part,
-            total_damage_percentage=damage_percentage,
-            part_confidence=confidence,
-            damage_details=(
-                DamageDetail(
-                    damage_type=damage_type,
-                    area_percentage=damage_percentage,
-                    pixels=0,
-                    confidence=confidence,
-                ),
-            ),
+            part=vehicle_part,
+            main_damage=damage_type,
+            damage_percent=damage_percentage,
+            damage_types=[DamageType(type=damage_type, percent=damage_percentage)],
+            assessment_confidence=confidence,
         )
-
-    @staticmethod
-    def _format_raw_text(parts: tuple[DamagePart, ...]) -> str:
-        lines: list[str] = []
-        for part in parts:
-            lines.append(
-                f"{part.vehicle_part} | Total Damage: {part.total_damage_percentage:.2f}% "
-                f"| Part Conf: {part.part_confidence:.2f}"
-            )
-            lines.extend(
-                f"  - {detail.damage_type} | Area: {detail.area_percentage:.2f}% "
-                f"| Pixels: {detail.pixels:,} | Conf: {detail.confidence:.2f}"
-                for detail in part.damage_details
-            )
-        return "\n".join(lines)
 
 
 class LocalDamageModelAdapter:
@@ -153,35 +187,34 @@ class LocalDamageModelAdapter:
         self.runner = runner or PendingDamageCarPackageRunner()
 
     def analyze(self, images: list[Evidence]) -> DamageModelAnalysisResult:
-        records: list[CarDamageRecord] = []
+        results: list[DamageModelImageResult] = []
         warnings: list[str] = []
         for image in images:
             try:
                 image_path = self.storage.resolve_path(image.stored_path)
-                raw_text = self.runner.analyze(image_path)
-                record = normalize_damage_text(
-                    raw_text,
-                    source_evidence_id=image.id,
-                    # TODO(damage-car): persist the package's annotated image and use its evidence id.
-                    annotated_evidence_id=image.id,
+                parts = tuple(
+                    STRUCTURED_DAMAGE_OUTPUT.validate_python(self.runner.analyze(image_path))
                 )
-                if not record.parts:
-                    warnings.append(
-                        f"No structured damage parts were parsed from {image.original_filename}."
+                # TODO(damage-car): persist the package's annotated image and use its evidence id.
+                results.append(
+                    DamageModelImageResult(
+                        source_evidence_id=image.id,
+                        annotated_evidence_id=image.id,
+                        parts=parts,
                     )
-                records.append(record)
+                )
             except Exception as error:
                 warnings.append(
                     f"Damage model failed for {image.original_filename} ({type(error).__name__})."
                 )
 
-        if images and not records:
+        if images and not results:
             raise DamageModelUnavailableError(
                 "The local damage model failed for all vehicle images"
             )
         return DamageModelAnalysisResult(
             adapter_name="local",
-            records=tuple(records),
+            results=tuple(results),
             warnings=tuple(warnings),
         )
 

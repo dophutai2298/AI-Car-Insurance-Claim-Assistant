@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import CurrentUser
+from app.api.dependencies import AdminUser
 from app.db import get_db
 from app.repositories.vehicle_manufacturers import VehicleManufacturerRepository
 from app.schemas.vehicle_makes import VehicleManufacturerResponse
@@ -25,7 +25,7 @@ VehicleManufacturerServiceDependency = Annotated[
 
 @router.get("", response_model=list[VehicleManufacturerResponse])
 def list_active_vehicle_manufacturers(
-    _current_user: CurrentUser,
+    _current_user: AdminUser,
     service: VehicleManufacturerServiceDependency,
 ) -> list[VehicleManufacturerResponse]:
     return service.active_responses()

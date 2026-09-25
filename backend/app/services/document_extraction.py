@@ -379,6 +379,7 @@ class DocumentExtractionService:
                 warning=str(error),
             )
         except Exception as error:
+            logger.exception("Unexpected structured extraction error for %s", category.value)
             return DocumentExtractionOutcome(
                 category=category,
                 status=AnalysisResultStatus.FAILED,

@@ -1,5 +1,8 @@
 import json
+import logging
 from types import SimpleNamespace
+
+import pytest
 
 from app.services.llm_copilot import (
     AI_REVIEW_PROMPT_VERSION,
@@ -143,7 +146,7 @@ def test_llm_copilot_returns_same_structured_shape_when_provider_fails():
 
     assert conclusion.status == "LLM_UNAVAILABLE"
     assert conclusion.fallback_summary
-    assert conclusion.failure_reason == "Provider request failed"
+    assert conclusion.failure_reason == "LLM generation failed"
     assert conclusion.structured_review.human_review_required is True
     assert conclusion.structured_review.damaged_parts_summary
     assert conclusion.structured_review.document_consistency_summary == (
@@ -154,20 +157,32 @@ def test_llm_copilot_returns_same_structured_shape_when_provider_fails():
     ]
 
 
-def test_openai_adapter_uses_langchain_messages_and_typed_output(monkeypatch):
+def test_openai_adapter_uses_langchain_messages_typed_output_and_logs_usage(monkeypatch, caplog):
     captured: dict[str, object] = {}
 
     class StructuredModel:
         def invoke(self, messages):
             captured["messages"] = messages
-            return structured_review("OpenAI structured summary")
+            return {
+                "raw": SimpleNamespace(
+                    usage_metadata={
+                        "input_tokens": 480,
+                        "output_tokens": 120,
+                        "total_tokens": 600,
+                    },
+                    response_metadata={},
+                ),
+                "parsed": structured_review("OpenAI structured summary"),
+                "parsing_error": None,
+            }
 
     class FakeChatOpenAI:
         def __init__(self, **kwargs):
             captured.update(kwargs)
 
-        def with_structured_output(self, schema):
+        def with_structured_output(self, schema, **kwargs):
             captured["schema"] = schema
+            captured["structured_output_options"] = kwargs
             return StructuredModel()
 
     monkeypatch.setattr("langchain_openai.ChatOpenAI", FakeChatOpenAI)
@@ -176,14 +191,20 @@ def test_openai_adapter_uses_langchain_messages_and_typed_output(monkeypatch):
         llm_base_url=None,
         openai_api_key="test-key",
         openai_model="gpt-5.6-luna",
+        llm_token_usage_log_enabled=True,
     )
 
-    result = get_llm_copilot_adapter(settings).generate_review(build_input())
+    with caplog.at_level(logging.INFO):
+        result = get_llm_copilot_adapter(settings).generate_review(build_input())
 
     assert "base_url" not in captured
     assert captured["api_key"] == "test-key"
     assert captured["model"] == "gpt-5.6-luna"
     assert captured["schema"] is AiReviewStructuredResult
+    assert captured["structured_output_options"] == {
+        "method": "json_mode",
+        "include_raw": True,
+    }
     messages = captured["messages"]
     assert [type(message).__name__ for message in messages] == [
         "SystemMessage",
@@ -193,3 +214,41 @@ def test_openai_adapter_uses_langchain_messages_and_typed_output(monkeypatch):
     assert json.loads(messages[1].content) == build_input().model_context()
     assert result.summary == "OpenAI structured summary"
     assert result.human_review_required is True
+    assert (
+        "[LLM_TOKEN_USAGE] operation=ai_review claim=CLM-000001 model=gpt-5.6-luna "
+        "input_tokens=480 output_tokens=120 total_tokens=600"
+    ) in caplog.text
+
+
+def test_openai_adapter_reports_a_provider_structured_output_parsing_failure(monkeypatch, caplog):
+    class StructuredModel:
+        def invoke(self, messages):
+            return {
+                "raw": SimpleNamespace(usage_metadata=None, response_metadata={}),
+                "parsed": None,
+                "parsing_error": ValueError("Provider returned invalid JSON"),
+            }
+
+    class FakeChatOpenAI:
+        def __init__(self, **kwargs):
+            pass
+
+        def with_structured_output(self, schema, **kwargs):
+            return StructuredModel()
+
+    monkeypatch.setattr("langchain_openai.ChatOpenAI", FakeChatOpenAI)
+    settings = SimpleNamespace(
+        llm_mode="openai",
+        llm_base_url=None,
+        openai_api_key="test-key",
+        openai_model="nvidia/nemotron-3-ultra-550b-a55b:free",
+        llm_token_usage_log_enabled=True,
+    )
+
+    with caplog.at_level(logging.WARNING), pytest.raises(
+        LlmGenerationError,
+        match="structured output parsing failed",
+    ):
+        get_llm_copilot_adapter(settings).generate_review(build_input())
+
+    assert "structured output parsing failed" in caplog.text

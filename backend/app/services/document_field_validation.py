@@ -334,6 +334,7 @@ class DocumentFieldValidationService:
                     )
                 )
             except Exception as error:
+                logger.exception("Unexpected field validation error for %s", definition.field_key)
                 results.append(
                     self._unavailable_result(
                         definition,

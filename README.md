@@ -41,12 +41,12 @@ and retry settings keep one failed document from blocking the remaining workflow
 Do not commit API keys.
 
 Set `LLM_TOKEN_USAGE_LOG_ENABLED=true` to print provider-reported token usage after
-each document extraction and document field-validation LLM call. Each terminal log
-includes the operation, document type, model, input tokens, output tokens, and total
-tokens. Set it to `false` to disable these logs. OCR text, prompts, and model output
-are never included in the token-usage log. If the provider omits usage metadata, the
-log reports `status=unavailable` instead of estimating tokens with a potentially
-incompatible tokenizer.
+each document extraction, document field-validation, and AI Review LLM call. Each
+terminal log includes the operation, relevant document type or claim number, model,
+input tokens, output tokens, and total tokens. Set it to `false` to disable these logs.
+OCR text, prompts, and model output are never included in the token-usage log. If the
+provider omits usage metadata, the log reports `status=unavailable` instead of
+estimating tokens with a potentially incompatible tokenizer.
 
 ### 2. Start Postgres
 
@@ -89,6 +89,12 @@ The backend creates the required tables and seeds these local demo accounts on s
 Set the demo credentials before the first database startup through the corresponding values in `.env`.
 To reseed changed credentials locally, recreate the development Postgres volume.
 Authentication endpoints are available at `POST /api/auth/login` and `GET /api/auth/me`.
+
+`ADMIN` can use all protected APIs. `ADJUSTER` can run Analysis, AI Review, and Human
+Review, and can read its own session, a claim detail, and its evidence content to
+support those workflows. Claim creation/listing, evidence changes, account management,
+and configuration require `ADMIN`. An admin must prepare a claim before an adjuster
+opens its detail URL; the current dashboard claim list is admin-only.
 
 ### DeepDoc Vietnamese document analysis
 

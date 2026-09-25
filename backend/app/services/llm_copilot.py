@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.core.config import Settings
 from app.models import CopilotConclusionStatus
+from app.services.llm_token_usage import log_llm_token_usage
 
 AI_REVIEW_PROMPT_VERSION = "ai-review-v2"
 AI_REVIEW_SCHEMA_VERSION = "ai-review-schema-v2"
@@ -19,7 +20,10 @@ document consistency values are authoritative. Never infer missing values, inven
 prices, evidence, policy terms, claim outcomes, or legal conclusions. Reference prices are
 informational only and are not repair costs, payouts, or guaranteed replacement costs.
 Always state that a human adjuster must review the case. You support the adjuster; you do
-not approve or reject the insurance claim. Return the required structured output only."""
+not approve or reject the insurance claim. Return a JSON object only, with exactly these
+keys: summary, assessment_interpretation, damaged_parts_summary,
+document_consistency_summary, warnings, recommended_next_step, and
+human_review_required."""
 
 
 class LlmGenerationError(Exception):
@@ -195,10 +199,17 @@ class UnavailableLlmCopilotAdapter:
 
 
 class LangChainOpenAiAdapter:
-    def __init__(self, base_url: str | None, api_key: str, model: str):
+    def __init__(
+        self,
+        base_url: str | None,
+        api_key: str,
+        model: str,
+        token_usage_logging_enabled: bool = False,
+    ):
         self.base_url = base_url
         self.api_key = api_key
         self.model = model
+        self.token_usage_logging_enabled = token_usage_logging_enabled
 
     def generate_review(self, input_data: CopilotInput) -> AiReviewStructuredResult:
         try:
@@ -214,7 +225,11 @@ class LangChainOpenAiAdapter:
             if self.base_url:
                 chat_options["base_url"] = self.base_url
             model = ChatOpenAI(**chat_options)
-            structured_model = model.with_structured_output(AiReviewStructuredResult)
+            structured_model = model.with_structured_output(
+                AiReviewStructuredResult,
+                method="json_mode",
+                include_raw=True,
+            )
             response = structured_model.invoke(
                 [
                     SystemMessage(content=AI_REVIEW_SYSTEM_PROMPT),
@@ -226,7 +241,29 @@ class LangChainOpenAiAdapter:
                     ),
                 ]
             )
-            return AiReviewStructuredResult.model_validate(response)
+            log_llm_token_usage(
+                enabled=self.token_usage_logging_enabled,
+                operation="ai_review",
+                claim_number=input_data.context.claim.claim_number,
+                model=self.model,
+                response=response,
+            )
+            parsed = (
+                response.get("parsed") if isinstance(response, dict) else response
+            )
+            if parsed is None:
+                parsing_error = (
+                    response.get("parsing_error") if isinstance(response, dict) else None
+                )
+                logger.warning(
+                    "OpenAI AI Review structured output parsing failed for model %s (%s)",
+                    self.model,
+                    type(parsing_error).__name__ if parsing_error else "NoParsedOutput",
+                )
+                raise LlmGenerationError("LLM structured output parsing failed")
+            return AiReviewStructuredResult.model_validate(parsed)
+        except LlmGenerationError:
+            raise
         except Exception as error:
             logger.warning(
                 "OpenAI AI Review generation failed for model %s (%s)",
@@ -246,13 +283,14 @@ class LlmCopilotService:
         fallback = DeterministicLlmCopilotAdapter().generate_review(input_data)
         try:
             review = self.adapter.generate_review(input_data)
-        except Exception as error:
+        except Exception:
+            logger.exception("AI review generation failed")
             return CopilotConclusionResult(
                 status=CopilotConclusionStatus.LLM_UNAVAILABLE,
                 recommendation=MANUAL_ADJUSTER_REVIEW,
                 structured_review=fallback,
                 fallback_summary=fallback.summary,
-                failure_reason=str(error) or "LLM generation failed",
+                failure_reason="LLM generation failed",
             )
 
         is_fallback = isinstance(self.adapter, DeterministicLlmCopilotAdapter)
@@ -280,4 +318,5 @@ def get_llm_copilot_adapter(settings: Settings) -> LlmCopilotAdapter:
         settings.llm_base_url,
         settings.openai_api_key,
         settings.openai_model,
+        settings.llm_token_usage_log_enabled,
     )

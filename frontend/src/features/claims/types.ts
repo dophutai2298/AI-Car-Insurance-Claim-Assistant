@@ -218,24 +218,21 @@ export type ConfirmedAnalysisSnapshot = {
   saved_at: string;
 };
 
-export type DamageDetail = {
-  damage_type: string;
-  area_percentage: number;
-  pixels: number;
-  confidence: number;
+export type DamageType = {
+  type: string;
+  percent: number;
 };
 
 export type DamagePart = {
-  vehicle_part: string;
-  total_damage_percentage: number;
-  part_confidence: number;
-  damage_details: DamageDetail[];
+  part: string;
+  main_damage: string;
+  damage_percent: number;
+  damage_types: DamageType[];
 };
 
 export type CarDamageRecord = {
   source_evidence_ids: number[];
   annotated_evidence_ids: number[];
-  raw_text: string;
   parts: DamagePart[];
 };
 
