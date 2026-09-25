@@ -146,7 +146,12 @@ class MockDamageModelAdapter:
                     self._part("rear_left_door", "scratch", 12.4, 0.88),
                 )
             else:
-                parts = (self._part("rear_bumper", "dent", 32.5, 0.91),)
+                parts = (
+                    self._part("rear_bumper", "dent", 32.5, 0.91),
+                    self._part("rear_left_door", "scratch", 12.4, 0.88),
+                    self._part("front_left_fender", "dent", 18.7, 0.89),
+                    self._part("hood", "scratch", 8.3, 0.90),
+                )
             results.append(
                 DamageModelImageResult(
                     source_evidence_id=image.id,

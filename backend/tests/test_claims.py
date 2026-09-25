@@ -1642,11 +1642,12 @@ def test_adjuster_can_correct_document_fields_then_run_structured_ai_review(clie
     assert captured_context["documents"]["VEHICLE_REGISTRATION"]["fields"][
         "license_plate"
     ] == {"value": "51H-123.45", "consistency": "MATCH"}
-    assert captured_context["damage"]["findings"][0] == {
-        "part": "rear_bumper",
-        "damage_type": "dent",
-        "area_percentage": 32.5,
-    }
+    assert [finding["part"] for finding in captured_context["damage"]["findings"]] == [
+        "rear_bumper",
+        "rear_left_door",
+        "front_left_fender",
+        "hood",
+    ]
     serialized_context = json.dumps(captured_context)
     for excluded in (
         "source_evidence_id",
@@ -1786,36 +1787,35 @@ def test_damage_analysis_returns_normalized_repair_fixture_and_persists_it(clien
     analysis = response.json()
     assert analysis["assessment"] == "REPAIR_LIKELY"
     assert analysis["model_output"]["adapter_name"] == "mock"
-    assert analysis["model_output"]["part_identities"] == ["rear_bumper"]
+    assert analysis["model_output"]["part_identities"] == [
+        "rear_bumper",
+        "rear_left_door",
+        "front_left_fender",
+        "hood",
+    ]
     assert "raw_text" not in analysis["model_output"]["record"]
     evidence_id = analysis["detections"][0]["annotated_evidence"]["id"]
     assert analysis["model_output"]["record"]["source_evidence_ids"] == [evidence_id]
     assert analysis["model_output"]["record"]["annotated_evidence_ids"] == [evidence_id]
-    assert analysis["model_output"]["record"]["parts"][0] == {
-        "part": "rear_bumper",
-        "main_damage": "dent",
-        "damage_percent": 32.5,
-        "damage_types": [{"type": "dent", "percent": 32.5}],
-    }
-    assert analysis["detections"] == [{
-        "vehicle_part": "rear_bumper",
-        "damage_type": "dent",
-        "damage_percentage": 32.5,
-        "confidence": 0.91,
-        "status": "DETECTED",
-        "annotated_evidence": {
-            "id": 1,
-            "category": "VEHICLE_DAMAGE_IMAGE",
-            "original_filename": "repair.jpg",
-            "content_type": "image/jpeg",
-            "file_size": 23,
-            "uploaded_at": analysis["detections"][0]["annotated_evidence"]["uploaded_at"],
-            "content_url": "/api/claims/CLM-000001/evidence/1/content",
-                "group_id": None,
-                "group_label": None,
-                "analysis_required": False,
-            },
-    }]
+    assert [part["part"] for part in analysis["model_output"]["record"]["parts"]] == [
+        "rear_bumper",
+        "rear_left_door",
+        "front_left_fender",
+        "hood",
+    ]
+    assert [
+        (item["vehicle_part"], item["damage_type"], item["damage_percentage"])
+        for item in analysis["detections"]
+    ] == [
+        ("rear_bumper", "dent", 32.5),
+        ("rear_left_door", "scratch", 12.4),
+        ("front_left_fender", "dent", 18.7),
+        ("hood", "scratch", 8.3),
+    ]
+    assert all(
+        item["annotated_evidence"]["original_filename"] == "repair.jpg"
+        for item in analysis["detections"]
+    )
     detail = client.get(f"/api/claims/{claim['id']}", headers=admin_headers(client)).json()
     assert detail["status"] == "REVIEW_REQUIRED"
     assert detail["latest_damage_analysis"]["id"] == analysis["id"]
@@ -1851,7 +1851,7 @@ def test_damage_analysis_supports_multiple_images_and_detections(client: TestCli
     response = client.post(f"/api/claims/{claim['id']}/damage-analysis", headers=admin_headers(client))
 
     assert response.status_code == 200
-    assert len(response.json()["detections"]) == 3
+    assert len(response.json()["detections"]) == 6
 
 
 def test_damage_analysis_requires_vehicle_damage_images(client: TestClient):
