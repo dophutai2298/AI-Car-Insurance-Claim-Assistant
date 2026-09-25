@@ -11,6 +11,7 @@ const en = {
   common: {
     edit: "Edit",
     save: "Save",
+    cancel: "Cancel",
     tryAgain: "Try again.",
     notProvided: "Not provided",
   },
@@ -343,6 +344,7 @@ const vi = {
   common: {
     edit: "Chỉnh sửa",
     save: "Lưu",
+    cancel: "Hủy",
     tryAgain: "Thử lại.",
     notProvided: "Chưa cung cấp",
   },
