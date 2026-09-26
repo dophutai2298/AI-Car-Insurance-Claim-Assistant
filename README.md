@@ -5,7 +5,7 @@
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.9 to 3.11
 - Node.js 20.19+ or 22.12+
 - Docker Desktop or another Docker-compatible runtime
 
