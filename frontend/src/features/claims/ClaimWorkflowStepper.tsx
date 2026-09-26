@@ -113,18 +113,18 @@ export function ClaimWorkflowStepper({
           );
 
           return (
-            <li key={step.id}>
+            <li className="min-w-0" key={step.id}>
               {state === "blocked" || !onNavigate ? (
                 <div
                   aria-current={state === "current" ? "step" : undefined}
-                  className={`flex min-h-24 w-full items-start gap-3 px-4 py-4 sm:px-4 ${style.surface}`}
+                  className={`flex min-h-24 w-full items-start justify-start gap-3 px-4 py-4 text-left sm:px-4 ${style.surface}`}
                 >
                   {content}
                 </div>
               ) : (
                 <button
                   aria-current={state === "current" ? "step" : undefined}
-                  className={`flex min-h-24 w-full items-start gap-3 px-4 py-4 text-left transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:px-4 ${style.surface}`}
+                  className={`flex min-h-24 w-full items-start justify-start gap-3 px-4 py-4 text-left transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:px-4 ${style.surface}`}
                   onClick={() => onNavigate(step.id)}
                   type="button"
                 >
