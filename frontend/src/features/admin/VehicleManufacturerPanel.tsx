@@ -10,9 +10,19 @@ import {
   Skeleton,
   TextField,
 } from "@heroui/react";
-import { useState, type FormEvent } from "react";
+import {
+  getCoreRowModel,
+  getFilteredRowModel,
+  type LegacyColumnDef,
+  useLegacyTable,
+} from "@tanstack/react-table/legacy";
+import { useMemo, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
+import {
+  DataTableToolbar,
+  TableFilterSelect,
+} from "../../components/DataTableToolbar";
 import {
   useAdminVehicleManufacturers,
   useCreateVehicleManufacturer,
@@ -26,6 +36,36 @@ export function VehicleManufacturerPanel() {
   const createManufacturer = useCreateVehicleManufacturer();
   const [name, setName] = useState("");
   const [error, setError] = useState("");
+  const [globalFilter, setGlobalFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const columns = useMemo<LegacyColumnDef<VehicleManufacturer>[]>(
+    () => [
+      { accessorKey: "name" },
+      {
+        accessorKey: "is_active",
+        filterFn: (row, columnId, value) =>
+          value === "ALL" || row.getValue(columnId) === (value === "ACTIVE"),
+      },
+    ],
+    [],
+  );
+  const table = useLegacyTable({
+    data: manufacturers.data ?? [],
+    columns,
+    state: {
+      globalFilter,
+      columnFilters:
+        statusFilter === "ALL"
+          ? []
+          : [{ id: "is_active", value: statusFilter }],
+    },
+    onGlobalFilterChange: setGlobalFilter,
+    globalFilterFn: "includesString",
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+  });
+  const rows = table.getRowModel().rows;
+  const isFiltered = Boolean(globalFilter) || statusFilter !== "ALL";
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -95,30 +135,87 @@ export function VehicleManufacturerPanel() {
           <EmptyState>{t("manufacturers.empty")}</EmptyState>
         ) : null}
         {manufacturers.data?.length ? (
-          <div className="overflow-x-auto max-h-[600px] rounded-lg border border-slate-200">
-            <table className="w-full min-w-[38rem] border-collapse text-left text-sm">
-              <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500">
-                <tr>
-                  <th className="px-4 py-3" scope="col">
-                    {t("manufacturers.name")}
-                  </th>
-                  <th className="w-28 px-4 py-3" scope="col">
-                    {t("manufacturers.status")}
-                  </th>
-                  <th className="w-56 px-4 py-3" scope="col">
-                    {t("manufacturers.actions")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {manufacturers.data.map((manufacturer) => (
-                  <ManufacturerRow
-                    key={manufacturer.id}
-                    manufacturer={manufacturer}
-                  />
-                ))}
-              </tbody>
-            </table>
+          <div className="grid gap-4">
+            <DataTableToolbar
+              clearLabel={t("common.clearFilters", {
+                defaultValue: "Clear filters",
+              })}
+              isFiltered={isFiltered}
+              onClear={() => {
+                setGlobalFilter("");
+                setStatusFilter("ALL");
+              }}
+              onSearchChange={setGlobalFilter}
+              resultCount={rows.length}
+              resultLabel={t("manufacturers.shown", {
+                count: rows.length,
+                defaultValue:
+                  rows.length === 1
+                    ? "manufacturer shown"
+                    : "manufacturers shown",
+              })}
+              searchLabel={t("manufacturers.search", {
+                defaultValue: "Search manufacturers",
+              })}
+              searchPlaceholder={t("manufacturers.searchPlaceholder", {
+                defaultValue: "Search by name",
+              })}
+              searchValue={globalFilter}
+            >
+              <TableFilterSelect
+                label={t("manufacturers.status")}
+                onChange={setStatusFilter}
+                options={[
+                  {
+                    label: t("manufacturers.allStatuses", {
+                      defaultValue: "All statuses",
+                    }),
+                    value: "ALL",
+                  },
+                  { label: t("manufacturers.active"), value: "ACTIVE" },
+                  {
+                    label: t("manufacturers.disabled"),
+                    value: "DISABLED",
+                  },
+                ]}
+                value={statusFilter}
+              />
+            </DataTableToolbar>
+            <div className="max-h-[600px] overflow-x-auto rounded-lg border border-slate-200">
+              <table className="w-full min-w-[38rem] border-collapse text-left text-sm">
+                <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3" scope="col">
+                      {t("manufacturers.name")}
+                    </th>
+                    <th className="w-28 px-4 py-3" scope="col">
+                      {t("manufacturers.status")}
+                    </th>
+                    <th className="w-56 px-4 py-3" scope="col">
+                      {t("manufacturers.actions")}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {rows.map((row) => (
+                    <ManufacturerRow key={row.id} manufacturer={row.original} />
+                  ))}
+                  {rows.length === 0 ? (
+                    <tr>
+                      <td
+                        className="px-4 py-10 text-center text-sm text-slate-500"
+                        colSpan={3}
+                      >
+                        {t("manufacturers.noMatches", {
+                          defaultValue:
+                            "No manufacturers match the selected filters.",
+                        })}
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
           </div>
         ) : null}
       </Card.Content>
@@ -152,7 +249,11 @@ function ManufacturerRow({
     <>
       <tr className="align-middle hover:bg-slate-50">
         <td className="px-4 py-3">
-          <TextField fullWidth isRequired name={`manufacturer-${manufacturer.id}`}>
+          <TextField
+            fullWidth
+            isRequired
+            name={`manufacturer-${manufacturer.id}`}
+          >
             <Label className="sr-only">{t("manufacturers.name")}</Label>
             <Input
               onChange={(event) => setName(event.target.value)}

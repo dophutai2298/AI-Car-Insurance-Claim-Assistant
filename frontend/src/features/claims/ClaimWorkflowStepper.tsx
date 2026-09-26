@@ -1,4 +1,3 @@
-import { CheckmarkOutline, WarningAlt } from "@carbon/icons-react";
 import { useTranslation } from "react-i18next";
 
 import { requiredEvidenceCategories } from "./EvidencePanel";
@@ -9,13 +8,40 @@ export type ClaimStepState =
 export type ClaimStepId =
   "information" | "evidence" | "analysis" | "aiReview" | "humanReview";
 
-const styles: Record<ClaimStepState, string> = {
-  completed: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  current: "border-blue-300 bg-blue-50 text-blue-800",
-  available: "border-slate-300 bg-white text-slate-700",
-  blocked: "border-slate-200 bg-slate-50 text-slate-400",
-  warning: "border-amber-300 bg-amber-50 text-amber-800",
-  error: "border-red-300 bg-red-50 text-red-800",
+const styles: Record<
+  ClaimStepState,
+  { indicator: string; state: string; surface: string }
+> = {
+  completed: {
+    indicator: "border-blue-600 bg-blue-600 text-white",
+    state: "text-blue-700",
+    surface: "bg-blue-50 text-slate-950",
+  },
+  current: {
+    indicator: "border-blue-600 bg-blue-600 text-white",
+    state: "text-blue-700",
+    surface: "bg-blue-50 text-slate-950",
+  },
+  available: {
+    indicator: "border-blue-200 bg-blue-100 text-blue-800",
+    state: "text-blue-700",
+    surface: "bg-blue-50 text-slate-950 hover:bg-blue-100/70",
+  },
+  blocked: {
+    indicator: "border-slate-200 bg-slate-100 text-slate-400",
+    state: "text-slate-400",
+    surface: "bg-slate-50 text-slate-500",
+  },
+  warning: {
+    indicator: "border-amber-500 bg-amber-100 text-amber-800",
+    state: "text-amber-800",
+    surface: "bg-blue-50 text-slate-950 hover:bg-blue-100/70",
+  },
+  error: {
+    indicator: "border-red-600 bg-red-100 text-red-800",
+    state: "text-red-700",
+    surface: "bg-blue-50 text-slate-950 hover:bg-blue-100/70",
+  },
 };
 
 export function ClaimWorkflowStepper({
@@ -36,56 +62,80 @@ export function ClaimWorkflowStepper({
     { id: "humanReview", label: t("claim.stepHumanReview") },
   ] as const;
   const currentIndex = steps.findIndex((step) => step.id === current);
+  const progressWidths = ["w-1/5", "w-2/5", "w-3/5", "w-4/5", "w-full"];
+
   return (
-    <ol aria-label={t("claim.workflow")} className="grid gap-2 md:grid-cols-5">
-      {steps.map((step, index) => {
-        const state =
-          states?.[step.id] ??
-          (index < currentIndex
-            ? "completed"
-            : index === currentIndex
-              ? "current"
-              : "blocked");
-        const content = (
-          <>
-            <span className="flex size-7 shrink-0 items-center justify-center border border-current text-xs font-semibold">
-              {state === "completed" ? (
-                <CheckmarkOutline size={16} />
-              ) : ["warning", "error"].includes(state) ? (
-                <WarningAlt size={16} />
-              ) : (
-                index + 1
-              )}
-            </span>
-            <span className="min-w-0 text-left">
-              <span className="block text-sm font-semibold">{step.label}</span>
-              <span className="block text-xs opacity-80">
-                {t(`claim.${state}`)}
+    <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <header className="flex items-center justify-between gap-4 border-b border-slate-100 px-4 py-3 sm:px-5">
+        <h2 className="text-sm font-semibold text-slate-950">
+          {t("claim.workflow")}
+        </h2>
+        <span className="font-mono text-xs font-semibold tabular-nums text-slate-500">
+          {currentIndex + 1} / {steps.length}
+        </span>
+      </header>
+      <div aria-hidden="true" className="h-1 bg-slate-100">
+        <div
+          className={`h-full bg-blue-600 transition-[width] duration-200 ${progressWidths[currentIndex]}`}
+        />
+      </div>
+      <ol
+        aria-label={t("claim.workflow")}
+        className="grid divide-y divide-slate-100 sm:grid-cols-5 sm:divide-x sm:divide-y-0"
+      >
+        {steps.map((step, index) => {
+          const state =
+            states?.[step.id] ??
+            (index < currentIndex
+              ? "completed"
+              : index === currentIndex
+                ? "current"
+                : "blocked");
+          const style = styles[state];
+          const content = (
+            <>
+              <span
+                className={`flex size-8 shrink-0 items-center justify-center rounded-md border text-xs font-semibold ${style.indicator}`}
+              >
+                {index + 1}
               </span>
-            </span>
-          </>
-        );
-        return (
-          <li key={step.id} className="flex w-full rounded-lg shadow-sm !cursor-pointer pointer-events-auto">
-            {state === "blocked" || !onNavigate ? (
-              <div
-                className={`flex min-h-16 w-full items-center gap-3 border px-3 py-2 ${styles[state]}`}
-              >
-                {content}
-              </div>
-            ) : (
-              <button
-                className={`flex min-h-16 w-full items-center gap-3 border px-3 py-2 ${styles[state]} hover:border-current`}
-                onClick={() => onNavigate(step.id)}
-                type="button"
-              >
-                {content}
-              </button>
-            )}
-          </li>
-        );
-      })}
-    </ol>
+              <span className="min-w-0 text-left">
+                <span className="block text-sm font-semibold leading-5">
+                  {step.label}
+                </span>
+                <span
+                  className={`mt-1 block text-xs font-medium leading-4 ${style.state}`}
+                >
+                  {t(`claim.${state}`)}
+                </span>
+              </span>
+            </>
+          );
+
+          return (
+            <li className="min-w-0" key={step.id}>
+              {state === "blocked" || !onNavigate ? (
+                <div
+                  aria-current={state === "current" ? "step" : undefined}
+                  className={`flex min-h-24 w-full items-start justify-start gap-3 px-4 py-4 text-left sm:px-4 ${style.surface}`}
+                >
+                  {content}
+                </div>
+              ) : (
+                <button
+                  aria-current={state === "current" ? "step" : undefined}
+                  className={`flex min-h-24 w-full items-start justify-start gap-3 px-4 py-4 text-left transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-600 sm:px-4 ${style.surface}`}
+                  onClick={() => onNavigate(step.id)}
+                  type="button"
+                >
+                  {content}
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }
 

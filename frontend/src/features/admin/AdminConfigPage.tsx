@@ -90,7 +90,7 @@ export function AdminConfigPage() {
   }
 
   return (
-    <div className="mx-auto grid max-w-[1120px] gap-6 py-2">
+    <div className="mx-auto grid max-w-[1440px] gap-6">
       <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-semibold text-slate-500">Administration</p>

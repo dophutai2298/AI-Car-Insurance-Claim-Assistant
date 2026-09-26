@@ -16,8 +16,8 @@ export const statusLabel: Record<ClaimStatus, string> = {
   DRAFT: "Draft",
   ANALYZING: "Analyzing",
   REVIEW_REQUIRED: "Review required",
-  AI_APPROVED: "AI approved",
-  AI_REJECTED: "AI rejected",
+  AI_APPROVED: "AI review approved",
+  AI_REJECTED: "AI review rejected",
   FAILED: "Failed",
 };
 

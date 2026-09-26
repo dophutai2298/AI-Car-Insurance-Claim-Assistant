@@ -9,6 +9,7 @@ const initialLanguage =
 
 const en = {
   common: {
+    backToTop: "Back to top",
     edit: "Edit",
     save: "Save",
     cancel: "Cancel",
@@ -342,6 +343,7 @@ const en = {
 
 const vi = {
   common: {
+    backToTop: "L\u00ean \u0111\u1ea7u trang",
     edit: "Chỉnh sửa",
     save: "Lưu",
     cancel: "Hủy",
