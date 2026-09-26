@@ -71,8 +71,12 @@ cd backend
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --reload-dir app
 ```
+
+`--reload-dir app` keeps development reload focused on application code. It
+prevents utility changes such as `backend/scripts/seed_dashboard_claims.py`
+from restarting the API while a local seed command is being run.
 
 The health endpoint is available at `http://localhost:8000/api/health`.
 - Interactive Swagger UI is available at `http://localhost:8000/docs`, 
