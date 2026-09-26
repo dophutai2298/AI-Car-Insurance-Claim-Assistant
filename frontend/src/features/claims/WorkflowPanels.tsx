@@ -652,17 +652,19 @@ export function HumanReviewPanel({ claim }: { claim: ClaimDetail }) {
       className="rounded-lg border border-slate-200 bg-white shadow-sm"
       id="humanReview"
     >
-      <Card.Header className="flex items-center gap-3 border-b border-slate-100 px-6 py-5">
-        <div className="flex size-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
-          <CheckmarkOutline size={20} />
-        </div>
-        <div>
-          <Card.Title className="text-lg text-slate-950">
-            {t("claim.stepHumanReview")}
-          </Card.Title>
-          <Card.Description className="text-sm text-slate-500">
-            {t("humanReview.description")}
-          </Card.Description>
+      <Card.Header className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
+            <CheckmarkOutline size={20} />
+          </div>
+          <div>
+            <Card.Title className="text-lg text-slate-950">
+              {t("claim.stepHumanReview")}
+            </Card.Title>
+            <Card.Description className="text-sm text-slate-500">
+              {t("humanReview.description")}
+            </Card.Description>
+          </div>
         </div>
       </Card.Header>
       <Card.Content className="grid gap-5 p-6">
