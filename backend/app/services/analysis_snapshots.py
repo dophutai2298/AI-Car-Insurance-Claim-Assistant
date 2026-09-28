@@ -1,5 +1,5 @@
 import json
-from datetime import timezone
+from datetime import date, datetime, timezone
 
 from app.models import AnalysisResultStatus, AnalysisSnapshotStatus, Claim, ConsistencyStatus, DocumentExtractedField, EvidenceCategory, WorkflowAnalysisRun
 from app.repositories.analysis_runs import AnalysisRunRepository
@@ -20,6 +20,19 @@ DOCUMENT_EVIDENCE_CATEGORIES = (
     EvidenceCategory.VEHICLE_REGISTRATION,
     EvidenceCategory.DRIVER_LICENSE,
 )
+EXPIRY_DATE_CATEGORIES = frozenset(
+    {EvidenceCategory.ID_CARD, EvidenceCategory.DRIVER_LICENSE}
+)
+EXPIRY_DATE_FORMATS = ("%d/%m/%Y", "%Y-%m-%d")
+
+
+def _parse_confirmed_expiry_date(value: str) -> date | None:
+    for date_format in EXPIRY_DATE_FORMATS:
+        try:
+            return datetime.strptime(value, date_format).date()
+        except ValueError:
+            continue
+    return None
 
 
 class AnalysisSnapshotOperations:
@@ -132,6 +145,32 @@ class AnalysisSnapshotOperations:
                         )
                     )
                     continue
+                if category in EXPIRY_DATE_CATEGORIES and field.field_key == "expiry_date":
+                    expiry_date = _parse_confirmed_expiry_date(proposed_value)
+                    if expiry_date is None:
+                        reasons.append(
+                            AnalysisBlockedReasonResponse(
+                                code="EXPIRY_DATE_INVALID",
+                                category=category,
+                                field_id=field.id,
+                                field_key=field.field_key,
+                                message=(
+                                    "expiry_date must use DD/MM/YYYY or YYYY-MM-DD."
+                                ),
+                            )
+                        )
+                        continue
+                    if expiry_date <= date.today():
+                        reasons.append(
+                            AnalysisBlockedReasonResponse(
+                                code="EXPIRY_DATE_NOT_FUTURE",
+                                category=category,
+                                field_id=field.id,
+                                field_key=field.field_key,
+                                message="expiry_date must be later than today.",
+                            )
+                        )
+                        continue
                 comparison = self.claim_consistency.compare_value(
                     claim_facts,
                     field.field_key,

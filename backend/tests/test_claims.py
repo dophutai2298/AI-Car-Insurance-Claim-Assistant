@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from datetime import date
 import json
 
 import pytest
@@ -424,11 +425,13 @@ def ready_confirmed_fields(run: dict[str, object], claim: dict[str, object]):
         "vehicle_make": claim["vehicle"]["make"],
         "license_plate": claim["vehicle"]["license_plate"],
     }
+    default_values = {"expiry_date": "31/12/2099"}
     return [
         {
             "id": field["id"],
             "confirmed_value": comparable_values.get(field["field_key"])
             or field["confirmed_value"]
+            or default_values.get(field["field_key"])
             or f"Reviewed {field['field_key']}",
         }
         for result in run["document_ocr_results"]
@@ -538,6 +541,51 @@ def test_save_all_rejects_mismatch_atomically_with_structured_field_reason(
     )
     assert refreshed_plate["confirmed_value"] == before
     assert refreshed["analysis_snapshot"] is None
+
+
+@pytest.mark.parametrize("category", ["ID_CARD", "DRIVER_LICENSE"])
+def test_save_all_blocks_identity_document_expiring_today(
+    client: TestClient,
+    category: str,
+):
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=admin_headers(client),
+    )
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=admin_headers(client)
+    ).json()["latest_analysis_run"]
+    fields = ready_confirmed_fields(run, claim)
+    expiry_field = next(
+        field
+        for result in run["document_ocr_results"]
+        if result["document_type"] == category
+        for field in result["extraction"]["fields"]
+        if field["field_key"] == "expiry_date"
+    )
+    next(item for item in fields if item["id"] == expiry_field["id"])[
+        "confirmed_value"
+    ] = date.today().strftime("%d/%m/%Y")
+
+    rejected = client.put(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields",
+        headers=admin_headers(client),
+        json={"fields": fields},
+    )
+
+    assert rejected.status_code == 409
+    reason = next(
+        item
+        for item in rejected.json()["detail"]["blocked_reasons"]
+        if item["field_id"] == expiry_field["id"]
+    )
+    assert reason["code"] == "EXPIRY_DATE_NOT_FUTURE"
+    assert reason["category"] == category
+    assert reason["field_key"] == "expiry_date"
+    assert client.get(
+        f"/api/claims/{claim['id']}", headers=admin_headers(client)
+    ).json()["latest_analysis_run"]["analysis_snapshot"] is None
 
 
 def test_ai_review_rejects_missing_snapshot_before_provider_invocation(
