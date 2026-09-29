@@ -68,6 +68,10 @@ class EvidenceStorage(Protocol):
 
     def delete(self, relative_path: str) -> None: ...
 
+    def save_annotation(
+        self, claim_number: str, image_bytes: bytes, filename: str
+    ) -> StoredEvidence: ...
+
 
 class LocalEvidenceStorage:
     def __init__(self, settings: Settings):
@@ -121,6 +125,29 @@ class LocalEvidenceStorage:
             raise EvidenceStorageError("Unable to store uploaded evidence") from None
 
         return saved
+
+    def save_annotation(self, claim_number: str, image_bytes: bytes, filename: str) -> StoredEvidence:
+        directory = (self.root / claim_number / "annotations").resolve()
+        if not directory.is_relative_to(self.root):
+            raise EvidenceStorageError("Stored evidence path is invalid")
+        destination = directory / f"{uuid4().hex}.jpg"
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            size = len(image_bytes)
+            if size == 0 or size > self.max_file_size_bytes:
+                raise EvidenceValidationError("Detector returned an invalid annotated image")
+            destination.write_bytes(image_bytes)
+            if detect_safe_media_type(destination, destination.name) != "image/jpeg":
+                raise EvidenceValidationError("Detector returned an invalid annotated image")
+            return StoredEvidence(
+                relative_path=destination.relative_to(self.root).as_posix(),
+                original_filename=f"{Path(filename).stem[:241]}-annotated.jpg",
+                content_type="image/jpeg",
+                file_size=size,
+            )
+        except Exception:
+            destination.unlink(missing_ok=True)
+            raise
 
     def _write_upload(self, upload: UploadFile, destination: Path) -> int:
         file_size = 0

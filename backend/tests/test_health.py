@@ -69,9 +69,10 @@ def test_short_jwt_secret_is_rejected(monkeypatch):
         get_settings()
 
 
-def test_legacy_http_damage_model_mode_is_rejected(monkeypatch):
+@pytest.mark.parametrize("mode", ["http", "mock"])
+def test_legacy_damage_model_modes_are_rejected(monkeypatch, mode):
     monkeypatch.setenv("JWT_SECRET", "test-secret-that-is-long-enough-for-health-tests")
-    monkeypatch.setenv("DAMAGE_MODEL_MODE", "http")
+    monkeypatch.setenv("DAMAGE_MODEL_MODE", mode)
     get_settings.cache_clear()
 
     with pytest.raises(ValidationError):

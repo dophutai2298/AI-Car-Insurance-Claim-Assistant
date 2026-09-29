@@ -200,7 +200,7 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
   const { t } = useTranslation();
   const [globalFilter, setGlobalFilter] = useState("");
   const [damageTypeFilter, setDamageTypeFilter] = useState("ALL");
-  const annotatedEvidence = Array.from(
+  const annotatedEvidence = analysis.model_output?.annotated_evidence ?? Array.from(
     new Map(
       analysis.detections.map((detection) => [
         detection.annotated_evidence.id,
@@ -213,8 +213,8 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
     if (modelParts.length) {
       return modelParts.map((part, index) => ({
         id: `${part.part}-${index}`,
-        part: part.part,
-        damageType: part.main_damage,
+        part: formatLabel(part.part) ?? part.part,
+        damageType: formatLabel(part.main_damage) ?? part.main_damage,
         damagePercentage: part.damage_percent,
       }));
     }
@@ -292,7 +292,7 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
           <Alert.Description>{analysis.warning}</Alert.Description>
         </Alert>
       ) : null}
-      {damageRows.length ? (
+      {damageRows.length || annotatedEvidence.length ? (
         <div
           className={`grid items-start gap-4 ${annotatedEvidence.length ? "xl:grid-cols-[18rem_minmax(0,1fr)]" : ""}`}
         >
@@ -388,7 +388,9 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
                         className="px-4 py-10 text-center text-sm text-slate-500"
                         colSpan={3}
                       >
-                        No damage findings match the selected filters.
+                        {damageRows.length
+                          ? "No damage findings match the selected filters."
+                          : t("analysis.noDamage")}
                       </td>
                     </tr>
                   ) : null}

@@ -201,5 +201,5 @@ Hàm `detector.predict(...)` trả về 2 giá trị:
 ## 🔗 Liên kết hệ thống (System Architecture)
 
 Module này được thiết kế theo dạng độc lập, có thể dễ dàng:
-- Đóng gói thành Microservice (FastAPI REST service) để kết nối với `backend/app/services/damage_model.py` qua cấu hình `DAMAGE_MODEL_MODE=http` và `DAMAGE_MODEL_URL`.
+- Backend hiện tích hợp trực tiếp `CarDamageDetector` qua `backend/app/services/damage_model.py`; có thể đóng gói thành microservice trong tương lai nếu cần.
 - Tích hợp trực tiếp vào quy trình giám định bồi thường xe cơ giới tự động, giúp đối chiếu tổn thất thực tế với chi phí phụ tùng (`part_search`) và điều khoản hợp đồng bảo hiểm (`insurance_policy`).

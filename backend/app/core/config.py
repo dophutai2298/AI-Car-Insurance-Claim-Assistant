@@ -25,9 +25,15 @@ class Settings(BaseSettings):
     max_evidence_file_size_bytes: int = Field(
         default=10 * 1024 * 1024, ge=1, validation_alias="MAX_EVIDENCE_FILE_SIZE_BYTES"
     )
-    damage_model_mode: Literal["mock", "local"] = Field(
-        default="mock", validation_alias="DAMAGE_MODEL_MODE"
-    )
+    damage_model_mode: Literal["local"] = Field(default="local", validation_alias="DAMAGE_MODEL_MODE")
+    damage_part_model_path: str = Field(default="AI/models/car_part.pt", validation_alias="DAMAGE_PART_MODEL_PATH")
+    damage_model_path: str = Field(default="AI/models/car_damage.pt", validation_alias="DAMAGE_MODEL_PATH")
+    damage_output_dir: str = Field(default="backend/outputs/car_damage_detector", validation_alias="DAMAGE_OUTPUT_DIR")
+    damage_part_conf: float = Field(default=0.25, ge=0, le=1, validation_alias="DAMAGE_PART_CONF")
+    damage_damage_conf: float = Field(default=0.15, ge=0, le=1, validation_alias="DAMAGE_DAMAGE_CONF")
+    damage_min_percent: float = Field(default=3.0, ge=0, le=100, validation_alias="DAMAGE_MIN_PERCENT")
+    damage_image_size: int = Field(default=640, ge=32, validation_alias="DAMAGE_IMAGE_SIZE")
+    damage_device: str = Field(default="cpu", validation_alias="DAMAGE_DEVICE")
     damage_confidence_threshold: float = Field(
         default=0.70, ge=0, le=1, validation_alias="DAMAGE_CONFIDENCE_THRESHOLD"
     )
@@ -76,6 +82,11 @@ class Settings(BaseSettings):
     def upload_root_path(self) -> Path:
         configured_root = Path(self.upload_root)
         return configured_root if configured_root.is_absolute() else ROOT_DIR / configured_root
+
+    @staticmethod
+    def project_path(value: str) -> Path:
+        path = Path(value)
+        return (path if path.is_absolute() else ROOT_DIR / path).resolve()
 
 
 @lru_cache

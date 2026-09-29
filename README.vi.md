@@ -41,7 +41,7 @@ Các lệnh dưới đây chạy từ thư mục gốc của repository, trừ k
 Copy-Item .env.example .env
 ```
 
-File cấu hình mẫu dùng mock cho phân tích hư hỏng xe, tìm giá phụ tùng và LLM. OCR tài liệu mặc định dùng DeepDoc. Để chạy demo xác định hoặc test, đặt `DOCUMENT_OCR_MODE=mock` trong `.env`.
+File cấu hình mẫu dùng detector xe cục bộ; tìm giá phụ tùng và LLM vẫn ở chế độ mock. OCR tài liệu mặc định dùng DeepDoc. Để chạy demo tài liệu xác định hoặc test, đặt `DOCUMENT_OCR_MODE=mock` trong `.env`.
 
 Để gọi LLM thật, cấu hình các giá trị sau trong `.env`:
 
@@ -70,6 +70,8 @@ PostgreSQL được mở tại cổng `5432`. Thông tin kết nối và credent
 ### 3. Cài đặt và khởi động backend
 
 Wheel DeepDoc là package riêng tư và không được lưu trong Git. Tải `deepdoc_vietocr-0.1.0-py3-none-any.whl` từ [Google Drive](https://drive.google.com/file/d/1LBGigUwhSzncbh4uMpkq5kZzU1JETlQz/view?usp=sharing), rồi đặt tại `backend/package/deepdoc_vietocr-0.1.0-py3-none-any.whl` trước khi cài requirements.
+
+Backend cũng cài các dependency của detector từ `AI/requirements.txt`. Giữ model weights ở `AI/models/car_part.pt` và `AI/models/car_damage.pt`, hoặc cấu hình lại đường dẫn trong `.env`.
 
 ```powershell
 cd backend
@@ -116,12 +118,14 @@ Mở `http://localhost:5173`.
 
 | Cấu hình | Giá trị hỗ trợ | Mặc định | Mục đích |
 | --- | --- | --- | --- |
-| `DAMAGE_MODEL_MODE` | `mock`, `local` | `mock` | Kết quả demo xác định hoặc adapter damage model local. API inference của package `damage_car` bên ngoài vẫn cần được kết nối để chạy model thật. |
+| `DAMAGE_MODEL_MODE` | `local` | `local` | Chạy `AI/CarDamageDetector` với model weights cục bộ. |
 | `PART_SEARCH_MODE` | `mock`, `unavailable` | `mock` | Giá phụ tùng demo hoặc không trả kết quả tìm giá. |
 | `DOCUMENT_OCR_MODE` | `deepdoc`, `mock` | `deepdoc` | OCR DeepDoc hoặc OCR demo xác định. |
 | `LLM_MODE` | `mock`, `openai` | `mock` | Response demo hoặc gọi chat model tương thích OpenAI qua LangChain. |
 
 Với chế độ `openai`, cần đặt `OPENAI_API_KEY` và `OPENAI_MODEL`. Model được chọn cần hỗ trợ structured output theo yêu cầu của ứng dụng. Khả năng truy cập và cách phản hồi có thể khác nhau giữa các nhà cung cấp/model.
+
+Detector xử lý từng ảnh xe đã upload và lưu ảnh kết quả vào `UPLOAD_ROOT/<claim>/annotations/`. Có thể cấu hình `DAMAGE_PART_MODEL_PATH`, `DAMAGE_MODEL_PATH`, `DAMAGE_OUTPUT_DIR`, `DAMAGE_PART_CONF`, `DAMAGE_DAMAGE_CONF`, `DAMAGE_MIN_PERCENT`, `DAMAGE_IMAGE_SIZE`, và `DAMAGE_DEVICE` trong `.env`. Đường dẫn mặc định tính từ thư mục gốc dự án. Chạy thử độc lập bằng `python backend/scripts/test_car_damage_detector.py`.
 
 ## Quyền truy cập
 

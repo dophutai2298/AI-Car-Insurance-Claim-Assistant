@@ -240,6 +240,7 @@ export type DamageModelOutput = {
   adapter_name: string;
   part_identities: string[];
   record: CarDamageRecord;
+  annotated_evidence?: EvidenceItem[];
   warnings: string[];
 };
 

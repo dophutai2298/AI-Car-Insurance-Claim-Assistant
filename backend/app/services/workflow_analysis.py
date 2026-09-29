@@ -92,6 +92,8 @@ class WorkflowAnalysisOperations:
             for category in REQUIRED_EVIDENCE_CATEGORIES
         }
 
+        model_result = None
+        damage_analysis = None
         try:
             model_result = self.damage_model.analyze(
                 by_category[EvidenceCategory.VEHICLE_DAMAGE_IMAGE]
@@ -118,6 +120,9 @@ class WorkflowAnalysisOperations:
             )
             self.analysis_runs.attach_damage(run, damage_analysis)
         except Exception:
+            self.damage_analyses.session.rollback()
+            if model_result is not None and damage_analysis is None:
+                self.damage_model.storage.delete_stored(model_result.annotations)
             logger.exception("Damage analysis failed for run %s", run.id)
             self.analysis_runs.mark_damage_failed(run, "Damage analysis failed")
 

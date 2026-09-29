@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -11,6 +12,8 @@ from app.models import (
     DamageAnalysisRuleSnapshot,
     DamageDetection,
     DamageModelOutput,
+    Evidence,
+    EvidenceCategory,
     ReferencePartPrice,
 )
 from app.services.damage_assessment import AssessmentResult
@@ -36,12 +39,42 @@ class DamageAnalysisRepository:
         self.session.add(analysis)
         self.session.flush()
         analysis.analysis_number = f"DA-{analysis.id:06d}"
+        annotated_ids: dict[int, int] = {}
+        for result in model_result.results:
+            if result.annotation is None:
+                continue
+            annotation = result.annotation
+            record = Evidence(
+                claim_id=claim.id,
+                category=EvidenceCategory.VEHICLE_DAMAGE_ANNOTATION,
+                original_filename=annotation.original_filename,
+                stored_path=annotation.relative_path,
+                content_type=annotation.content_type,
+                file_size=annotation.file_size,
+            )
+            self.session.add(record)
+            self.session.flush()
+            annotated_ids[result.source_evidence_id] = record.id
+        stored_result = replace(
+            model_result,
+            results=tuple(
+                replace(
+                    result,
+                    annotated_evidence_id=annotated_ids.get(
+                        result.source_evidence_id, result.annotated_evidence_id
+                    ),
+                )
+                for result in model_result.results
+            ),
+        )
         self.session.add_all(
             [
                 DamageDetection(
                     analysis_id=analysis.id,
                     source_evidence_id=detection.source_evidence_id,
-                    annotated_evidence_id=detection.annotated_evidence_id,
+                    annotated_evidence_id=annotated_ids.get(
+                        detection.source_evidence_id, detection.annotated_evidence_id
+                    ),
                     vehicle_part=detection.vehicle_part,
                     damage_type=detection.damage_type,
                     damage_percentage=detection.damage_percentage,
@@ -55,7 +88,7 @@ class DamageAnalysisRepository:
             DamageModelOutput(
                 analysis_id=analysis.id,
                 adapter_name=model_result.adapter_name,
-                output_json=json.dumps(model_result.to_dict(), ensure_ascii=False),
+                output_json=json.dumps(stored_result.to_dict(), ensure_ascii=False),
                 warnings_json=json.dumps(list(model_result.warnings), ensure_ascii=False),
             )
         )

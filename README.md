@@ -41,7 +41,7 @@ Commands below are run from the repository root unless a `cd` command changes di
 Copy-Item .env.example .env
 ```
 
-The example config uses mock modes for vehicle damage, part search, and the LLM. Document OCR defaults to DeepDoc. For a deterministic demo or tests, set `DOCUMENT_OCR_MODE=mock` in `.env`.
+The example config uses the local car-damage detector, while part search and the LLM remain in mock mode. Document OCR defaults to DeepDoc. For a deterministic document demo or tests, set `DOCUMENT_OCR_MODE=mock` in `.env`.
 
 For real LLM calls, configure these values in `.env`:
 
@@ -70,6 +70,8 @@ PostgreSQL is exposed on port `5432`. The default local connection and container
 ### 3. Install and start the backend
 
 The DeepDoc wheel is private and is not stored in Git. Download `deepdoc_vietocr-0.1.0-py3-none-any.whl` from [Google Drive](https://drive.google.com/file/d/1LBGigUwhSzncbh4uMpkq5kZzU1JETlQz/view?usp=sharing) and place it at `backend/package/deepdoc_vietocr-0.1.0-py3-none-any.whl` before installing requirements.
+
+The backend requirements also install the detector dependencies from `AI/requirements.txt`. Keep the model weights at `AI/models/car_part.pt` and `AI/models/car_damage.pt` or configure their paths in `.env`.
 
 ```powershell
 cd backend
@@ -116,12 +118,14 @@ Open `http://localhost:5173`.
 
 | Setting | Supported values | Default | Purpose |
 | --- | --- | --- | --- |
-| `DAMAGE_MODEL_MODE` | `mock`, `local` | `mock` | Deterministic demo findings or the local damage-model adapter. The external `damage_car` inference API still needs to be connected for real model inference. |
+| `DAMAGE_MODEL_MODE` | `local` | `local` | Runs the local `AI/CarDamageDetector` with the bundled model weights. |
 | `PART_SEARCH_MODE` | `mock`, `unavailable` | `mock` | Demo reference prices or no price search results. |
 | `DOCUMENT_OCR_MODE` | `deepdoc`, `mock` | `deepdoc` | DeepDoc OCR or deterministic demo OCR. |
 | `LLM_MODE` | `mock`, `openai` | `mock` | Demo responses or LangChain calls to an OpenAI-compatible chat model. |
 
 For the `openai` mode, set `OPENAI_API_KEY` and `OPENAI_MODEL`. The selected model must support the structured output expected by the application. Provider/model availability and response behavior may vary.
+
+The detector reads each uploaded vehicle image and stores its annotated result under `UPLOAD_ROOT/<claim>/annotations/`. Configure `DAMAGE_PART_MODEL_PATH`, `DAMAGE_MODEL_PATH`, `DAMAGE_OUTPUT_DIR`, `DAMAGE_PART_CONF`, `DAMAGE_DAMAGE_CONF`, `DAMAGE_MIN_PERCENT`, `DAMAGE_IMAGE_SIZE`, and `DAMAGE_DEVICE` in `.env` as needed. The default paths resolve from the repository root. The standalone smoke test is `python backend/scripts/test_car_damage_detector.py`.
 
 ## Access rules
 

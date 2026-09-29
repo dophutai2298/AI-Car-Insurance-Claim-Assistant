@@ -24,7 +24,7 @@ def main() -> None:
 
     assert payload["status"] == "ok"
     assert payload["service"] == "ai-car-claim-assistant-api"
-    assert payload["runtime"]["damage_model_mode"] == "mock"
+    assert payload["runtime"]["damage_model_mode"] == "local"
     assert payload["runtime"]["part_search_mode"] == "mock"
     assert payload["runtime"]["llm_mode"] == "mock"
 
