@@ -61,7 +61,7 @@ def test_langchain_adapter_sends_system_and_human_messages_with_structured_schem
     assert captured["options"] == {
         "model": "test-model",
         "api_key": "test-key",
-        "temperature": 0,
+        # "temperature": 0,
         "timeout": 60.0,
         "max_retries": 0,
     }

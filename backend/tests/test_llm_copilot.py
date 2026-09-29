@@ -202,8 +202,9 @@ def test_openai_adapter_uses_langchain_messages_typed_output_and_logs_usage(monk
     assert captured["model"] == "gpt-5.6-luna"
     assert captured["schema"] is AiReviewStructuredResult
     assert captured["structured_output_options"] == {
-        "method": "json_mode",
+        "method": "json_schema",
         "include_raw": True,
+        "strict": True,
     }
     messages = captured["messages"]
     assert [type(message).__name__ for message in messages] == [

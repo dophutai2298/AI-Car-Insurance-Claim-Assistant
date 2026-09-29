@@ -1,125 +1,138 @@
-## AI Car Insurance Claim Assistant
-- Description: An intelligent copilot that empowers insurance adjusters to optimize the auto claim workflow through automated document verification, damage assessment, and risk analysis.
+# AI Car Insurance Claim Assistant
 
-## Local Development
+A full-stack proof of concept for managing auto insurance claims. Adjusters can review claim information, evidence, OCR and structured document extraction, vehicle damage findings, AI recommendations, and human review decisions.
 
-### Prerequisites
+**Languages:** English | [Tiếng Việt](README.vi.md)
 
-- Python 3.9 to 3.11
-- Node.js 20.19+ or 22.12+
-- Docker Desktop or another Docker-compatible runtime
+## What it does
+
+- Provides role-based access for `ADMIN` and `ADJUSTER` users.
+- Manages claims, vehicle and incident details, and evidence files.
+- Runs document OCR and LLM-based extraction for identity cards, insurance policies, vehicle registrations, and driver licenses.
+- Runs vehicle damage analysis and presents normalized damage findings by vehicle part.
+- Supports AI review, human review, and configurable assessment rules.
+- Stores application data in PostgreSQL and uploaded files under the configured local upload directory.
+
+This is a decision-support PoC. AI findings and recommendations require review by an authorized human adjuster.
+
+## Technology
+
+- Frontend: React, TypeScript, Vite, HeroUI, Tailwind CSS, TanStack Query/Table, and Recharts.
+- Backend: Python, FastAPI, SQLAlchemy, and Pydantic.
+- Database: PostgreSQL.
+- Document OCR: private `deepdoc_vietocr` package (DeepDoc, VietOCR, and ONNX).
+- LLM: mock mode by default; optional OpenAI-compatible integration through LangChain.
+
+## Prerequisites
+
+- Python 3.10 or 3.11.
+- Node.js 20.19+ or 22.12+.
+- Docker Desktop or another Docker-compatible runtime with Compose.
+- Access to the private `deepdoc_vietocr` wheel for real document OCR.
+- An OpenAI API key only if using `LLM_MODE=openai`.
+
+## Quick start
+
+Commands below are run from the repository root unless a `cd` command changes directory.
 
 ### 1. Configure environment
 
-Copy `.env.example` to `.env` and adjust values if needed. The defaults run the PoC in mock mode for the damage model, part search, and LLM.
-
-Vehicle damage analysis supports `DAMAGE_MODEL_MODE=mock` for deterministic demos
-and `DAMAGE_MODEL_MODE=local` for the local `damage_car` package boundary. The
-local package's public inference API is still a focused TODO; until it is wired,
-local mode reports an unavailable model instead of fabricating results. No damage
-model URL is required because this integration runs in the backend process.
-
-Document OCR defaults to the locally installed `deepdoc_vietocr` package. Set
-`DOCUMENT_OCR_MODE=mock` only for deterministic local demos and automated tests.
-
-To use OpenAI, set `LLM_MODE=openai` and configure the following values in `.env`:
-
-```text
-OPENAI_API_KEY=your-openai-api-key
-OPENAI_MODEL=gpt-5.6-luna
-LLM_REQUEST_TIMEOUT_SECONDS=60
-LLM_MAX_RETRIES=0
-LLM_TOKEN_USAGE_LOG_ENABLED=true
+```powershell
+Copy-Item .env.example .env
 ```
 
-Do not set `LLM_BASE_URL` for the official OpenAI API; LangChain uses its default
-OpenAI endpoint. `LLM_BASE_URL` is reserved for an explicitly configured,
-OpenAI-compatible provider. The legacy `URL_MODEL` variable is not supported.
-Use a fixed model with structured-output support for document extraction. Dynamic
-router models can vary in latency and schema support between requests. The timeout
-and retry settings keep one failed document from blocking the remaining workflow.
-Do not commit API keys.
+The example config uses mock modes for vehicle damage, part search, and the LLM. Document OCR defaults to DeepDoc. For a deterministic demo or tests, set `DOCUMENT_OCR_MODE=mock` in `.env`.
 
-Set `LLM_TOKEN_USAGE_LOG_ENABLED=true` to print provider-reported token usage after
-each document extraction, document field-validation, and AI Review LLM call. Each
-terminal log includes the operation, relevant document type or claim number, model,
-input tokens, output tokens, and total tokens. Set it to `false` to disable these logs.
-OCR text, prompts, and model output are never included in the token-usage log. If the
-provider omits usage metadata, the log reports `status=unavailable` instead of
-estimating tokens with a potentially incompatible tokenizer.
+For real LLM calls, configure these values in `.env`:
 
-### 2. Start Postgres
+```dotenv
+LLM_MODE=openai
+OPENAI_API_KEY=your-api-key
+OPENAI_MODEL=your-supported-model
+LLM_REQUEST_TIMEOUT_SECONDS=60
+LLM_MAX_RETRIES=0
+```
 
-```bash
+The default OpenAI endpoint is used when `LLM_BASE_URL` is unset. Set `LLM_BASE_URL` only when using an OpenAI-compatible endpoint. Never commit API keys or other secrets.
+
+To print provider-reported token usage for document extraction, field validation, and AI Review, set `LLM_TOKEN_USAGE_LOG_ENABLED=true`. Logs include operation, model, token counts, and the relevant document type or claim number; they do not include OCR text, prompts, or model output. If the provider supplies no token metadata, the log reports it as unavailable.
+
+For local AI Review debugging, set `LLM_RAW_OUTPUT_LOG_ENABLED=true` to print the raw JSON returned by the model before parsing and persistence. This output can contain claim and personal information, so keep it disabled outside controlled local development.
+
+### 2. Start PostgreSQL
+
+```powershell
 docker compose up -d postgres
 ```
 
-If your Docker install exposes Compose as the legacy command:
+PostgreSQL is exposed on port `5432`. The default local connection and container credentials are in `.env.example`; change them in `.env` before starting the application when needed.
 
-```bash
-docker-compose up -d postgres
-```
+### 3. Install and start the backend
 
-### 3. Start the backend
+The DeepDoc wheel is private and is not stored in Git. Download `deepdoc_vietocr-0.1.0-py3-none-any.whl` from [Google Drive](https://drive.google.com/file/d/1LBGigUwhSzncbh4uMpkq5kZzU1JETlQz/view?usp=sharing) and place it at `backend/package/deepdoc_vietocr-0.1.0-py3-none-any.whl` before installing requirements.
 
-Download the private `deepdoc_vietocr-0.1.0-py3-none-any.whl` package from
-[Google Drive](https://drive.google.com/file/d/1LBGigUwhSzncbh4uMpkq5kZzU1JETlQz/view?usp=sharing)
-and place it in `backend/package/` before installing the backend requirements.
-
-```bash
+```powershell
 cd backend
 python -m venv .venv
-.venv\Scripts\activate
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 uvicorn app.main:app --reload --reload-dir app
 ```
 
-`--reload-dir app` keeps development reload focused on application code. It
-prevents utility changes such as `backend/scripts/seed_dashboard_claims.py`
-from restarting the API while a local seed command is being run.
+If PowerShell blocks virtual environment activation, use the activation command appropriate for your shell or invoke `.venv\Scripts\python.exe` directly.
 
-The health endpoint is available at `http://localhost:8000/api/health`.
-- Interactive Swagger UI is available at `http://localhost:8000/docs`, 
-- with the OpenAPI schema at `http://localhost:8000/openapi.json`. 
-- ReDoc: `http://localhost:8000/redoc`
+The API creates missing tables and seeds the configured demo users and vehicle manufacturers on startup. Existing users are not overwritten when environment credentials change. Configure credentials before the first startup. To change an existing account's password, use an approved database or account-administration procedure.
 
-The backend creates the required tables and seeds these local demo accounts on startup:
+The example demo accounts are:
 
 | Role | Email | Password |
 | --- | --- | --- |
 | Admin | `admin@example.com` | `Admin123!` |
 | Adjuster | `adjuster@example.com` | `Adjuster123!` |
 
-Set the demo credentials before the first database startup through the corresponding values in `.env`.
-To reseed changed credentials locally, recreate the development Postgres volume.
-Authentication endpoints are available at `POST /api/auth/login` and `GET /api/auth/me`.
+Set `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADJUSTER_EMAIL`, and `ADJUSTER_PASSWORD` in `.env` before first startup to use different demo credentials.
 
-`ADMIN` can use all protected APIs. `ADJUSTER` can run Analysis, AI Review, and Human
-Review, and can read its own session, a claim detail, and its evidence content to
-support those workflows. Claim creation/listing, evidence changes, account management,
-and configuration require `ADMIN`. An admin must prepare a claim before an adjuster
-opens its detail URL; the current dashboard claim list is admin-only.
+The backend is available at `http://localhost:8000`:
 
-### DeepDoc Vietnamese document analysis
+- Health check: `GET /api/health`
+- Swagger UI: `/docs`
+- ReDoc: `/redoc`
+- OpenAPI schema: `/openapi.json`
 
-This project can use the local `deepdoc_vietocr` package for CPU-optimized document
-processing. DeepDoc supports text OCR, document layout detection, and table
-structure extraction. It integrates VietOCR and ONNX to improve Vietnamese text
-recognition and is designed to be reusable in document-processing and RAG systems.
+### 4. Install and start the frontend
 
-The wheel is distributed privately and is intentionally not committed to Git.
-Download `deepdoc_vietocr-0.1.0-py3-none-any.whl` from
-[here](https://drive.google.com/file/d/1LBGigUwhSzncbh4uMpkq5kZzU1JETlQz/view?usp=sharing)
-and place it in `backend/package/`.
+Open another terminal at the repository root:
 
-Install the downloaded wheel in the backend virtual environment:
-
-```bash
-cd backend
-pip install package/deepdoc_vietocr-0.1.0-py3-none-any.whl
+```powershell
+cd frontend
+npm install
+npm run dev
 ```
 
-Example usage:
+Open `http://localhost:5173`.
+
+## Runtime modes
+
+| Setting | Supported values | Default | Purpose |
+| --- | --- | --- | --- |
+| `DAMAGE_MODEL_MODE` | `mock`, `local` | `mock` | Deterministic demo findings or the local damage-model adapter. The external `damage_car` inference API still needs to be connected for real model inference. |
+| `PART_SEARCH_MODE` | `mock`, `unavailable` | `mock` | Demo reference prices or no price search results. |
+| `DOCUMENT_OCR_MODE` | `deepdoc`, `mock` | `deepdoc` | DeepDoc OCR or deterministic demo OCR. |
+| `LLM_MODE` | `mock`, `openai` | `mock` | Demo responses or LangChain calls to an OpenAI-compatible chat model. |
+
+For the `openai` mode, set `OPENAI_API_KEY` and `OPENAI_MODEL`. The selected model must support the structured output expected by the application. Provider/model availability and response behavior may vary.
+
+## Access rules
+
+- `ADMIN` can use all protected APIs and manage claims and configuration, and can create user accounts.
+- `ADJUSTER` can run Analysis, AI Review, and Human Review. Adjusters can also read claim details and evidence needed for those workflows; claim creation/listing, evidence changes, account management, and configuration are admin-only.
+
+## DeepDoc package
+
+The private `deepdoc_vietocr` package provides CPU-oriented text recognition, document layout detection, and table extraction, with VietOCR and ONNX support for Vietnamese OCR. The wheel is excluded from Git. Download it from the [project package link](https://drive.google.com/file/d/1LBGigUwhSzncbh4uMpkq5kZzU1JETlQz/view?usp=sharing) and put it in `backend/package/` before installing backend requirements.
+
+Example API:
 
 ```python
 from deepdoc_vietocr import DocumentReader
@@ -134,36 +147,36 @@ layouts = reader.detect_layout("sample.pdf")
 tables = reader.extract_tables("sample.pdf")
 ```
 
-`result.text` contains the extracted text, while `result.markdown` preserves a
-more structured representation. `detect_layout` returns document layout data and
-`extract_tables` returns detected table structures.
+See [`backend/package/THIRD_PARTY_NOTICES.md`](backend/package/THIRD_PARTY_NOTICES.md) for package download details and third-party notices.
 
-### 4. Start the frontend
+## Automated checks
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+Backend checks:
 
-The frontend runs at `http://localhost:5173`.
-
-### Automated checks
-
-```bash
+```powershell
 cd backend
 pytest
 python scripts/check_health.py
 python scripts/check_database.py
+```
 
-cd ../frontend
+Frontend checks:
+
+```powershell
+cd frontend
 npm test
 npm run build
 ```
-### Third-party licenses
 
-`deepdoc_vietocr` contains components derived from DeepDoc/RAGFlow and VietOCR,
-which are distributed under the Apache License 2.0.
+`check_database.py` requires a reachable PostgreSQL instance configured by `DATABASE_URL`.
 
-See [`THIRD_PARTY_NOTICES.md`](./backend/package/THIRD_PARTY_NOTICES.md) for attribution and
-third-party license information.
+## Local files and data
+
+- Uploaded evidence is stored under `UPLOAD_ROOT` (default: `uploads` at the repository root).
+- PostgreSQL data is stored in the Docker Compose volume `postgres-data`.
+- The DeepDoc wheel is private and must be downloaded separately; do not commit it.
+- Keep `.env`, uploaded evidence, and other sensitive data out of source control.
+
+## License notices
+
+See [`backend/package/THIRD_PARTY_NOTICES.md`](backend/package/THIRD_PARTY_NOTICES.md) for attribution and license information related to DeepDoc/RAGFlow, VietOCR, and the private package.

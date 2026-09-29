@@ -262,7 +262,7 @@ class LangChainOpenAiDocumentExtractionAdapter:
         options: dict[str, object] = {
             "model": model,
             "api_key": api_key,
-            "temperature": 0,
+            # "temperature": 0,
             "timeout": request_timeout_seconds,
             "max_retries": max_retries,
         }

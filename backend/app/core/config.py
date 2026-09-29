@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     llm_token_usage_log_enabled: bool = Field(
         default=False, validation_alias="LLM_TOKEN_USAGE_LOG_ENABLED"
     )
+    llm_raw_output_log_enabled: bool = Field(
+        default=False, validation_alias="LLM_RAW_OUTPUT_LOG_ENABLED"
+    )
     frontend_origin: str = Field(default="http://localhost:5173", validation_alias="FRONTEND_ORIGIN")
     check_database_on_health: bool = Field(default=True, validation_alias="CHECK_DATABASE_ON_HEALTH")
 

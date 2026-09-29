@@ -255,7 +255,7 @@ class LangChainOpenAiFieldValidationAdapter:
             options: dict[str, object] = {
                 "model": self.model,
                 "api_key": self.api_key,
-                "temperature": 0,
+                # "temperature": 0,
                 "reasoning_effort": "medium",
             }
             if self.base_url:
