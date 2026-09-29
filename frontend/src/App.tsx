@@ -175,6 +175,7 @@ function AppShell() {
             <Tooltip>
               <Tooltip.Trigger>
                 <Button
+                  className="rounded-full p-5 shadow-lg"
                   aria-label={t("common.backToTop")}
                   isIconOnly
                   onPress={() =>
@@ -186,7 +187,7 @@ function AppShell() {
                   size="sm"
                   variant="primary"
                 >
-                  <ArrowUp size={18} />
+                  <ArrowUp size={24} />
                 </Button>
               </Tooltip.Trigger>
               <Tooltip.Content>{t("common.backToTop")}</Tooltip.Content>
