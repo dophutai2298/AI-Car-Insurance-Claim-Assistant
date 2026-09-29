@@ -525,7 +525,7 @@ class CopilotConclusion(Base):
     __tablename__ = "copilot_conclusions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    analysis_id: Mapped[int] = mapped_column(ForeignKey("damage_analyses.id"), unique=True, index=True)
+    analysis_id: Mapped[int] = mapped_column(ForeignKey("damage_analyses.id"), index=True)
     status: Mapped[CopilotConclusionStatus] = mapped_column(
         SqlEnum(CopilotConclusionStatus, native_enum=False)
     )
@@ -579,9 +579,7 @@ class WorkflowAiReview(Base):
     __tablename__ = "workflow_ai_reviews"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    analysis_run_id: Mapped[int] = mapped_column(
-        ForeignKey("workflow_analysis_runs.id"), unique=True, index=True
-    )
+    analysis_run_id: Mapped[int] = mapped_column(ForeignKey("workflow_analysis_runs.id"), index=True)
     conclusion_id: Mapped[int] = mapped_column(
         ForeignKey("copilot_conclusions.id"), unique=True, index=True
     )

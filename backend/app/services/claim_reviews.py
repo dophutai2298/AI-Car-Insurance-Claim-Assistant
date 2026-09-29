@@ -61,8 +61,6 @@ class ClaimReviewOperations:
             raise ClaimResourceNotFoundError("Analysis run not found")
         if run.status not in {AnalysisRunStatus.COMPLETED, AnalysisRunStatus.PARTIAL}:
             raise ClaimValidationError("Analysis results are not ready for AI review")
-        if self.workflow_ai_reviews.find_for_run(run.id):
-            raise ClaimConflictError("AI review has already been generated for this analysis")
         snapshot = self.analysis_snapshots.find_for_run(run.id)
         incident_record = self.claim_incidents.find_for_claim(claim.id)
         if snapshot is None:
@@ -117,6 +115,7 @@ class ClaimReviewOperations:
             warnings,
             evidence_references,
         )
+        self.claims.update_status(claim, ClaimStatus.REVIEW_REQUIRED)
         return claim
 
     def review_copilot_conclusion(

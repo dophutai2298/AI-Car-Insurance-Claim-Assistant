@@ -272,6 +272,13 @@ const en = {
     description:
       "Generate a structured review from normalized claim, evidence, damage and document results.",
     run: "Run AI review",
+    rerun: "Re-run AI review",
+    generating: "AI review is generating",
+    generatingDescription:
+      "The assistant is preparing a structured review. Keep this page open while it completes.",
+    waitingForAnalysis:
+      "Analysis is still processing. AI review will be available when it completes.",
+    revision: "AI review revision {{revision}}",
     failed: "AI review could not be generated",
     ready:
       "Analysis is ready. Run AI review when document corrections are complete.",
@@ -671,6 +678,18 @@ const vi = {
       "Tạo kết quả đánh giá có cấu trúc từ thông tin hồ sơ, bằng chứng, kết quả phân tích hư hỏng và giấy tờ.",
 
     run: "Thực hiện đánh giá AI",
+
+    rerun: "Thực hiện lại đánh giá AI",
+
+    generating: "AI review đang xử lý",
+
+    generatingDescription:
+      "Trợ lý đang tạo bản đánh giá có cấu trúc. Vui lòng giữ trang này mở cho đến khi hoàn tất.",
+
+    waitingForAnalysis:
+      "Analysis vẫn đang xử lý. AI review sẽ khả dụng sau khi Analysis hoàn tất.",
+
+    revision: "Phiên bản AI review {{revision}}",
 
     failed: "Không thể tạo kết quả đánh giá AI",
 

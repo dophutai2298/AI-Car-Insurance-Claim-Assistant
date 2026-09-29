@@ -1753,6 +1753,44 @@ def test_ai_review_rejects_analysis_run_after_claim_inputs_change(client: TestCl
     assert reviewed.json()["detail"]["blocked_reasons"][0]["code"] == "SNAPSHOT_STALE"
 
 
+def test_ai_review_can_be_rerun_without_overwriting_prior_human_review(client: TestClient):
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
+    client.post(f"/api/claims/{claim['id']}/analysis-runs", headers=admin_headers(client))
+    detail = client.get(f"/api/claims/{claim['id']}", headers=admin_headers(client)).json()
+    run = detail["latest_analysis_run"]
+    assert save_ready_analysis_snapshot(client, claim, run).status_code == 200
+
+    first_review = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=admin_headers(client),
+    )
+    assert first_review.status_code == 200
+    first_conclusion = first_review.json()["latest_analysis_run"]["damage_analysis"]["copilot_conclusion"]
+
+    human_review = client.post(
+        f"/api/claims/{claim['id']}/copilot-conclusions/{first_conclusion['id']}/review",
+        headers=admin_headers(client),
+        json={"status": "APPROVED", "comment": "The first AI review was checked."},
+    )
+    assert human_review.status_code == 200
+    assert human_review.json()["status"] == "AI_APPROVED"
+
+    rerun = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=admin_headers(client),
+    )
+
+    assert rerun.status_code == 200
+    payload = rerun.json()
+    current_conclusion = payload["latest_analysis_run"]["damage_analysis"]["copilot_conclusion"]
+    assert current_conclusion["id"] != first_conclusion["id"]
+    assert current_conclusion["revision"] == 2
+    assert current_conclusion["review_history"] == []
+    assert payload["status"] == "REVIEW_REQUIRED"
+    assert payload["copilot_review_history"][0]["conclusion_id"] == first_conclusion["id"]
+    assert payload["copilot_review_history"][0]["status"] == "APPROVED"
+
+
 def test_human_review_requires_a_note_and_can_be_reverted_without_losing_history(client: TestClient):
     claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
     client.post(f"/api/claims/{claim['id']}/analysis-runs", headers=admin_headers(client))

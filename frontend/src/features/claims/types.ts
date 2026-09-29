@@ -276,6 +276,7 @@ export type ReferencePartPrice = {
 
 export type CopilotConclusion = {
   id: number;
+  revision?: number;
   status: "GENERATED" | "FALLBACK" | "LLM_UNAVAILABLE";
   recommendation: "MANUAL_ADJUSTER_REVIEW";
   summary: string;

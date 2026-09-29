@@ -335,6 +335,7 @@ class AiReviewStructuredResponse(BaseModel):
 
 class CopilotConclusionResponse(BaseModel):
     id: int
+    revision: int = Field(ge=1)
     status: CopilotConclusionStatus
     recommendation: str
     summary: str

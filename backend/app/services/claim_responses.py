@@ -425,6 +425,7 @@ class ClaimResponseAssembler:
         )
         return CopilotConclusionResponse(
             id=conclusion.id,
+            revision=self.copilot_conclusions.revision_for(conclusion),
             status=conclusion.status,
             recommendation=conclusion.recommendation,
             summary=conclusion.summary,
