@@ -63,6 +63,10 @@ __pycache__/
 /backend/input
 /backend/package/*.whl
 
+# AI
+/AI/.venv/
+/AI/__pycache__/
+
 # frontend
 /frontend/node_modules/
 /frontend/dist/
