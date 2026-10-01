@@ -208,6 +208,8 @@ const en = {
       REQUIRED_VALUE_MISSING: "{{field}} requires a confirmed value.",
       COMPARISON_MISMATCH: "{{field}} does not match Claim Information.",
       COMPARISON_UNAVAILABLE: "{{field}} cannot be compared with Claim Information.",
+      EXPIRY_DATE_INVALID: "{{field}} must use DD/MM/YYYY or YYYY-MM-DD.",
+      EXPIRY_DATE_NOT_FUTURE: "{{field}} must be later than today.",
     },
     rawOcr: "Raw OCR text",
     structuredExtraction: "Structured extraction",
@@ -270,6 +272,13 @@ const en = {
     description:
       "Generate a structured review from normalized claim, evidence, damage and document results.",
     run: "Run AI review",
+    rerun: "Re-run AI review",
+    generating: "AI review is generating",
+    generatingDescription:
+      "The assistant is preparing a structured review. Keep this page open while it completes.",
+    waitingForAnalysis:
+      "Analysis is still processing. AI review will be available when it completes.",
+    revision: "AI review revision {{revision}}",
     failed: "AI review could not be generated",
     ready:
       "Analysis is ready. Run AI review when document corrections are complete.",
@@ -596,6 +605,9 @@ const vi = {
       REQUIRED_VALUE_MISSING: "{{field}} cần có giá trị xác nhận.",
       COMPARISON_MISMATCH: "{{field}} không khớp với Thông tin hồ sơ.",
       COMPARISON_UNAVAILABLE: "Không thể đối chiếu {{field}} với Thông tin hồ sơ.",
+      EXPIRY_DATE_INVALID:
+        "{{field}} ph\u1ea3i theo \u0111\u1ecbnh d\u1ea1ng DD/MM/YYYY ho\u1eb7c YYYY-MM-DD.",
+      EXPIRY_DATE_NOT_FUTURE: "{{field}} ph\u1ea3i sau ng\u00e0y h\u00f4m nay.",
     },
     rawOcr: "Văn bản OCR gốc",
     structuredExtraction: "Dữ liệu trích xuất có cấu trúc",
@@ -666,6 +678,18 @@ const vi = {
       "Tạo kết quả đánh giá có cấu trúc từ thông tin hồ sơ, bằng chứng, kết quả phân tích hư hỏng và giấy tờ.",
 
     run: "Thực hiện đánh giá AI",
+
+    rerun: "Thực hiện lại đánh giá AI",
+
+    generating: "AI review đang xử lý",
+
+    generatingDescription:
+      "Trợ lý đang tạo bản đánh giá có cấu trúc. Vui lòng giữ trang này mở cho đến khi hoàn tất.",
+
+    waitingForAnalysis:
+      "Analysis vẫn đang xử lý. AI review sẽ khả dụng sau khi Analysis hoàn tất.",
+
+    revision: "Phiên bản AI review {{revision}}",
 
     failed: "Không thể tạo kết quả đánh giá AI",
 

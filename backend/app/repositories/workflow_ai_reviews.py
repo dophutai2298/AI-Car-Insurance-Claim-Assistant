@@ -32,9 +32,12 @@ class WorkflowAiReviewRepository:
         return review
 
     def find_for_run(self, analysis_run_id: int) -> WorkflowAiReview | None:
-        return self.session.scalar(
-            select(WorkflowAiReview).where(WorkflowAiReview.analysis_run_id == analysis_run_id)
+        statement = (
+            select(WorkflowAiReview)
+            .where(WorkflowAiReview.analysis_run_id == analysis_run_id)
+            .order_by(WorkflowAiReview.id.desc())
         )
+        return self.session.scalar(statement)
 
     def find_for_conclusion(self, conclusion_id: int) -> WorkflowAiReview | None:
         return self.session.scalar(

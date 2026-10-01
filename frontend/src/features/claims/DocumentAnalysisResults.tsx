@@ -45,6 +45,10 @@ const comparableFieldKeys = new Set([
   "vehicle_brand",
   "license_plate",
 ]);
+const expiryDateCategories = new Set<EvidenceCategory>([
+  "ID_CARD",
+  "DRIVER_LICENSE",
+]);
 
 export function DocumentAnalysisResults({
   claim,
@@ -583,6 +587,15 @@ function getDraftBlockedReasons(
         );
         continue;
       }
+      const expiryDateBlockCode = expiryDateValidationBlockCode(
+        category,
+        field.field_key,
+        value,
+      );
+      if (expiryDateBlockCode) {
+        reasons.push(blockedReason(expiryDateBlockCode, category, field));
+        continue;
+      }
       const claimValue = claimValueForField(claim, field.field_key);
       if (
         claimValue !== null &&
@@ -595,6 +608,44 @@ function getDraftBlockedReasons(
     }
   }
   return reasons;
+}
+
+function expiryDateValidationBlockCode(
+  category: EvidenceCategory,
+  fieldKey: string,
+  value: string,
+) {
+  if (!expiryDateCategories.has(category) || fieldKey !== "expiry_date") {
+    return null;
+  }
+
+  const match = value.match(
+    /^(?:(\d{2})\/(\d{2})\/(\d{4})|(\d{4})-(\d{2})-(\d{2}))$/,
+  );
+  if (!match) return "EXPIRY_DATE_INVALID";
+
+  const [
+    ,
+    dayValue,
+    monthValue,
+    yearValue,
+    isoYearValue,
+    isoMonthValue,
+    isoDayValue,
+  ] = match;
+  const year = Number(yearValue ?? isoYearValue);
+  const month = Number(monthValue ?? isoMonthValue);
+  const day = Number(dayValue ?? isoDayValue);
+  const expiryDate = new Date(year, month - 1, day);
+  const isRealDate =
+    expiryDate.getFullYear() === year &&
+    expiryDate.getMonth() === month - 1 &&
+    expiryDate.getDate() === day;
+  if (!isRealDate) return "EXPIRY_DATE_INVALID";
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return expiryDate <= today ? "EXPIRY_DATE_NOT_FUTURE" : null;
 }
 
 function claimValueForField(claim: ClaimDetail, fieldKey: string) {

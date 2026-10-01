@@ -43,11 +43,20 @@ class ClaimStatus(str, Enum):
 
 class EvidenceCategory(str, Enum):
     VEHICLE_DAMAGE_IMAGE = "VEHICLE_DAMAGE_IMAGE"
+    DAMAGE_ANNOTATION = "DAMAGE_ANNOTATION"
+    # Keep reading annotations created on databases that already accepted this name.
+    VEHICLE_DAMAGE_ANNOTATION = "VEHICLE_DAMAGE_ANNOTATION"
     ID_CARD = "ID_CARD"
     INSURANCE_POLICY = "INSURANCE_POLICY"
     VEHICLE_REGISTRATION = "VEHICLE_REGISTRATION"
     DRIVER_LICENSE = "DRIVER_LICENSE"
     OTHER_DOCUMENT = "OTHER_DOCUMENT"
+
+
+GENERATED_EVIDENCE_CATEGORIES = frozenset({
+    EvidenceCategory.DAMAGE_ANNOTATION,
+    EvidenceCategory.VEHICLE_DAMAGE_ANNOTATION,
+})
 
 
 class DamageAssessment(str, Enum):
@@ -525,7 +534,7 @@ class CopilotConclusion(Base):
     __tablename__ = "copilot_conclusions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    analysis_id: Mapped[int] = mapped_column(ForeignKey("damage_analyses.id"), unique=True, index=True)
+    analysis_id: Mapped[int] = mapped_column(ForeignKey("damage_analyses.id"), index=True)
     status: Mapped[CopilotConclusionStatus] = mapped_column(
         SqlEnum(CopilotConclusionStatus, native_enum=False)
     )
@@ -579,9 +588,7 @@ class WorkflowAiReview(Base):
     __tablename__ = "workflow_ai_reviews"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    analysis_run_id: Mapped[int] = mapped_column(
-        ForeignKey("workflow_analysis_runs.id"), unique=True, index=True
-    )
+    analysis_run_id: Mapped[int] = mapped_column(ForeignKey("workflow_analysis_runs.id"), index=True)
     conclusion_id: Mapped[int] = mapped_column(
         ForeignKey("copilot_conclusions.id"), unique=True, index=True
     )

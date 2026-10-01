@@ -54,6 +54,7 @@ next-env.d.ts
 
 # local runtime artifacts
 /uploads
+/backend/outputs/
 
 # Python
 __pycache__/

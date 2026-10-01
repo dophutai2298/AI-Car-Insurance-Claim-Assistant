@@ -120,6 +120,7 @@ class DamageModelOutputResponse(BaseModel):
     adapter_name: str
     part_identities: list[str] = Field(default_factory=list)
     record: CarDamageRecordResponse
+    annotated_evidence: list[EvidenceResponse] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -335,6 +336,7 @@ class AiReviewStructuredResponse(BaseModel):
 
 class CopilotConclusionResponse(BaseModel):
     id: int
+    revision: int = Field(ge=1)
     status: CopilotConclusionStatus
     recommendation: str
     summary: str

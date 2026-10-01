@@ -14,6 +14,7 @@ import {
   Chip,
   Input,
   Label,
+  Spinner,
   TextField,
 } from "@heroui/react";
 import {
@@ -76,6 +77,7 @@ export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
         : run?.status === "FAILED"
           ? "danger"
           : "default";
+  const analysisRunning = ["PENDING", "PROCESSING"].includes(run?.status ?? "");
 
   return (
     <Card
@@ -96,14 +98,24 @@ export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
             </Card.Description>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           {run ? (
             <Chip color={statusColor} variant="soft">
               {t(`analysis.status.${run.status}`)}
             </Chip>
           ) : null}
+          {analysisRunning ? (
+            <div
+              aria-live="polite"
+              className="flex items-center gap-2 text-sm text-blue-800"
+              role="status"
+            >
+              <Spinner aria-label={t("analysis.processing")} size="sm" />
+              <span>{t("analysis.processing")}</span>
+            </div>
+          ) : null}
           <Button
-            isDisabled={!canStart}
+            isDisabled={!canStart || start.isPending}
             isPending={start.isPending}
             onPress={() => start.mutate()}
             variant="primary"
@@ -136,7 +148,7 @@ export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
             </Alert.Description>
           </Alert>
         ) : null}
-        {run && ["PENDING", "PROCESSING"].includes(run.status) ? (
+        {analysisRunning ? (
           <div className="border-l-2 border-blue-500 bg-blue-50 p-4">
             <p className="text-sm font-semibold text-blue-950">
               {t("analysis.processing")}
@@ -188,7 +200,7 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
   const { t } = useTranslation();
   const [globalFilter, setGlobalFilter] = useState("");
   const [damageTypeFilter, setDamageTypeFilter] = useState("ALL");
-  const annotatedEvidence = Array.from(
+  const annotatedEvidence = analysis.model_output?.annotated_evidence ?? Array.from(
     new Map(
       analysis.detections.map((detection) => [
         detection.annotated_evidence.id,
@@ -201,8 +213,8 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
     if (modelParts.length) {
       return modelParts.map((part, index) => ({
         id: `${part.part}-${index}`,
-        part: part.part,
-        damageType: part.main_damage,
+        part: formatLabel(part.part) ?? part.part,
+        damageType: formatLabel(part.main_damage) ?? part.main_damage,
         damagePercentage: part.damage_percent,
       }));
     }
@@ -280,7 +292,7 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
           <Alert.Description>{analysis.warning}</Alert.Description>
         </Alert>
       ) : null}
-      {damageRows.length ? (
+      {damageRows.length || annotatedEvidence.length ? (
         <div
           className={`grid items-start gap-4 ${annotatedEvidence.length ? "xl:grid-cols-[18rem_minmax(0,1fr)]" : ""}`}
         >
@@ -376,7 +388,9 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
                         className="px-4 py-10 text-center text-sm text-slate-500"
                         colSpan={3}
                       >
-                        No damage findings match the selected filters.
+                        {damageRows.length
+                          ? "No damage findings match the selected filters."
+                          : t("analysis.noDamage")}
                       </td>
                     </tr>
                   ) : null}
@@ -436,18 +450,31 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
             </Card.Description>
           </div>
         </div>
-        {!conclusion ? (
-          <Button
-            isDisabled={!ready}
-            isPending={review.isPending}
-            onPress={() => review.mutate()}
-            variant="primary"
-          >
-            {t("aiReview.run")}
-          </Button>
-        ) : null}
+        <Button
+          isDisabled={!ready || review.isPending}
+          isPending={review.isPending}
+          onPress={() => review.mutate()}
+          variant="primary"
+        >
+          {conclusion ? t("aiReview.rerun") : t("aiReview.run")}
+        </Button>
       </Card.Header>
       <Card.Content className="grid gap-5 p-6">
+        {review.isPending ? (
+          <div
+            aria-live="polite"
+            className="flex items-start gap-3 border-l-2 border-teal-500 bg-teal-50 p-4 text-sm text-teal-950"
+            role="status"
+          >
+            <Spinner aria-label={t("aiReview.generating")} size="sm" />
+            <div>
+              <p className="font-semibold">{t("aiReview.generating")}</p>
+              <p className="mt-1 text-teal-800">
+                {t("aiReview.generatingDescription")}
+              </p>
+            </div>
+          </div>
+        ) : null}
         {review.error ? (
           <Alert status="danger">
             <Alert.Title>{t("aiReview.failed")}</Alert.Title>
@@ -462,7 +489,13 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
           <AiReviewResult conclusion={conclusion} />
         ) : (
           <div className="grid gap-2 text-sm text-slate-500">
-            <p>{ready ? t("aiReview.ready") : t("aiReview.blocked")}</p>
+            <p>
+              {ready
+                ? t("aiReview.ready")
+                : ["PENDING", "PROCESSING"].includes(run?.status ?? "")
+                  ? t("aiReview.waitingForAnalysis")
+                  : t("aiReview.blocked")}
+            </p>
             {!ready && blockedReasons.length ? (
               <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800">
                 {blockedReasons.map((reason, index) => (
@@ -502,6 +535,9 @@ function AiReviewResult({ conclusion }: { conclusion: CopilotConclusion }) {
     <div className="grid gap-5">
       <div className="grid gap-4 border-b border-slate-100 pb-5 sm:grid-cols-[12rem_minmax(0,1fr)]">
         <div>
+          <p className="text-xs font-semibold uppercase text-slate-500">
+            {t("aiReview.revision", { revision: conclusion.revision ?? 1 })}
+          </p>
           <p className="text-xs font-semibold uppercase text-slate-500">
             {t("aiReview.validity")}
           </p>

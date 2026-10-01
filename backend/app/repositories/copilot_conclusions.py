@@ -1,6 +1,6 @@
 import json
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Claim, CopilotConclusion, CopilotReviewOutput, DamageAnalysis
@@ -44,8 +44,19 @@ class CopilotConclusionRepository:
         return record
 
     def find_for_analysis(self, analysis_id: int) -> CopilotConclusion | None:
-        statement = select(CopilotConclusion).where(CopilotConclusion.analysis_id == analysis_id)
+        statement = (
+            select(CopilotConclusion)
+            .where(CopilotConclusion.analysis_id == analysis_id)
+            .order_by(CopilotConclusion.id.desc())
+        )
         return self.session.scalar(statement)
+
+    def revision_for(self, conclusion: CopilotConclusion) -> int:
+        statement = select(func.count(CopilotConclusion.id)).where(
+            CopilotConclusion.analysis_id == conclusion.analysis_id,
+            CopilotConclusion.id <= conclusion.id,
+        )
+        return self.session.scalar(statement) or 1
 
     def find_for_claim(self, claim_id: int, conclusion_id: int) -> CopilotConclusion | None:
         statement = (

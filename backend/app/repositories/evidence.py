@@ -8,6 +8,7 @@ from app.models import (
     Claim,
     Evidence,
     EvidenceCategory,
+    GENERATED_EVIDENCE_CATEGORIES,
     EvidenceRemoval,
     DamageDetection,
     DocumentOcrResult,
@@ -31,7 +32,11 @@ class EvidenceRepository:
         statement = (
             select(Evidence)
             .outerjoin(EvidenceRemoval, EvidenceRemoval.evidence_id == Evidence.id)
-            .where(Evidence.claim_id == claim_id, EvidenceRemoval.id.is_(None))
+            .where(
+                Evidence.claim_id == claim_id,
+                EvidenceRemoval.id.is_(None),
+                Evidence.category.not_in(GENERATED_EVIDENCE_CATEGORIES),
+            )
             .order_by(Evidence.uploaded_at.desc())
         )
         return list(self.session.scalars(statement))
@@ -48,6 +53,7 @@ class EvidenceRepository:
                 Evidence.claim_id == claim_id,
                 Evidence.id == evidence_id,
                 EvidenceRemoval.id.is_(None),
+                Evidence.category.not_in(GENERATED_EVIDENCE_CATEGORIES),
             )
         )
         return self.session.scalar(statement)

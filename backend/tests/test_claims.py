@@ -1,12 +1,14 @@
 from collections.abc import Iterator
+from datetime import date
 import json
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from app.core.config import get_settings
 from app.main import create_app
+from app.models import Claim, Evidence, EvidenceCategory
 from app.api import composition as claim_composition
 from app.services.document_ocr import (
     DocumentOcrError,
@@ -19,6 +21,8 @@ from app.services.document_extraction import (
     IdentityCardExtraction,
 )
 from app.services.evidence_storage import LocalEvidenceStorage
+from app.services.damage_model import DamageModelAnalysisResult, DamageModelImageResult, DamagePart, DamageType
+from app.services.damage_assessment import DamageAssessmentService
 from app.services.llm_copilot import LlmCopilotService
 
 
@@ -35,7 +39,46 @@ def client(tmp_path, monkeypatch) -> Iterator[TestClient]:
     monkeypatch.setenv("UPLOAD_ROOT", str(tmp_path / "uploads"))
     monkeypatch.setenv("LLM_MODE", "mock")
     monkeypatch.setenv("DOCUMENT_OCR_MODE", "mock")
+    monkeypatch.setenv("DAMAGE_MODEL_MODE", "local")
     get_settings.cache_clear()
+
+    class FakeDamageAdapter:
+        def __init__(self, storage):
+            self.storage = storage
+
+        def analyze(self, images):
+            results = []
+            for image in images:
+                name = image.original_filename.lower()
+                if "no-damage" in name:
+                    findings = []
+                elif "replacement" in name:
+                    findings = [("front_left_door", "severe_deformation", 72)]
+                elif "low-confidence" in name:
+                    findings = [("rear_bumper", "scratch", 22)]
+                elif "multiple" in name:
+                    findings = [("rear_bumper", "dent", 32.5), ("rear_left_door", "scratch", 12.4)]
+                else:
+                    findings = [
+                        ("rear_bumper", "dent", 32.5),
+                        ("rear_left_door", "scratch", 12.4),
+                        ("front_left_fender", "dent", 18.7),
+                        ("hood", "scratch", 8.3),
+                    ]
+                parts = tuple(DamagePart(part=part, main_damage=kind, damage_percent=percent,
+                                         damage_types=[DamageType(type=kind, percent=percent)])
+                              for part, kind, percent in findings)
+                annotation = self.storage.save_annotation(
+                    image.stored_path.split("/", 1)[0], b"\xff\xd8\xffannotated-image", image.original_filename
+                )
+                results.append(DamageModelImageResult(image.id, None, parts, annotation))
+            return DamageModelAnalysisResult("local", tuple(results))
+
+    monkeypatch.setattr(
+        claim_composition,
+        "get_damage_model_adapter",
+        lambda settings, storage: FakeDamageAdapter(storage),
+    )
 
     with TestClient(create_app()) as test_client:
         yield test_client
@@ -371,6 +414,39 @@ def upload_damage_images(client: TestClient, claim_id: str, filenames: list[str]
     assert response.status_code == 200
 
 
+@pytest.mark.parametrize("category", ["DAMAGE_ANNOTATION", "VEHICLE_DAMAGE_ANNOTATION"])
+def test_generated_annotation_category_cannot_be_uploaded(client: TestClient, category: str):
+    claim = create_claim(client)
+    response = client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=admin_headers(client),
+        data={"categories": [category]},
+        files=[("files", ("fake.jpg", b"\xff\xd8\xfffake", "image/jpeg"))],
+    )
+    assert response.status_code == 422
+    assert client.get(f"/api/claims/{claim['id']}", headers=admin_headers(client)).json()["evidence"] == []
+
+
+def test_legacy_annotation_category_remains_readable_but_hidden_from_uploads(client: TestClient):
+    claim = create_claim(client)
+    with client.app.state.session_factory() as session:
+        claim_row = session.scalar(select(Claim).where(Claim.claim_number == claim["id"]))
+        assert claim_row is not None
+        session.add(Evidence(
+            claim_id=claim_row.id,
+            category=EvidenceCategory.VEHICLE_DAMAGE_ANNOTATION,
+            original_filename="legacy-annotated.jpg",
+            stored_path=f"{claim['id']}/annotations/legacy-annotated.jpg",
+            content_type="image/jpeg",
+            file_size=12,
+        ))
+        session.commit()
+
+    detail = client.get(f"/api/claims/{claim['id']}", headers=admin_headers(client))
+    assert detail.status_code == 200
+    assert detail.json()["evidence"] == []
+
+
 def prepare_claim_for_workflow_analysis(
     client: TestClient,
     *,
@@ -424,11 +500,13 @@ def ready_confirmed_fields(run: dict[str, object], claim: dict[str, object]):
         "vehicle_make": claim["vehicle"]["make"],
         "license_plate": claim["vehicle"]["license_plate"],
     }
+    default_values = {"expiry_date": "31/12/2099"}
     return [
         {
             "id": field["id"],
             "confirmed_value": comparable_values.get(field["field_key"])
             or field["confirmed_value"]
+            or default_values.get(field["field_key"])
             or f"Reviewed {field['field_key']}",
         }
         for result in run["document_ocr_results"]
@@ -538,6 +616,51 @@ def test_save_all_rejects_mismatch_atomically_with_structured_field_reason(
     )
     assert refreshed_plate["confirmed_value"] == before
     assert refreshed["analysis_snapshot"] is None
+
+
+@pytest.mark.parametrize("category", ["ID_CARD", "DRIVER_LICENSE"])
+def test_save_all_blocks_identity_document_expiring_today(
+    client: TestClient,
+    category: str,
+):
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=admin_headers(client),
+    )
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=admin_headers(client)
+    ).json()["latest_analysis_run"]
+    fields = ready_confirmed_fields(run, claim)
+    expiry_field = next(
+        field
+        for result in run["document_ocr_results"]
+        if result["document_type"] == category
+        for field in result["extraction"]["fields"]
+        if field["field_key"] == "expiry_date"
+    )
+    next(item for item in fields if item["id"] == expiry_field["id"])[
+        "confirmed_value"
+    ] = date.today().strftime("%d/%m/%Y")
+
+    rejected = client.put(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields",
+        headers=admin_headers(client),
+        json={"fields": fields},
+    )
+
+    assert rejected.status_code == 409
+    reason = next(
+        item
+        for item in rejected.json()["detail"]["blocked_reasons"]
+        if item["field_id"] == expiry_field["id"]
+    )
+    assert reason["code"] == "EXPIRY_DATE_NOT_FUTURE"
+    assert reason["category"] == category
+    assert reason["field_key"] == "expiry_date"
+    assert client.get(
+        f"/api/claims/{claim['id']}", headers=admin_headers(client)
+    ).json()["latest_analysis_run"]["analysis_snapshot"] is None
 
 
 def test_ai_review_rejects_missing_snapshot_before_provider_invocation(
@@ -709,6 +832,28 @@ def test_edit_after_save_marks_snapshot_stale_and_blocks_ai_provider(
     )
     assert reviewed.status_code == 422
     assert reviewed.json()["detail"]["blocked_reasons"][0]["code"] == "SNAPSHOT_STALE"
+
+
+def test_workflow_analysis_persists_annotation_with_legacy_category_width(client: TestClient):
+    claim = prepare_claim_for_workflow_analysis(client)
+    with client.app.state.session_factory() as session:
+        session.execute(text("""
+            CREATE TRIGGER evidence_category_width
+            BEFORE INSERT ON evidence
+            WHEN length(NEW.category) > 20
+            BEGIN SELECT RAISE(ABORT, 'value too long for type character varying(20)'); END
+        """))
+        session.commit()
+
+    started = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs", headers=admin_headers(client)
+    )
+    assert started.status_code == 202
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=admin_headers(client)
+    ).json()["latest_analysis_run"]
+    assert run["damage_status"] == "COMPLETED"
+    assert run["damage_analysis"]["model_output"]["annotated_evidence"]
 
 
 def test_workflow_analysis_returns_pending_then_persists_grouped_results(client: TestClient):
@@ -1705,6 +1850,44 @@ def test_ai_review_rejects_analysis_run_after_claim_inputs_change(client: TestCl
     assert reviewed.json()["detail"]["blocked_reasons"][0]["code"] == "SNAPSHOT_STALE"
 
 
+def test_ai_review_can_be_rerun_without_overwriting_prior_human_review(client: TestClient):
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
+    client.post(f"/api/claims/{claim['id']}/analysis-runs", headers=admin_headers(client))
+    detail = client.get(f"/api/claims/{claim['id']}", headers=admin_headers(client)).json()
+    run = detail["latest_analysis_run"]
+    assert save_ready_analysis_snapshot(client, claim, run).status_code == 200
+
+    first_review = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=admin_headers(client),
+    )
+    assert first_review.status_code == 200
+    first_conclusion = first_review.json()["latest_analysis_run"]["damage_analysis"]["copilot_conclusion"]
+
+    human_review = client.post(
+        f"/api/claims/{claim['id']}/copilot-conclusions/{first_conclusion['id']}/review",
+        headers=admin_headers(client),
+        json={"status": "APPROVED", "comment": "The first AI review was checked."},
+    )
+    assert human_review.status_code == 200
+    assert human_review.json()["status"] == "AI_APPROVED"
+
+    rerun = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=admin_headers(client),
+    )
+
+    assert rerun.status_code == 200
+    payload = rerun.json()
+    current_conclusion = payload["latest_analysis_run"]["damage_analysis"]["copilot_conclusion"]
+    assert current_conclusion["id"] != first_conclusion["id"]
+    assert current_conclusion["revision"] == 2
+    assert current_conclusion["review_history"] == []
+    assert payload["status"] == "REVIEW_REQUIRED"
+    assert payload["copilot_review_history"][0]["conclusion_id"] == first_conclusion["id"]
+    assert payload["copilot_review_history"][0]["status"] == "APPROVED"
+
+
 def test_human_review_requires_a_note_and_can_be_reverted_without_losing_history(client: TestClient):
     claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
     client.post(f"/api/claims/{claim['id']}/analysis-runs", headers=admin_headers(client))
@@ -1786,7 +1969,7 @@ def test_damage_analysis_returns_normalized_repair_fixture_and_persists_it(clien
     assert response.status_code == 200
     analysis = response.json()
     assert analysis["assessment"] == "REPAIR_LIKELY"
-    assert analysis["model_output"]["adapter_name"] == "mock"
+    assert analysis["model_output"]["adapter_name"] == "local"
     assert analysis["model_output"]["part_identities"] == [
         "rear_bumper",
         "rear_left_door",
@@ -1795,8 +1978,17 @@ def test_damage_analysis_returns_normalized_repair_fixture_and_persists_it(clien
     ]
     assert "raw_text" not in analysis["model_output"]["record"]
     evidence_id = analysis["detections"][0]["annotated_evidence"]["id"]
-    assert analysis["model_output"]["record"]["source_evidence_ids"] == [evidence_id]
+    source_id = client.get(f"/api/claims/{claim['id']}", headers=admin_headers(client)).json()["evidence"][0]["id"]
+    assert analysis["model_output"]["record"]["source_evidence_ids"] == [source_id]
     assert analysis["model_output"]["record"]["annotated_evidence_ids"] == [evidence_id]
+    assert analysis["model_output"]["annotated_evidence"][0]["id"] == evidence_id
+    assert evidence_id != source_id
+    image_response = client.get(
+        analysis["detections"][0]["annotated_evidence"]["content_url"],
+        headers=admin_headers(client),
+    )
+    assert image_response.status_code == 200
+    assert image_response.content == b"\xff\xd8\xffannotated-image"
     assert [part["part"] for part in analysis["model_output"]["record"]["parts"]] == [
         "rear_bumper",
         "rear_left_door",
@@ -1813,10 +2005,11 @@ def test_damage_analysis_returns_normalized_repair_fixture_and_persists_it(clien
         ("hood", "scratch", 8.3),
     ]
     assert all(
-        item["annotated_evidence"]["original_filename"] == "repair.jpg"
+        item["annotated_evidence"]["original_filename"] == "repair-annotated.jpg"
         for item in analysis["detections"]
     )
     detail = client.get(f"/api/claims/{claim['id']}", headers=admin_headers(client)).json()
+    assert all(item["id"] != evidence_id for item in detail["evidence"])
     assert detail["status"] == "REVIEW_REQUIRED"
     assert detail["latest_damage_analysis"]["id"] == analysis["id"]
     assert detail["latest_damage_analysis"]["model_output"] == analysis["model_output"]
@@ -1826,7 +2019,7 @@ def test_damage_analysis_returns_normalized_repair_fixture_and_persists_it(clien
     ("filename", "assessment", "warning"),
     [
         ("replacement.jpg", "REPLACEMENT_LIKELY", None),
-        ("low-confidence.jpg", "MANUAL_INSPECTION_REQUIRED", "confidence threshold"),
+        ("low-confidence.jpg", "REPAIR_LIKELY", None),
         ("no-damage.jpg", "NO_DAMAGE", "does not guarantee"),
     ],
 )
@@ -1838,6 +2031,9 @@ def test_damage_analysis_returns_stable_fixture_assessments(client: TestClient, 
 
     assert response.status_code == 200
     assert response.json()["assessment"] == assessment
+    if filename == "no-damage.jpg":
+        assert response.json()["detections"] == []
+        assert len(response.json()["model_output"]["annotated_evidence"]) == 1
     if warning is None:
         assert response.json()["warning"] is None
     else:
@@ -1861,6 +2057,20 @@ def test_damage_analysis_requires_vehicle_damage_images(client: TestClient):
 
     assert response.status_code == 422
     assert response.json() == {"detail": "Upload at least one vehicle damage image before running analysis"}
+
+
+def test_damage_analysis_cleans_up_annotation_when_assessment_fails(client: TestClient, tmp_path, monkeypatch):
+    claim = create_claim(client)
+    upload_damage_images(client, claim["id"], ["repair.jpg"])
+
+    def fail_assessment(*_args, **_kwargs):
+        raise RuntimeError("assessment unavailable")
+
+    monkeypatch.setattr(DamageAssessmentService, "assess", fail_assessment)
+    with pytest.raises(RuntimeError, match="assessment unavailable"):
+        client.post(f"/api/claims/{claim['id']}/damage-analysis", headers=admin_headers(client))
+
+    assert list((tmp_path / "uploads" / claim["id"] / "annotations").glob("*.jpg")) == []
 
 
 def test_admin_can_update_persisted_assessment_rules_with_an_audit_record(client: TestClient):
@@ -2010,7 +2220,9 @@ def test_non_replacement_analysis_can_explicitly_request_reference_price_lookup(
 
     assert response.status_code == 200
     assert response.json()["reference_price_status"] == "FOUND"
-    assert response.json()["reference_prices"][0]["part_identity"] == "rear_bumper"
+    assert {item["part_identity"] for item in response.json()["reference_prices"]} == {
+        "rear_bumper", "rear_left_door", "front_left_fender", "hood"
+    }
 
 
 def test_reference_price_lookup_failure_does_not_fail_replacement_analysis(client: TestClient, monkeypatch):

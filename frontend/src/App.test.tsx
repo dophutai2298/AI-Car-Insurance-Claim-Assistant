@@ -707,9 +707,39 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
         damage_percentage: 32.5,
         confidence: 0.91,
         status: "DETECTED" as const,
-        annotated_evidence: evidence[0],
+        annotated_evidence: {
+          ...evidence[0],
+          id: 99,
+          original_filename: "vehicle_damage_image-annotated.jpg",
+          content_url: "/api/claims/CLM-000081/evidence/99/content",
+        },
       },
     ],
+    model_output: {
+      adapter_name: "local",
+      part_identities: ["rear_bumper"],
+      record: {
+        source_evidence_ids: [1],
+        annotated_evidence_ids: [99],
+        parts: [
+          {
+            part: "rear_bumper",
+            main_damage: "dent",
+            damage_percent: 32.5,
+            damage_types: [{ type: "dent", percent: 32.5 }],
+          },
+        ],
+      },
+      annotated_evidence: [
+        {
+          ...evidence[0],
+          id: 99,
+          original_filename: "vehicle_damage_image-annotated.jpg",
+          content_url: "/api/claims/CLM-000081/evidence/99/content",
+        },
+      ],
+      warnings: [],
+    },
     warning: null,
     rules: {
       confidence_threshold: 0.7,
@@ -945,7 +975,7 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
     name: "Annotated damage evidence",
   });
   const damagePreview = await within(annotatedDamage).findByRole("img", {
-    name: "vehicle_damage_image.jpg",
+    name: "vehicle_damage_image-annotated.jpg",
   });
   expect(damagePreview).toHaveClass("h-44");
   expect(damagePreview.closest("a")).toHaveAttribute(

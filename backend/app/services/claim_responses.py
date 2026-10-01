@@ -357,6 +357,11 @@ class ClaimResponseAssembler:
                 "adapter_name": model_output.adapter_name,
                 "part_identities": output_payload.get("part_identities", []),
                 "record": output_payload["record"],
+                "annotated_evidence": [
+                    self._to_evidence_response(claim_number, evidence_by_id[evidence_id])
+                    for evidence_id in output_payload["record"].get("annotated_evidence_ids", [])
+                    if evidence_id in evidence_by_id
+                ],
                 "warnings": json.loads(model_output.warnings_json),
             }
         return DamageAnalysisResponse(
@@ -425,6 +430,7 @@ class ClaimResponseAssembler:
         )
         return CopilotConclusionResponse(
             id=conclusion.id,
+            revision=self.copilot_conclusions.revision_for(conclusion),
             status=conclusion.status,
             recommendation=conclusion.recommendation,
             summary=conclusion.summary,

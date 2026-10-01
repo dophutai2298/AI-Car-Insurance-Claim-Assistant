@@ -6,7 +6,9 @@ from fastapi.routing import APIRoute
 
 from app.core.config import get_settings
 from app.main import create_app
+from app.api import composition as claim_composition
 from app.services.claims import ClaimService
+from app.services.damage_model import DamageModelAnalysisResult, DamageModelImageResult, DamagePart, DamageType
 
 
 @pytest.fixture
@@ -21,7 +23,30 @@ def client(tmp_path, monkeypatch) -> Iterator[TestClient]:
     monkeypatch.setenv("CHECK_DATABASE_ON_HEALTH", "false")
     monkeypatch.setenv("LLM_MODE", "mock")
     monkeypatch.setenv("DOCUMENT_OCR_MODE", "mock")
+    monkeypatch.setenv("DAMAGE_MODEL_MODE", "local")
     get_settings.cache_clear()
+
+    class FakeDamageAdapter:
+        def __init__(self, storage):
+            self.storage = storage
+
+        def analyze(self, images):
+            results = []
+            for image in images:
+                annotation = self.storage.save_annotation(
+                    image.stored_path.split("/", 1)[0], b"\xff\xd8\xffannotated-image", image.original_filename
+                )
+                part = DamagePart(
+                    part="rear_bumper", main_damage="dent", damage_percent=32.5,
+                    damage_types=[DamageType(type="dent", percent=32.5)],
+                )
+                results.append(DamageModelImageResult(image.id, None, (part,), annotation))
+            return DamageModelAnalysisResult("local", tuple(results))
+
+    monkeypatch.setattr(
+        claim_composition, "get_damage_model_adapter",
+        lambda settings, storage: FakeDamageAdapter(storage),
+    )
     with TestClient(create_app(), raise_server_exceptions=False) as test_client:
         yield test_client
     get_settings.cache_clear()
