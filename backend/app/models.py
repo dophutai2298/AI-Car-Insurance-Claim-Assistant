@@ -43,12 +43,20 @@ class ClaimStatus(str, Enum):
 
 class EvidenceCategory(str, Enum):
     VEHICLE_DAMAGE_IMAGE = "VEHICLE_DAMAGE_IMAGE"
+    DAMAGE_ANNOTATION = "DAMAGE_ANNOTATION"
+    # Keep reading annotations created on databases that already accepted this name.
     VEHICLE_DAMAGE_ANNOTATION = "VEHICLE_DAMAGE_ANNOTATION"
     ID_CARD = "ID_CARD"
     INSURANCE_POLICY = "INSURANCE_POLICY"
     VEHICLE_REGISTRATION = "VEHICLE_REGISTRATION"
     DRIVER_LICENSE = "DRIVER_LICENSE"
     OTHER_DOCUMENT = "OTHER_DOCUMENT"
+
+
+GENERATED_EVIDENCE_CATEGORIES = frozenset({
+    EvidenceCategory.DAMAGE_ANNOTATION,
+    EvidenceCategory.VEHICLE_DAMAGE_ANNOTATION,
+})
 
 
 class DamageAssessment(str, Enum):

@@ -46,7 +46,7 @@ class DamageAnalysisRepository:
             annotation = result.annotation
             record = Evidence(
                 claim_id=claim.id,
-                category=EvidenceCategory.VEHICLE_DAMAGE_ANNOTATION,
+                category=EvidenceCategory.DAMAGE_ANNOTATION,
                 original_filename=annotation.original_filename,
                 stored_path=annotation.relative_path,
                 content_type=annotation.content_type,

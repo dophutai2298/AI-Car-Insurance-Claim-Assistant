@@ -10,8 +10,8 @@ export function LoginPage() {
   const { login, session } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("admin@example.com");
+  const [password, setPassword] = useState("Admin123!");
   const [error, setError] = useState("");
   const [isPending, setIsPending] = useState(false);
 

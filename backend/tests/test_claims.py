@@ -4,10 +4,11 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from app.core.config import get_settings
 from app.main import create_app
+from app.models import Claim, Evidence, EvidenceCategory
 from app.api import composition as claim_composition
 from app.services.document_ocr import (
     DocumentOcrError,
@@ -413,16 +414,37 @@ def upload_damage_images(client: TestClient, claim_id: str, filenames: list[str]
     assert response.status_code == 200
 
 
-def test_generated_annotation_category_cannot_be_uploaded(client: TestClient):
+@pytest.mark.parametrize("category", ["DAMAGE_ANNOTATION", "VEHICLE_DAMAGE_ANNOTATION"])
+def test_generated_annotation_category_cannot_be_uploaded(client: TestClient, category: str):
     claim = create_claim(client)
     response = client.post(
         f"/api/claims/{claim['id']}/evidence",
         headers=admin_headers(client),
-        data={"categories": ["VEHICLE_DAMAGE_ANNOTATION"]},
+        data={"categories": [category]},
         files=[("files", ("fake.jpg", b"\xff\xd8\xfffake", "image/jpeg"))],
     )
     assert response.status_code == 422
     assert client.get(f"/api/claims/{claim['id']}", headers=admin_headers(client)).json()["evidence"] == []
+
+
+def test_legacy_annotation_category_remains_readable_but_hidden_from_uploads(client: TestClient):
+    claim = create_claim(client)
+    with client.app.state.session_factory() as session:
+        claim_row = session.scalar(select(Claim).where(Claim.claim_number == claim["id"]))
+        assert claim_row is not None
+        session.add(Evidence(
+            claim_id=claim_row.id,
+            category=EvidenceCategory.VEHICLE_DAMAGE_ANNOTATION,
+            original_filename="legacy-annotated.jpg",
+            stored_path=f"{claim['id']}/annotations/legacy-annotated.jpg",
+            content_type="image/jpeg",
+            file_size=12,
+        ))
+        session.commit()
+
+    detail = client.get(f"/api/claims/{claim['id']}", headers=admin_headers(client))
+    assert detail.status_code == 200
+    assert detail.json()["evidence"] == []
 
 
 def prepare_claim_for_workflow_analysis(
@@ -810,6 +832,28 @@ def test_edit_after_save_marks_snapshot_stale_and_blocks_ai_provider(
     )
     assert reviewed.status_code == 422
     assert reviewed.json()["detail"]["blocked_reasons"][0]["code"] == "SNAPSHOT_STALE"
+
+
+def test_workflow_analysis_persists_annotation_with_legacy_category_width(client: TestClient):
+    claim = prepare_claim_for_workflow_analysis(client)
+    with client.app.state.session_factory() as session:
+        session.execute(text("""
+            CREATE TRIGGER evidence_category_width
+            BEFORE INSERT ON evidence
+            WHEN length(NEW.category) > 20
+            BEGIN SELECT RAISE(ABORT, 'value too long for type character varying(20)'); END
+        """))
+        session.commit()
+
+    started = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs", headers=admin_headers(client)
+    )
+    assert started.status_code == 202
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=admin_headers(client)
+    ).json()["latest_analysis_run"]
+    assert run["damage_status"] == "COMPLETED"
+    assert run["damage_analysis"]["model_output"]["annotated_evidence"]
 
 
 def test_workflow_analysis_returns_pending_then_persists_grouped_results(client: TestClient):
