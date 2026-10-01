@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from app.models import (
-    Claim, CopilotConclusion, CopilotConclusionReview, DamageAnalysis,
+    Claim, CopilotConclusion, CopilotConclusionReview, CopilotConclusionStatus, DamageAnalysis,
     DocumentOcrResult, Evidence, EvidenceCategory, ReferencePartPrice, ReferencePriceLookupStatus,
     ReferencePriceStatus, WorkflowAnalysisRun,
 )
@@ -434,7 +434,15 @@ class ClaimResponseAssembler:
             status=conclusion.status,
             recommendation=conclusion.recommendation,
             summary=conclusion.summary,
-            fallback_summary=conclusion.fallback_summary,
+            fallback_summary=(
+                conclusion.summary
+                if conclusion.status
+                in {
+                    CopilotConclusionStatus.FALLBACK,
+                    CopilotConclusionStatus.LLM_UNAVAILABLE,
+                }
+                else None
+            ),
             failure_reason=conclusion.failure_reason,
             provider_model=conclusion.provider_model,
             findings=[

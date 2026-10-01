@@ -145,7 +145,7 @@ def test_llm_copilot_returns_same_structured_shape_when_provider_fails():
     conclusion = LlmCopilotService(FailingAdapter()).generate(build_input())
 
     assert conclusion.status == "LLM_UNAVAILABLE"
-    assert conclusion.fallback_summary
+    assert conclusion.summary
     assert conclusion.failure_reason == "LLM generation failed"
     assert conclusion.structured_review.human_review_required is True
     assert conclusion.structured_review.damaged_parts_summary

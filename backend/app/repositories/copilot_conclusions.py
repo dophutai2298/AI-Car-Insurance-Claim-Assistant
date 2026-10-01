@@ -22,7 +22,6 @@ class CopilotConclusionRepository:
             status=conclusion.status,
             recommendation=conclusion.recommendation,
             summary=conclusion.summary,
-            fallback_summary=conclusion.fallback_summary,
             failure_reason=conclusion.failure_reason,
             provider_model=provider_model,
         )

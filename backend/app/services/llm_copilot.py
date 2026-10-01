@@ -263,7 +263,6 @@ class CopilotConclusionResult:
     status: CopilotConclusionStatus
     recommendation: str
     structured_review: AiReviewStructuredResult
-    fallback_summary: str | None
     failure_reason: str | None
     prompt_version: str = AI_REVIEW_PROMPT_VERSION
     schema_version: str = AI_REVIEW_SCHEMA_VERSION
@@ -446,7 +445,6 @@ class LlmCopilotService:
                 status=CopilotConclusionStatus.LLM_UNAVAILABLE,
                 recommendation=MANUAL_ADJUSTER_REVIEW,
                 structured_review=fallback,
-                fallback_summary=fallback.summary,
                 failure_reason="LLM generation failed",
             )
 
@@ -459,7 +457,6 @@ class LlmCopilotService:
             ),
             recommendation=MANUAL_ADJUSTER_REVIEW,
             structured_review=review,
-            fallback_summary=review.summary if is_fallback else None,
             failure_reason=None,
         )
 

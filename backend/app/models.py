@@ -540,6 +540,7 @@ class CopilotConclusion(Base):
     )
     recommendation: Mapped[str] = mapped_column(String(64))
     summary: Mapped[str] = mapped_column(Text)
+    # Expand-contract legacy column. API fallback text is derived from summary.
     fallback_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     provider_model: Mapped[str | None] = mapped_column(String(160), nullable=True)

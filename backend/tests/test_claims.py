@@ -8,7 +8,7 @@ from sqlalchemy import select, text
 
 from app.core.config import get_settings
 from app.main import create_app
-from app.models import Claim, Evidence, EvidenceCategory
+from app.models import Claim, CopilotConclusion, Evidence, EvidenceCategory
 from app.api import composition as claim_composition
 from app.services.document_ocr import (
     DocumentOcrError,
@@ -2254,6 +2254,15 @@ def test_mock_llm_copilot_returns_a_deterministic_fallback_conclusion(client: Te
     assert conclusion["findings"][0]["vehicle_part"] == "front_left_door"
     assert conclusion["reference_prices"][0]["amount"] == 950.0
     assert conclusion["summary"]
+    assert conclusion["fallback_summary"] == conclusion["summary"]
+    with client.app.state.session_factory() as session:
+        stored = session.scalar(
+            select(CopilotConclusion).where(
+                CopilotConclusion.id == conclusion["id"]
+            )
+        )
+        assert stored is not None
+        assert stored.fallback_summary is None
 
 
 def test_missing_llm_credentials_returns_unavailable_conclusion_without_hiding_analysis(client: TestClient, monkeypatch):
@@ -2269,7 +2278,18 @@ def test_missing_llm_credentials_returns_unavailable_conclusion_without_hiding_a
     analysis = response.json()
     assert analysis["assessment"] == "REPAIR_LIKELY"
     assert analysis["copilot_conclusion"]["status"] == "LLM_UNAVAILABLE"
-    assert analysis["copilot_conclusion"]["fallback_summary"]
+    assert (
+        analysis["copilot_conclusion"]["fallback_summary"]
+        == analysis["copilot_conclusion"]["summary"]
+    )
+    with client.app.state.session_factory() as session:
+        stored = session.scalar(
+            select(CopilotConclusion).where(
+                CopilotConclusion.id == analysis["copilot_conclusion"]["id"]
+            )
+        )
+        assert stored is not None
+        assert stored.fallback_summary is None
 
 
 def create_reviewable_conclusion(client: TestClient) -> tuple[dict[str, object], dict[str, object]]:
