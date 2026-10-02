@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 
 from fastapi import UploadFile
@@ -20,6 +21,7 @@ from app.models import (
 from app.repositories.analysis_runs import AnalysisRunRepository
 from app.repositories.analysis_snapshots import AnalysisSnapshotRepository
 from app.repositories.claims import ClaimRepository
+from app.repositories.claim_deletion import ClaimDeletionRepository
 from app.repositories.claim_incidents import ClaimIncidentRepository
 from app.repositories.damage_analyses import DamageAnalysisRepository
 from app.repositories.evidence import EvidenceRepository
@@ -50,7 +52,7 @@ from app.services.analysis_snapshots import AnalysisSnapshotOperations
 from app.services.claim_reviews import ClaimReviewOperations
 from app.services.claim_responses import ClaimResponseAssembler
 from app.services.workflow_analysis import WorkflowAnalysisOperations
-from app.services.evidence_storage import EvidenceStorage
+from app.services.evidence_storage import EvidenceStorage, EvidenceStorageError
 from app.services.damage_assessment import DamageAssessmentService
 from app.services.damage_model import DamageModelAdapter, DamageModelDetection
 from app.services.part_search import PartSearchService, ReferencePartPriceResult
@@ -91,6 +93,8 @@ DOCUMENT_EVIDENCE_CATEGORIES = (
     EvidenceCategory.DRIVER_LICENSE,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class EvidencePersistenceError(Exception):
     pass
@@ -116,6 +120,7 @@ class ClaimService:
         claim_consistency: ClaimConsistencyService,
     ):
         self.claims = ClaimRepository(session)
+        self.claim_deletion = ClaimDeletionRepository(session)
         self.claim_incidents = ClaimIncidentRepository(session)
         self.evidence = EvidenceRepository(session)
         self.damage_analyses = DamageAnalysisRepository(session)
@@ -213,6 +218,27 @@ class ClaimService:
     def get_claim(self, claim_number: str) -> ClaimResponse | None:
         claim = self.claims.find_by_claim_number(claim_number)
         return self._to_response(claim) if claim else None
+
+    def delete_draft_claim(self, claim_number: str) -> bool:
+        claim = self.claims.find_by_claim_number(claim_number)
+        if claim is None:
+            return False
+        if claim.status is not ClaimStatus.DRAFT:
+            raise ClaimValidationError("Only draft claims can be deleted")
+
+        staged_files = self.storage.stage_claim_for_deletion(claim_number)
+        try:
+            self.claim_deletion.delete_claim_graph(claim)
+            self.claims.session.commit()
+        except SQLAlchemyError:
+            self.claims.session.rollback()
+            try:
+                self.storage.restore_staged_claim_deletion(staged_files)
+            except EvidenceStorageError:
+                logger.exception("Unable to restore claim files after database deletion failure")
+            raise
+        self.storage.finalize_staged_claim_deletion(staged_files)
+        return True
 
     def update_claim_information(
         self, claim_number: str, data: ClaimInformationUpdateRequest

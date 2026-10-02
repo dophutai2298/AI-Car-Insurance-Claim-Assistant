@@ -5,6 +5,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import get_settings
 from app.main import create_app
@@ -24,6 +25,7 @@ from app.services.evidence_storage import LocalEvidenceStorage
 from app.services.damage_model import DamageModelAnalysisResult, DamageModelImageResult, DamagePart, DamageType
 from app.services.damage_assessment import DamageAssessmentService
 from app.services.llm_copilot import LlmCopilotService
+from app.repositories.claim_deletion import ClaimDeletionRepository
 
 
 @pytest.fixture
@@ -143,6 +145,77 @@ def test_admin_can_create_persisted_claim_case(client: TestClient):
         "vin": "4T1G11AKXNU123456",
     }
     assert claim["status"] == "DRAFT"
+
+
+def test_admin_can_delete_a_draft_claim_and_its_owned_uploads(
+    client: TestClient, tmp_path
+):
+    claim = create_claim(client)
+    uploaded = client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=admin_headers(client),
+        data={"categories": ["ID_CARD"]},
+        files=[("files", ("identity.jpg", evidence_bytes("identity.jpg", b"identity"), "image/jpeg"))],
+    )
+    assert uploaded.status_code == 200
+    assert (tmp_path / "uploads" / claim["id"]).exists()
+
+    deleted = client.delete(
+        f"/api/claims/{claim['id']}", headers=admin_headers(client)
+    )
+
+    assert deleted.status_code == 204
+    assert client.get(
+        f"/api/claims/{claim['id']}", headers=admin_headers(client)
+    ).status_code == 404
+    assert not (tmp_path / "uploads" / claim["id"]).exists()
+
+
+def test_only_admin_can_delete_draft_claims_and_non_drafts_are_rejected(
+    client: TestClient,
+):
+    claim = create_claim(client)
+
+    assert client.delete(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).status_code == 403
+    transitioned = client.patch(
+        f"/api/claims/{claim['id']}/status",
+        headers=admin_headers(client),
+        json={"status": "ANALYZING"},
+    )
+    assert transitioned.status_code == 200
+    assert client.delete(
+        f"/api/claims/{claim['id']}", headers=admin_headers(client)
+    ).status_code == 409
+
+
+def test_draft_claim_deletion_restores_staged_files_when_database_cleanup_fails(
+    client: TestClient, tmp_path, monkeypatch
+):
+    claim = create_claim(client)
+    uploaded = client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=admin_headers(client),
+        data={"categories": ["ID_CARD"]},
+        files=[("files", ("identity.jpg", evidence_bytes("identity.jpg", b"identity"), "image/jpeg"))],
+    )
+    assert uploaded.status_code == 200
+
+    def fail(*_args, **_kwargs):
+        raise SQLAlchemyError("database failure")
+
+    monkeypatch.setattr(ClaimDeletionRepository, "delete_claim_graph", fail)
+
+    deleted = client.delete(
+        f"/api/claims/{claim['id']}", headers=admin_headers(client)
+    )
+
+    assert deleted.status_code == 500
+    assert client.get(
+        f"/api/claims/{claim['id']}", headers=admin_headers(client)
+    ).status_code == 200
+    assert (tmp_path / "uploads" / claim["id"]).exists()
 
 
 def test_dashboard_lists_claim_summary_and_last_updated(client: TestClient):

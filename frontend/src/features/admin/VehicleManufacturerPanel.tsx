@@ -1,4 +1,12 @@
-import { Add, CheckmarkOutline, Edit, PauseOutline } from "@carbon/icons-react";
+import {
+  Add,
+  CheckmarkOutline,
+  ChevronSort,
+  ChevronSortDown,
+  ChevronSortUp,
+  Edit,
+  PauseOutline,
+} from "@carbon/icons-react";
 import {
   Alert,
   Button,
@@ -13,9 +21,12 @@ import {
 import {
   getCoreRowModel,
   getFilteredRowModel,
+  getSortedRowModel,
+  type LegacyColumn,
   type LegacyColumnDef,
   useLegacyTable,
 } from "@tanstack/react-table/legacy";
+import type { SortingState } from "@tanstack/react-table";
 import { useMemo, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -38,6 +49,7 @@ export function VehicleManufacturerPanel() {
   const [error, setError] = useState("");
   const [globalFilter, setGlobalFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [sorting, setSorting] = useState<SortingState>([]);
   const columns = useMemo<LegacyColumnDef<VehicleManufacturer>[]>(
     () => [
       { accessorKey: "name" },
@@ -58,11 +70,15 @@ export function VehicleManufacturerPanel() {
         statusFilter === "ALL"
           ? []
           : [{ id: "is_active", value: statusFilter }],
+      sorting,
     },
     onGlobalFilterChange: setGlobalFilter,
+    onSortingChange: setSorting,
     globalFilterFn: "includesString",
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    enableSortingRemoval: false,
   });
   const rows = table.getRowModel().rows;
   const isFiltered = Boolean(globalFilter) || statusFilter !== "ALL";
@@ -186,10 +202,16 @@ export function VehicleManufacturerPanel() {
                 <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500">
                   <tr>
                     <th className="px-4 py-3" scope="col">
-                      {t("manufacturers.name")}
+                      <SortHeader
+                        column={table.getColumn("name")!}
+                        label={t("manufacturers.name")}
+                      />
                     </th>
                     <th className="w-28 px-4 py-3" scope="col">
-                      {t("manufacturers.status")}
+                      <SortHeader
+                        column={table.getColumn("is_active")!}
+                        label={t("manufacturers.status")}
+                      />
                     </th>
                     <th className="w-56 px-4 py-3" scope="col">
                       {t("manufacturers.actions")}
@@ -220,6 +242,33 @@ export function VehicleManufacturerPanel() {
         ) : null}
       </Card.Content>
     </Card>
+  );
+}
+
+function SortHeader({
+  column,
+  label,
+}: {
+  column: LegacyColumn<VehicleManufacturer>;
+  label: string;
+}) {
+  const direction = column?.getIsSorted();
+  const Icon =
+    direction === "asc"
+      ? ChevronSortUp
+      : direction === "desc"
+        ? ChevronSortDown
+        : ChevronSort;
+  return (
+    <button
+      aria-label={`Sort ${label} ${direction === "asc" ? "descending" : "ascending"}`}
+      className="inline-flex items-center gap-1 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      onClick={column?.getToggleSortingHandler()}
+      type="button"
+    >
+      {label}
+      <Icon aria-hidden="true" size={16} />
+    </button>
   );
 }
 

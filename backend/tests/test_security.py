@@ -76,6 +76,7 @@ PROTECTED_ROUTES = [
     ("POST", "/api/claims", False),
     ("GET", "/api/claims", False),
     ("GET", "/api/claims/CLM-999999", True),
+    ("DELETE", "/api/claims/CLM-999999", False),
     ("PATCH", "/api/claims/CLM-999999/status", False),
     ("POST", "/api/claims/CLM-999999/evidence", False),
     ("DELETE", "/api/claims/CLM-999999/evidence/1", False),

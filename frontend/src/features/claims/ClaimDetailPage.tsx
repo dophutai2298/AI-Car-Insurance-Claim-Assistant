@@ -1,8 +1,10 @@
-import { ArrowLeft, Document } from "@carbon/icons-react";
-import { Alert, Chip, Skeleton } from "@heroui/react";
+import { ArrowLeft, Document, TrashCan } from "@carbon/icons-react";
+import { Alert, Button, Chip, Modal, Skeleton } from "@heroui/react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 
+import { useAuth } from "../auth/AuthProvider";
 import { ClaimInformationPanel } from "./ClaimInformationPanel";
 import {
   ClaimWorkflowStepper,
@@ -17,12 +19,18 @@ import {
   HumanReviewPanel,
 } from "./WorkflowPanels";
 import { statusTone } from "./statusPresentation";
-import { useClaim } from "./useClaims";
+import { ClaimsApiError } from "./claimsApi";
+import { useClaim, useDeleteClaim } from "./useClaims";
 
 export function ClaimDetailPage() {
   const { claimId } = useParams();
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { session } = useAuth();
   const { data: claim, error, isPending } = useClaim(claimId);
+  const remove = useDeleteClaim(claimId);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   if (isPending)
     return (
@@ -60,6 +68,21 @@ export function ClaimDetailPage() {
   const reviewed = currentConclusion?.review_history[0];
   const evidenceLocked =
     analysisLocked || Boolean(reviewed && !reviewed.reverted_at);
+  const canDelete = session?.user.role === "ADMIN" && claim.status === "DRAFT";
+
+  async function confirmDelete() {
+    setDeleteError("");
+    try {
+      await remove.mutateAsync();
+      navigate("/claims", { replace: true });
+    } catch (caught) {
+      setDeleteError(
+        caught instanceof ClaimsApiError
+          ? caught.message
+          : t("claim.deleteFailed"),
+      );
+    }
+  }
 
   function navigateToStep(step: ClaimStepId) {
     document
@@ -88,10 +111,28 @@ export function ClaimDetailPage() {
             {t("claim.createdFor", { name: claim.claimant_name })}
           </p>
         </div>
-        <Chip color={statusTone[claim.status]} variant="soft">
-          {t(`claim.status.${claim.status}`)}
-        </Chip>
+        <div className="flex items-center gap-3">
+          {canDelete ? (
+            <Button
+              className="text-red-700 hover:bg-red-50"
+              onPress={() => setIsDeleteOpen(true)}
+              variant="ghost"
+            >
+              <TrashCan size={17} />
+              {t("claim.deleteDraft")}
+            </Button>
+          ) : null}
+          <Chip color={statusTone[claim.status]} variant="soft">
+            {t(`claim.status.${claim.status}`)}
+          </Chip>
+        </div>
       </header>
+      {deleteError ? (
+        <Alert status="danger">
+          <Alert.Title>{t("claim.deleteFailed")}</Alert.Title>
+          <Alert.Description>{deleteError}</Alert.Description>
+        </Alert>
+      ) : null}
       <ClaimWorkflowStepper
         current={workflow.current}
         onNavigate={navigateToStep}
@@ -112,6 +153,44 @@ export function ClaimDetailPage() {
         <Alert.Title>{t("claim.safetyTitle")}</Alert.Title>
         <Alert.Description>{t("claim.safetyDescription")}</Alert.Description>
       </Alert>
+      <Modal>
+        <Modal.Backdrop
+          isOpen={isDeleteOpen}
+          onOpenChange={(isOpen) => {
+            if (!isOpen && !remove.isPending) setIsDeleteOpen(false);
+          }}
+        >
+          <Modal.Container>
+            <Modal.Dialog className="sm:max-w-md">
+              <Modal.Header>
+                <Modal.Heading>{t("claim.deleteDraftTitle")}</Modal.Heading>
+              </Modal.Header>
+              <Modal.Body>
+                <p className="text-sm text-slate-600">
+                  {t("claim.deleteDraftDescription", { id: claim.id })}
+                </p>
+              </Modal.Body>
+              <Modal.Footer>
+                <Button
+                  isDisabled={remove.isPending}
+                  onPress={() => setIsDeleteOpen(false)}
+                  variant="outline"
+                >
+                  {t("common.cancel")}
+                </Button>
+                <Button
+                  className="bg-red-600 text-white hover:bg-red-700"
+                  isPending={remove.isPending}
+                  onPress={confirmDelete}
+                >
+                  <TrashCan size={17} />
+                  {t("claim.deleteDraft")}
+                </Button>
+              </Modal.Footer>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
+      </Modal>
     </div>
   );
 }

@@ -1,10 +1,21 @@
-import { ChevronLeft, ChevronRight } from "@carbon/icons-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronSort,
+  ChevronSortDown,
+  ChevronSortUp,
+} from "@carbon/icons-react";
 import { Button, Chip } from "@heroui/react";
-import { flexRender, type PaginationState } from "@tanstack/react-table";
+import {
+  flexRender,
+  type PaginationState,
+  type SortingState,
+} from "@tanstack/react-table";
 import {
   getCoreRowModel,
   getFilteredRowModel,
   getPaginationRowModel,
+  getSortedRowModel,
   type LegacyColumnDef,
   useLegacyTable,
 } from "@tanstack/react-table/legacy";
@@ -42,6 +53,7 @@ export function ClaimQueueTable({
     pageIndex: 0,
     pageSize: 10,
   });
+  const [sorting, setSorting] = useState<SortingState>([]);
   const dateFilteredClaims = useMemo(
     () =>
       claims.filter((claim) => isWithinDateRange(claim.updatedAt, dateRange)),
@@ -99,12 +111,16 @@ export function ClaimQueueTable({
       columnFilters:
         statusFilter === "ALL" ? [] : [{ id: "status", value: statusFilter }],
       pagination,
+      sorting,
     },
     onGlobalFilterChange: setGlobalFilter,
+    onSortingChange: setSorting,
     globalFilterFn: "includesString",
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    enableSortingRemoval: false,
   });
   const rows = table.getRowModel().rows;
   const totalRows = table.getFilteredRowModel().rows.length;
@@ -123,7 +139,7 @@ export function ClaimQueueTable({
 
   useEffect(() => {
     setPagination((current) => ({ ...current, pageIndex: 0 }));
-  }, [globalFilter, statusFilter, dateRange]);
+  }, [globalFilter, statusFilter, dateRange, sorting]);
 
   return (
     <div className="grid gap-4">
@@ -172,16 +188,49 @@ export function ClaimQueueTable({
           <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <th className="px-4 py-3" key={header.id} scope="col">
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )}
-                  </th>
-                ))}
+                {headerGroup.headers.map((header) => {
+                  const direction = header.column.getIsSorted();
+                  const label = header.isPlaceholder
+                    ? ""
+                    : String(
+                        header.column.columnDef.header ?? header.column.id,
+                      );
+                  const Icon =
+                    direction === "asc"
+                      ? ChevronSortUp
+                      : direction === "desc"
+                        ? ChevronSortDown
+                        : ChevronSort;
+                  return (
+                    <th
+                      aria-sort={
+                        direction === "asc"
+                          ? "ascending"
+                          : direction === "desc"
+                            ? "descending"
+                            : "none"
+                      }
+                      className="px-4 py-3"
+                      key={header.id}
+                      scope="col"
+                    >
+                      {header.isPlaceholder ? null : (
+                        <button
+                          aria-label={`Sort ${label} ${direction === "asc" ? "descending" : "ascending"}`}
+                          className="inline-flex items-center gap-1 text-left hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          onClick={header.column.getToggleSortingHandler()}
+                          type="button"
+                        >
+                          {flexRender(
+                            header.column.columnDef.header,
+                            header.getContext(),
+                          )}
+                          <Icon aria-hidden="true" size={16} />
+                        </button>
+                      )}
+                    </th>
+                  );
+                })}
               </tr>
             ))}
           </thead>
