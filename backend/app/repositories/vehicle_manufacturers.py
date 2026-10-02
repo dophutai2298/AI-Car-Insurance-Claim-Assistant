@@ -9,12 +9,21 @@ class VehicleManufacturerRepository:
     def __init__(self, session: Session):
         self.session = session
 
-    def list_active(self) -> list[VehicleManufacturer]:
-        statement = select(VehicleManufacturer).where(VehicleManufacturer.is_active).order_by(VehicleManufacturer.name)
-        return list(self.session.scalars(statement))
-
-    def list_all(self) -> list[VehicleManufacturer]:
-        return list(self.session.scalars(select(VehicleManufacturer).order_by(VehicleManufacturer.name)))
+    def list_page(
+        self, *, page: int, page_size: int, active_only: bool
+    ) -> tuple[list[VehicleManufacturer], int]:
+        filters = [VehicleManufacturer.is_active.is_(True)] if active_only else []
+        total = self.session.scalar(
+            select(func.count(VehicleManufacturer.id)).where(*filters)
+        ) or 0
+        statement = (
+            select(VehicleManufacturer)
+            .where(*filters)
+            .order_by(VehicleManufacturer.name, VehicleManufacturer.id)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        return list(self.session.scalars(statement)), total
 
     def find_by_id(self, manufacturer_id: int) -> VehicleManufacturer | None:
         return self.session.get(VehicleManufacturer, manufacturer_id)

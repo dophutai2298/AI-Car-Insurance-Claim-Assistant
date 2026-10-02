@@ -1,6 +1,7 @@
+from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -8,9 +9,10 @@ from app.api.dependencies import AdminUser, AiReviewUser, AnalysisSupportUser, A
 from app.api.composition import build_claim_service
 from app.core.config import Settings, get_settings
 from app.db import get_db
-from app.models import EvidenceCategory
+from app.models import ClaimStatus, EvidenceCategory, User
 from app.schemas.claims import (
     ClaimCreateRequest,
+    ClaimAssignmentRequest,
     ClaimInformationUpdateRequest,
     ClaimListItem,
     ClaimResponse,
@@ -32,6 +34,7 @@ from app.services.analysis_errors import AnalysisConfirmationBlockedError
 from app.services.claim_errors import ClaimConflictError, ClaimResourceNotFoundError, ClaimValidationError
 from app.services.damage_model import DamageModelUnavailableError
 from app.services.evidence_storage import EvidenceStorageError, EvidenceValidationError, detect_safe_media_type
+from app.services.workflow_worker import WorkflowWorker
 
 router = APIRouter(prefix="/api/claims", tags=["claims"])
 
@@ -43,12 +46,12 @@ def get_claim_service(
     return build_claim_service(session, settings)
 
 
-def process_analysis_in_background(session_factory, settings: Settings, run_id: int) -> None:
-    with session_factory() as session:
-        build_claim_service(session, settings).process_workflow_analysis(run_id)
-
-
 ClaimServiceDependency = Annotated[ClaimService, Depends(get_claim_service)]
+
+
+def ensure_claim_visible(service: ClaimService, claim_number: str, user: User) -> None:
+    if service.find_visible_claim(claim_number, user) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
 
 
 @router.post("", response_model=ClaimResponse, status_code=status.HTTP_201_CREATED)
@@ -65,10 +68,46 @@ def create_claim(
 
 @router.get("", response_model=list[ClaimListItem])
 def list_claims(
+    response: Response,
     _current_user: AdminUser,
     service: ClaimServiceDependency,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    claim_status: Annotated[ClaimStatus | None, Query(alias="status")] = None,
+    search: Annotated[str | None, Query(max_length=120)] = None,
+    updated_from: datetime | None = None,
+    updated_to: datetime | None = None,
 ) -> list[ClaimListItem]:
-    return service.list_claims()
+    items, total = service.list_claims(
+        page=page,
+        page_size=page_size,
+        status=claim_status,
+        search=search,
+        updated_from=updated_from,
+        updated_to=updated_to,
+    )
+    response.headers["X-Page"] = str(page)
+    response.headers["X-Page-Size"] = str(page_size)
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["X-Total-Pages"] = str((total + page_size - 1) // page_size)
+    return items
+
+
+@router.patch("/{claim_number}/assignment", response_model=ClaimResponse)
+def assign_claim(
+    claim_number: str,
+    request: ClaimAssignmentRequest,
+    current_user: AdminUser,
+    service: ClaimServiceDependency,
+) -> ClaimResponse:
+    ensure_claim_visible(service, claim_number, current_user)
+    try:
+        claim = service.assign_claim(claim_number, request)
+    except ClaimValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if claim is None:
+        raise HTTPException(status_code=404, detail="Claim not found")
+    return claim
 
 
 @router.get("/{claim_number}", response_model=ClaimResponse)
@@ -77,6 +116,7 @@ def get_claim(
     _current_user: AnalysisSupportUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
+    ensure_claim_visible(service, claim_number, _current_user)
     claim = service.get_claim(claim_number)
     if claim is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
@@ -90,6 +130,7 @@ def transition_claim_status(
     _current_user: AdminUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
+    ensure_claim_visible(service, claim_number, _current_user)
     try:
         claim = service.transition_claim(claim_number, request.status)
     except ClaimValidationError as error:
@@ -110,6 +151,7 @@ def upload_evidence(
     service: ClaimServiceDependency,
     other_document_label: Annotated[str | None, Form()] = None,
 ) -> ClaimResponse:
+    ensure_claim_visible(service, claim_number, _current_user)
     try:
         claim = service.upload_evidence(claim_number, categories, files, other_document_label)
     except ClaimValidationError as error:
@@ -130,6 +172,7 @@ def get_evidence_content(
     _current_user: AnalysisSupportUser,
     service: ClaimServiceDependency,
 ) -> FileResponse:
+    ensure_claim_visible(service, claim_number, _current_user)
     evidence_with_path = service.evidence_content_path(claim_number, evidence_id)
     if evidence_with_path is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evidence not found")
@@ -155,6 +198,7 @@ def run_damage_analysis(
     service: ClaimServiceDependency,
     force_reference_price_lookup: bool = False,
 ) -> DamageAnalysisResponse:
+    ensure_claim_visible(service, claim_number, _current_user)
     try:
         analysis = service.run_damage_analysis(claim_number, force_reference_price_lookup)
     except ClaimValidationError as error:
@@ -174,6 +218,7 @@ def review_copilot_conclusion(
     current_user: HumanReviewUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
+    ensure_claim_visible(service, claim_number, current_user)
     try:
         claim = service.review_copilot_conclusion(claim_number, conclusion_id, request, current_user)
     except ClaimResourceNotFoundError as error:
@@ -194,6 +239,7 @@ def delete_evidence(
     _current_user: AdminUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
+    ensure_claim_visible(service, claim_number, _current_user)
     try:
         claim = service.delete_evidence(claim_number, evidence_id)
     except ClaimResourceNotFoundError as error:
@@ -212,6 +258,7 @@ def update_claim_information(
     _current_user: AdminUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
+    ensure_claim_visible(service, claim_number, _current_user)
     try:
         claim = service.update_claim_information(claim_number, request)
     except ClaimValidationError as error:
@@ -228,12 +275,12 @@ def update_claim_information(
 )
 def start_workflow_analysis(
     claim_number: str,
-    background_tasks: BackgroundTasks,
     request: Request,
     _current_user: AnalysisUser,
     service: ClaimServiceDependency,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> WorkflowAnalysisRunResponse:
+    ensure_claim_visible(service, claim_number, _current_user)
     try:
         run = service.start_workflow_analysis(claim_number)
     except ClaimValidationError as error:
@@ -242,12 +289,8 @@ def start_workflow_analysis(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
-    background_tasks.add_task(
-        process_analysis_in_background,
-        request.app.state.session_factory,
-        settings,
-        run.id,
-    )
+    if settings.workflow_worker_eager:
+        WorkflowWorker(request.app.state.session_factory, settings).run_once()
     return run
 
 
@@ -263,6 +306,7 @@ def update_document_analysis_field(
     _current_user: AnalysisUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
+    ensure_claim_visible(service, claim_number, _current_user)
     try:
         claim = service.update_document_analysis_field(
             claim_number, document_analysis_id, field_id, request
@@ -288,6 +332,7 @@ def update_document_field_validation(
     _current_user: AnalysisUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
+    ensure_claim_visible(service, claim_number, _current_user)
     try:
         claim = service.update_document_field_validation(
             claim_number, run_id, field_validation_id, request
@@ -313,6 +358,7 @@ def update_document_extracted_field(
     _current_user: AnalysisUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
+    ensure_claim_visible(service, claim_number, _current_user)
     try:
         claim = service.update_document_extracted_field(
             claim_number, run_id, extracted_field_id, request
@@ -337,6 +383,7 @@ def update_document_extracted_fields(
     _current_user: AnalysisUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
+    ensure_claim_visible(service, claim_number, _current_user)
     try:
         claim = service.update_document_extracted_fields(claim_number, run_id, request)
     except AnalysisConfirmationBlockedError as error:
@@ -359,11 +406,14 @@ def update_document_extracted_fields(
 def run_workflow_ai_review(
     claim_number: str,
     run_id: int,
+    request: Request,
     _current_user: AiReviewUser,
     service: ClaimServiceDependency,
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> ClaimResponse:
+    ensure_claim_visible(service, claim_number, _current_user)
     try:
-        claim = service.run_workflow_ai_review(claim_number, run_id)
+        claim = service.enqueue_workflow_ai_review(claim_number, run_id)
     except AnalysisConfirmationBlockedError as error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -377,6 +427,12 @@ def run_workflow_ai_review(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
     if claim is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
+    if settings.workflow_worker_eager:
+        WorkflowWorker(request.app.state.session_factory, settings).run_once()
+        service.claims.session.expire_all()
+        refreshed = service.get_claim(claim_number)
+        if refreshed is not None:
+            return refreshed
     return claim
 
 
@@ -391,6 +447,7 @@ def revert_copilot_conclusion_review(
     current_user: HumanReviewUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
+    ensure_claim_visible(service, claim_number, current_user)
     try:
         claim = service.revert_copilot_conclusion_review(
             claim_number, conclusion_id, request, current_user

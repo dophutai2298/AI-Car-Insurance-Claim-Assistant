@@ -200,13 +200,8 @@ class AnalysisSnapshotOperations:
         self, run_id: int
     ) -> dict[EvidenceCategory, list[DocumentExtractedField]]:
         fields_by_category: dict[EvidenceCategory, list[DocumentExtractedField]] = {}
-        for ocr_result in self.analysis_runs.document_ocr_results(run_id):
-            extraction = self.analysis_runs.document_extraction_for_ocr(ocr_result.id)
-            if extraction is None:
-                continue
-            fields_by_category.setdefault(ocr_result.document_type, []).extend(
-                self.analysis_runs.extracted_fields_for_result(extraction.id)
-            )
+        for field, category in self.analysis_runs.extracted_fields_with_category(run_id):
+            fields_by_category.setdefault(category, []).append(field)
         return fields_by_category
 
     def build_payload(

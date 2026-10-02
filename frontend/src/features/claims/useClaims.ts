@@ -53,12 +53,13 @@ export function useClaim(claimId: string | undefined) {
     queryKey: [...claimsQueryKey, claimId],
     queryFn: () => getClaim(claimId!, session!.access_token),
     enabled: Boolean(session && claimId),
-    refetchInterval: (query) =>
-      ["PENDING", "PROCESSING"].includes(
-        query.state.data?.latest_analysis_run?.status ?? "",
-      )
+    refetchInterval: (query) => {
+      const run = query.state.data?.latest_analysis_run;
+      return ["PENDING", "PROCESSING"].includes(run?.status ?? "") ||
+        ["PENDING", "PROCESSING"].includes(run?.ai_review_job_status ?? "")
         ? 1500
-        : false,
+        : false;
+    },
   });
 }
 

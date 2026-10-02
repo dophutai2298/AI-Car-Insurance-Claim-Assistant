@@ -58,6 +58,10 @@ class DocumentAnalysisPipeline:
         ocr_by_category: dict[EvidenceCategory, list[DocumentOcrResult]],
     ) -> None:
         for category, ocr_results in ocr_by_category.items():
+            if self.analysis_runs.any_document_extraction_for_category(
+                run.id, category
+            ) is not None:
+                continue
             completed = [
                 result
                 for result in ocr_results
@@ -166,13 +170,25 @@ class DocumentAnalysisPipeline:
         self, run: WorkflowAnalysisRun, category: EvidenceCategory, evidence_items: list[Evidence]
     ) -> list[DocumentOcrResult]:
         ocr_records = [
-            (item, self.analysis_runs.create_document_ocr_result(run, item))
+            (
+                item,
+                self.analysis_runs.document_ocr_for_evidence(run.id, item.id)
+                or self.analysis_runs.create_document_ocr_result(run, item),
+            )
             for item in evidence_items
         ]
         warnings: list[str] = []
         statuses: list[AnalysisResultStatus] = []
 
         for evidence, record in ocr_records:
+            if record.status in {
+                AnalysisResultStatus.COMPLETED,
+                AnalysisResultStatus.FAILED,
+            }:
+                if record.warning:
+                    warnings.append(f"{evidence.original_filename}: {record.warning}")
+                statuses.append(record.status)
+                continue
             reusable = self.analysis_runs.latest_document_ocr_for_evidence(
                 evidence.id, run.id
             )

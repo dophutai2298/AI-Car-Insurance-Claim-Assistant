@@ -15,6 +15,7 @@ from app.models import (
     EvidenceCategory,
     GENERATED_EVIDENCE_CATEGORIES,
     User,
+    UserRole,
     WorkflowAnalysisRun,
 )
 from app.repositories.analysis_runs import AnalysisRunRepository
@@ -28,8 +29,10 @@ from app.repositories.copilot_conclusion_reviews import (
     CopilotConclusionReviewRepository,
 )
 from app.repositories.workflow_ai_reviews import WorkflowAiReviewRepository
+from app.repositories.workflow_jobs import WorkflowJobRepository
 from app.schemas.claims import (
     ClaimCreateRequest,
+    ClaimAssignmentRequest,
     ClaimInformationUpdateRequest,
     CopilotConclusionReviewRequest,
     CopilotConclusionReviewRevertRequest,
@@ -77,6 +80,7 @@ from app.services.document_field_validation import (
     DocumentFieldValidationService,
     ValidatedDocumentField,
 )
+from app.repositories.users import UserRepository
 
 ALLOWED_LIFECYCLE_TRANSITIONS: dict[ClaimStatus, set[ClaimStatus]] = {
     ClaimStatus.DRAFT: {ClaimStatus.ANALYZING},
@@ -114,14 +118,18 @@ class ClaimService:
         document_extraction: DocumentExtractionService,
         document_field_validation: DocumentFieldValidationService,
         claim_consistency: ClaimConsistencyService,
+        workflow_job_max_attempts: int,
     ):
         self.claims = ClaimRepository(session)
+        self.users = UserRepository(session)
         self.claim_incidents = ClaimIncidentRepository(session)
         self.evidence = EvidenceRepository(session)
         self.damage_analyses = DamageAnalysisRepository(session)
         self.copilot_conclusions = CopilotConclusionRepository(session)
         self.copilot_conclusion_reviews = CopilotConclusionReviewRepository(session)
         self.workflow_ai_reviews = WorkflowAiReviewRepository(session)
+        self.workflow_jobs = WorkflowJobRepository(session)
+        self.workflow_job_max_attempts = workflow_job_max_attempts
         self.storage = storage
         self.damage_model = damage_model
         self.assessment = assessment
@@ -184,6 +192,8 @@ class ClaimService:
             self.copilot_conclusion_reviews,
             self.workflow_ai_reviews,
             self.analysis_runs,
+            self.workflow_jobs,
+            self.users,
             claim_consistency,
             self.snapshots,
         )
@@ -191,24 +201,80 @@ class ClaimService:
     def create_claim(self, data: ClaimCreateRequest, created_by: User) -> ClaimResponse:
         if not self.vehicle_manufacturers.is_active_name(data.vehicle.make):
             raise ClaimValidationError("Vehicle manufacturer is unavailable for new claims")
-        claim = self.claims.create(data, created_by.id)
+        default_adjuster = self.users.first_active_adjuster()
+        claim = self.claims.create(
+            data,
+            created_by.id,
+            default_adjuster.id if default_adjuster else None,
+        )
         if data.incident:
             self.claim_incidents.save(claim, data.incident)
             self.claims.session.commit()
         return self._to_response(claim)
 
-    def list_claims(self) -> list[ClaimListItem]:
-        return [
+    def list_claims(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 100,
+        status: ClaimStatus | None = None,
+        search: str | None = None,
+        updated_from=None,
+        updated_to=None,
+    ) -> tuple[list[ClaimListItem], int]:
+        claims, total = self.claims.list_page(
+            page=page,
+            page_size=page_size,
+            status=status,
+            search=search,
+            updated_from=updated_from,
+            updated_to=updated_to,
+        )
+        assignee_emails = self.users.emails_by_ids(
+            {
+                claim.assigned_adjuster_user_id
+                for claim in claims
+                if claim.assigned_adjuster_user_id is not None
+            }
+        )
+        items = [
             ClaimListItem(
                 id=claim.claim_number,
                 claimant_name=claim.claimant_name,
                 vehicle_summary=f"{claim.vehicle_year} {claim.vehicle_make} {claim.vehicle_model}",
                 status=claim.status,
                 updated_at=claim.updated_at,
+                assigned_adjuster_email=assignee_emails.get(
+                    claim.assigned_adjuster_user_id
+                ),
             )
-            for claim in self.claims.list_all()
+            for claim in claims
             if claim.claim_number
         ]
+        return items, total
+
+    def find_visible_claim(self, claim_number: str, user: User) -> Claim | None:
+        claim = self.claims.find_by_claim_number(claim_number)
+        if claim is None:
+            return None
+        if user.role is UserRole.ADMIN or claim.assigned_adjuster_user_id == user.id:
+            return claim
+        return None
+
+    def assign_claim(
+        self, claim_number: str, request: ClaimAssignmentRequest
+    ) -> ClaimResponse | None:
+        claim = self.claims.find_by_claim_number(claim_number)
+        if claim is None:
+            return None
+        adjuster = self.users.find_by_email(request.adjuster_email)
+        if adjuster is None:
+            raise ClaimValidationError("Active adjuster not found")
+        try:
+            self.claims.assign(claim, adjuster)
+        except ValueError as error:
+            raise ClaimValidationError(str(error)) from error
+        return self._to_response(claim)
 
     def get_claim(self, claim_number: str) -> ClaimResponse | None:
         claim = self.claims.find_by_claim_number(claim_number)
@@ -240,6 +306,8 @@ class ClaimService:
 
     def start_workflow_analysis(self, claim_number: str) -> WorkflowAnalysisRunResponse | None:
         run = self.workflow.start_workflow_analysis(claim_number)
+        if run is not None:
+            self.workflow_jobs.enqueue_analysis(run, self.workflow_job_max_attempts)
         return self._to_analysis_run_response(claim_number, run) if run else None
 
     def process_workflow_analysis(self, run_id: int) -> None:
@@ -373,8 +441,22 @@ class ClaimService:
         self.analysis_snapshots.save_ready(run, all_fields, values_by_id, payload)
         return self._to_response(claim)
 
-    def run_workflow_ai_review(self, claim_number: str, run_id: int) -> ClaimResponse | None:
-        claim = self.reviews.run_workflow_ai_review(claim_number, run_id)
+    def enqueue_workflow_ai_review(self, claim_number: str, run_id: int) -> ClaimResponse | None:
+        claim = self.reviews.validate_workflow_ai_review(claim_number, run_id)
+        if claim is None:
+            return None
+        run = self.analysis_runs.find(run_id)
+        if run is None:
+            raise ClaimResourceNotFoundError("Analysis run not found")
+        self.workflow_jobs.enqueue_ai_review(run, self.workflow_job_max_attempts)
+        return self._to_response(claim)
+
+    def run_workflow_ai_review(
+        self, claim_number: str, run_id: int, source_job_id: int | None = None
+    ) -> ClaimResponse | None:
+        claim = self.reviews.run_workflow_ai_review(
+            claim_number, run_id, source_job_id=source_job_id
+        )
         return self._to_response(claim) if claim else None
 
     def review_copilot_conclusion(

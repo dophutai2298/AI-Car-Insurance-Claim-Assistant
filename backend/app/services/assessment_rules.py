@@ -24,9 +24,6 @@ class AssessmentRuleService:
         self.active_configuration()
         return self.repository.update(values, changed_by)
 
-    def changes(self) -> list[AssessmentRuleChange]:
-        return self.repository.changes()
-
     def default_values(self) -> AssessmentRuleValues:
         return AssessmentRuleValues(
             confidence_threshold=self.settings.damage_confidence_threshold,
@@ -54,8 +51,11 @@ class AssessmentRuleService:
             updated_at=configuration.updated_at,
         )
 
-    def change_responses(self) -> list[AssessmentRuleChangeResponse]:
-        return [self._change_response(change) for change in self.changes()]
+    def change_responses(
+        self, *, page: int = 1, page_size: int = 50
+    ) -> tuple[list[AssessmentRuleChangeResponse], int]:
+        records, total = self.repository.changes_page(page=page, page_size=page_size)
+        return [self._change_response(change, email) for change, email in records], total
 
     @staticmethod
     def _values_from_schema(values: AssessmentRuleValuesSchema) -> AssessmentRuleValues:
@@ -65,9 +65,11 @@ class AssessmentRuleService:
     def _values_schema(values: AssessmentRuleValues) -> AssessmentRuleValuesSchema:
         return AssessmentRuleValuesSchema(**values.__dict__)
 
-    def _change_response(self, change: AssessmentRuleChange) -> AssessmentRuleChangeResponse:
+    def _change_response(
+        self, change: AssessmentRuleChange, changed_by: str | None = None
+    ) -> AssessmentRuleChangeResponse:
         return AssessmentRuleChangeResponse(
-            changed_by=self.repository.user_email(change.changed_by_user_id) or "Unknown user",
+            changed_by=changed_by or self.repository.user_email(change.changed_by_user_id) or "Unknown user",
             changed_at=change.changed_at,
             old_values=AssessmentRuleValuesSchema(
                 confidence_threshold=change.old_confidence_threshold,

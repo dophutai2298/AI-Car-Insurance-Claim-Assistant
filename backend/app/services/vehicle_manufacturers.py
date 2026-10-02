@@ -19,11 +19,13 @@ class VehicleManufacturerService:
     def __init__(self, repository: VehicleManufacturerRepository):
         self.repository = repository
 
-    def active_responses(self) -> list[VehicleManufacturerResponse]:
-        return [VehicleManufacturerResponse.model_validate(item) for item in self.repository.list_active()]
-
-    def all_responses(self) -> list[VehicleManufacturerResponse]:
-        return [VehicleManufacturerResponse.model_validate(item) for item in self.repository.list_all()]
+    def page_responses(
+        self, *, page: int, page_size: int, active_only: bool
+    ) -> tuple[list[VehicleManufacturerResponse], int]:
+        records, total = self.repository.list_page(
+            page=page, page_size=page_size, active_only=active_only
+        )
+        return [VehicleManufacturerResponse.model_validate(item) for item in records], total
 
     def create_response(self, request: VehicleManufacturerWriteRequest) -> VehicleManufacturerResponse:
         name = request.name.strip()

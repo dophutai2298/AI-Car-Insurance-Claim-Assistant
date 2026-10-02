@@ -24,6 +24,7 @@ def client(tmp_path, monkeypatch) -> Iterator[TestClient]:
     monkeypatch.setenv("LLM_MODE", "mock")
     monkeypatch.setenv("DOCUMENT_OCR_MODE", "mock")
     monkeypatch.setenv("DAMAGE_MODEL_MODE", "local")
+    monkeypatch.setenv("WORKFLOW_WORKER_EAGER", "true")
     get_settings.cache_clear()
 
     class FakeDamageAdapter:
@@ -63,7 +64,9 @@ def headers(client: TestClient, role: str) -> dict[str, str]:
 
 PROTECTED_ROUTES = [
     ("GET", "/api/auth/me", True),
+    ("POST", "/api/auth/mfa/enroll", True),
     ("POST", "/api/auth/users", False),
+    ("PATCH", "/api/auth/users/adjuster@example.com", False),
     ("GET", "/api/runtime-config", False),
     ("GET", "/api/vehicle-makes", False),
     ("GET", "/api/admin/access-check", False),
@@ -76,6 +79,7 @@ PROTECTED_ROUTES = [
     ("POST", "/api/claims", False),
     ("GET", "/api/claims", False),
     ("GET", "/api/claims/CLM-999999", True),
+    ("PATCH", "/api/claims/CLM-999999/assignment", False),
     ("PATCH", "/api/claims/CLM-999999/status", False),
     ("POST", "/api/claims/CLM-999999/evidence", False),
     ("DELETE", "/api/claims/CLM-999999/evidence/1", False),
@@ -94,7 +98,13 @@ PROTECTED_ROUTES = [
 
 
 def test_permission_matrix_covers_every_registered_api_route(client: TestClient):
-    public = {("GET", "/api/health"), ("POST", "/api/auth/login")}
+    public = {
+        ("GET", "/api/health"),
+        ("POST", "/api/auth/login"),
+        ("POST", "/api/auth/refresh"),
+        ("POST", "/api/auth/logout"),
+        ("POST", "/api/auth/mfa/challenge"),
+    }
     for route in client.app.routes:
         if not isinstance(route, APIRoute) or not route.path.startswith("/api/"):
             continue
@@ -222,7 +232,7 @@ def test_download_rechecks_stored_content_before_serving(client: TestClient, tmp
 
 
 def test_unexpected_error_is_generic_and_logged(client: TestClient, monkeypatch, caplog):
-    def fail(_self):
+    def fail(*_args, **_kwargs):
         raise RuntimeError("provider-secret-should-not-leak")
 
     monkeypatch.setattr(ClaimService, "list_claims", fail)
@@ -243,11 +253,26 @@ def test_unexpected_error_is_generic_and_logged(client: TestClient, monkeypatch,
 def test_unexpected_provider_errors_are_not_returned_as_business_errors(
     client: TestClient, monkeypatch, method: str, path: str, service_method: str, error_type: type[Exception], body: dict | None
 ):
+    admin = headers(client, "admin")
+    claim = client.post(
+        "/api/claims",
+        headers=admin,
+        json={
+            "claimant_name": "Security Test",
+            "vehicle": {"make": "Toyota", "model": "Camry", "year": 2022},
+        },
+    ).json()
+
     def fail(*_args, **_kwargs):
         raise error_type("private-provider-detail")
 
     monkeypatch.setattr(ClaimService, service_method, fail)
-    response = client.request(method, path, headers=headers(client, "admin"), json=body)
+    response = client.request(
+        method,
+        path.replace("CLM-000001", claim["id"]),
+        headers=admin,
+        json=body,
+    )
     assert response.status_code == 500
     assert response.json() == {"detail": "Internal server error"}
     assert "private-provider-detail" not in response.text
@@ -327,3 +352,53 @@ def test_nested_resources_cannot_be_accessed_through_another_claim(client: TestC
         f"/api/claims/{second['id']}/copilot-conclusions/{conclusion_id}/review/revert",
         headers=headers(client, "adjuster"), json={"note": "Cross claim revert"},
     ).status_code == 404
+
+
+def test_adjuster_can_access_only_explicitly_assigned_claim(client: TestClient):
+    admin = headers(client, "admin")
+    created_user = client.post(
+        "/api/auth/users",
+        headers=admin,
+        json={
+            "email": "assistant2@example.com",
+            "full_name": "Assistant Two",
+            "password": "123456",
+            "role": "ADJUSTER",
+        },
+    )
+    assert created_user.status_code == 201
+    claim = client.post(
+        "/api/claims",
+        headers=admin,
+        json={
+            "claimant_name": "Assigned Claim",
+            "vehicle": {"make": "Toyota", "model": "Camry", "year": 2022},
+        },
+    ).json()
+    default_adjuster = headers(client, "adjuster")
+    assert client.get(
+        f"/api/claims/{claim['id']}", headers=default_adjuster
+    ).status_code == 200
+
+    assigned = client.patch(
+        f"/api/claims/{claim['id']}/assignment",
+        headers=admin,
+        json={"adjuster_email": "assistant2@example.com"},
+    )
+    assert assigned.status_code == 200
+    assert assigned.json()["assigned_adjuster_email"] == "assistant2@example.com"
+    assert client.get(
+        f"/api/claims/{claim['id']}", headers=default_adjuster
+    ).status_code == 404
+
+    second_login = client.post(
+        "/api/auth/login",
+        json={"email": "assistant2@example.com", "password": "123456"},
+    ).json()
+    second_headers = {
+        "Authorization": f"Bearer {second_login['access_token']}"
+    }
+    assert client.get(
+        f"/api/claims/{claim['id']}", headers=second_headers
+    ).status_code == 200
+    assert client.get(f"/api/claims/{claim['id']}", headers=admin).status_code == 200

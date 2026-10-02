@@ -61,7 +61,7 @@ async function request<T>(
 }
 
 export const listClaims = (accessToken: string) =>
-  request<ClaimListItem[]>("/api/claims", accessToken);
+  request<ClaimListItem[]>("/api/claims?page=1&page_size=100", accessToken);
 export const getClaim = (claimId: string, accessToken: string) =>
   request<ClaimDetail>(`/api/claims/${claimId}`, accessToken);
 export const createClaim = (input: ClaimCreateInput, accessToken: string) =>

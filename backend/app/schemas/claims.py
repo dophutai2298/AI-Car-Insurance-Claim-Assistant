@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.models import (
     AnalysisResultStatus,
     AnalysisRunStatus,
+    WorkflowJobStatus,
     ClaimStatus,
     ConsistencyStatus,
     DamageAssessment,
@@ -36,6 +37,10 @@ class ClaimCreateRequest(BaseModel):
     incident: "IncidentInformation | None" = None
 
 
+class ClaimAssignmentRequest(BaseModel):
+    adjuster_email: str = Field(min_length=3, max_length=320)
+
+
 class IncidentInformation(BaseModel):
     occurred_at: datetime
     location: str = Field(min_length=1, max_length=240)
@@ -56,6 +61,7 @@ class ClaimResponse(BaseModel):
     vehicle: VehicleMetadata
     incident: IncidentInformation | None = None
     status: ClaimStatus
+    assigned_adjuster_email: str | None = None
     created_at: datetime
     updated_at: datetime
     evidence: list["EvidenceResponse"] = Field(default_factory=list)
@@ -69,6 +75,7 @@ class ClaimListItem(BaseModel):
     claimant_name: str
     vehicle_summary: str
     status: ClaimStatus
+    assigned_adjuster_email: str | None = None
     updated_at: datetime
 
 
@@ -302,6 +309,12 @@ class WorkflowAnalysisRunResponse(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     inputs_changed: bool = False
+    job_status: WorkflowJobStatus | None = None
+    progress_stage: str | None = None
+    progress_percent: int | None = Field(default=None, ge=0, le=100)
+    ai_review_job_status: WorkflowJobStatus | None = None
+    ai_review_progress_stage: str | None = None
+    ai_review_progress_percent: int | None = Field(default=None, ge=0, le=100)
 
 
 class ReferencePartPriceResponse(BaseModel):

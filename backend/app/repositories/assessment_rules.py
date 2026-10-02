@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -59,9 +59,18 @@ class AssessmentRuleRepository:
         self.session.refresh(configuration)
         return configuration
 
-    def changes(self) -> list[AssessmentRuleChange]:
-        statement = select(AssessmentRuleChange).order_by(AssessmentRuleChange.changed_at.desc())
-        return list(self.session.scalars(statement))
+    def changes_page(
+        self, *, page: int, page_size: int
+    ) -> tuple[list[tuple[AssessmentRuleChange, str]], int]:
+        total = self.session.scalar(select(func.count(AssessmentRuleChange.id))) or 0
+        statement = (
+            select(AssessmentRuleChange, User.email)
+            .join(User, User.id == AssessmentRuleChange.changed_by_user_id)
+            .order_by(AssessmentRuleChange.changed_at.desc(), AssessmentRuleChange.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        return list(self.session.execute(statement).all()), total
 
     def user_email(self, user_id: int | None) -> str | None:
         return self.session.scalar(select(User.email).where(User.id == user_id)) if user_id else None

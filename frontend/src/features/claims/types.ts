@@ -180,6 +180,12 @@ export type WorkflowAnalysisRun = {
   started_at: string | null;
   completed_at: string | null;
   inputs_changed?: boolean;
+  job_status?: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | null;
+  progress_stage?: string | null;
+  progress_percent?: number | null;
+  ai_review_job_status?: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | null;
+  ai_review_progress_stage?: string | null;
+  ai_review_progress_percent?: number | null;
 };
 
 export type DamageAssessment =

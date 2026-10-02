@@ -17,6 +17,30 @@ class UserCreateRequest(BaseModel):
     role: UserRole
 
 
+class UserSecurityUpdateRequest(BaseModel):
+    password: str | None = Field(default=None, min_length=6, max_length=128)
+    is_active: bool | None = None
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str = Field(min_length=32, max_length=512)
+
+
+class MfaEnrollRequest(BaseModel):
+    secret: str = Field(min_length=16, max_length=128)
+    code: str = Field(pattern=r"^\d{6}$")
+
+
+class MfaRecoveryCodesResponse(BaseModel):
+    recovery_codes: list[str]
+
+
+class MfaChallengeRequest(BaseModel):
+    challenge_token: str = Field(min_length=20, max_length=2048)
+    code: str | None = Field(default=None, pattern=r"^\d{6}$")
+    recovery_code: str | None = Field(default=None, min_length=8, max_length=64)
+
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -26,6 +50,10 @@ class UserResponse(BaseModel):
 
 
 class LoginResponse(BaseModel):
-    access_token: str
+    access_token: str | None = None
+    refresh_token: str | None = None
+    expires_in: int | None = None
     token_type: Literal["bearer"] = "bearer"
     user: UserResponse
+    mfa_required: bool = False
+    mfa_challenge_token: str | None = None

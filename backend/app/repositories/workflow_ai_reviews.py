@@ -17,6 +17,7 @@ class WorkflowAiReviewRepository:
         validity_percentage: int,
         warnings: list[str],
         evidence_references: list[dict[str, object]],
+        source_job_id: int | None = None,
     ) -> WorkflowAiReview:
         review = WorkflowAiReview(
             analysis_run_id=analysis_run_id,
@@ -25,6 +26,7 @@ class WorkflowAiReviewRepository:
             review_status="REVIEW_REQUIRED",
             warnings_json=json.dumps(warnings),
             evidence_references_json=json.dumps(evidence_references),
+            source_job_id=source_job_id,
         )
         self.session.add(review)
         self.session.commit()
@@ -42,4 +44,11 @@ class WorkflowAiReviewRepository:
     def find_for_conclusion(self, conclusion_id: int) -> WorkflowAiReview | None:
         return self.session.scalar(
             select(WorkflowAiReview).where(WorkflowAiReview.conclusion_id == conclusion_id)
+        )
+
+    def find_for_source_job(self, source_job_id: int) -> WorkflowAiReview | None:
+        return self.session.scalar(
+            select(WorkflowAiReview).where(
+                WorkflowAiReview.source_job_id == source_job_id
+            )
         )

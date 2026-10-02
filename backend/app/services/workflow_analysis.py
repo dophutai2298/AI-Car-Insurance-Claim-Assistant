@@ -70,18 +70,22 @@ class WorkflowAnalysisOperations:
 
     def process_workflow_analysis(self, run_id: int) -> None:
         run = self.analysis_runs.find(run_id)
-        if run is None or run.status is not AnalysisRunStatus.PENDING:
+        if run is None or run.status not in {
+            AnalysisRunStatus.PENDING,
+            AnalysisRunStatus.PROCESSING,
+        }:
             return
         claim = self.claims.find_by_id(run.claim_id)
         if claim is None:
             return
-        self.analysis_runs.mark_processing(run)
+        if run.status is AnalysisRunStatus.PENDING:
+            self.analysis_runs.mark_processing(run)
         try:
             self._process_workflow_capabilities(run, claim)
         except Exception:
             logger.exception("Workflow analysis failed for run %s", run_id)
             self.claims.session.rollback()
-            self.analysis_runs.fail(run, claim, "Analysis processing failed")
+            raise
 
     def _process_workflow_capabilities(
         self, run: WorkflowAnalysisRun, claim: Claim
@@ -92,39 +96,41 @@ class WorkflowAnalysisOperations:
             for category in REQUIRED_EVIDENCE_CATEGORIES
         }
 
-        model_result = None
-        damage_analysis = None
-        try:
-            model_result = self.damage_model.analyze(
-                by_category[EvidenceCategory.VEHICLE_DAMAGE_IMAGE]
-            )
-            detections = model_result.detections
-            rules = self.rules.active_values()
-            assessment = self.assessment.assess(detections, rules)
-            reference_prices = self.part_search.lookup_for_assessment(
-                assessment.assessment,
-                detections,
-                claim.vehicle_make,
-                claim.vehicle_model,
-                claim.vehicle_year,
-                False,
-            )
-            damage_analysis = self.damage_analyses.create(
-                claim,
-                assessment,
-                model_result,
-                detections,
-                rules,
-                reference_prices,
-                update_claim_status=False,
-            )
-            self.analysis_runs.attach_damage(run, damage_analysis)
-        except Exception:
-            self.damage_analyses.session.rollback()
-            if model_result is not None and damage_analysis is None:
-                self.damage_model.storage.delete_stored(model_result.annotations)
-            logger.exception("Damage analysis failed for run %s", run.id)
-            self.analysis_runs.mark_damage_failed(run, "Damage analysis failed")
+        if self.analysis_runs.damage_analysis(run.id) is None:
+            model_result = None
+            damage_analysis = None
+            try:
+                model_result = self.damage_model.analyze(
+                    by_category[EvidenceCategory.VEHICLE_DAMAGE_IMAGE]
+                )
+                detections = model_result.detections
+                rules = self.rules.active_values()
+                assessment = self.assessment.assess(detections, rules)
+                reference_prices = self.part_search.lookup_for_assessment(
+                    assessment.assessment,
+                    detections,
+                    claim.vehicle_make,
+                    claim.vehicle_model,
+                    claim.vehicle_year,
+                    False,
+                )
+                damage_analysis = self.damage_analyses.create(
+                    claim,
+                    assessment,
+                    model_result,
+                    detections,
+                    rules,
+                    reference_prices,
+                    update_claim_status=False,
+                    commit=False,
+                )
+                self.analysis_runs.attach_damage(run, damage_analysis)
+            except Exception:
+                self.damage_analyses.session.rollback()
+                if model_result is not None:
+                    self.damage_model.storage.delete_stored(model_result.annotations)
+                logger.exception("Damage analysis failed for run %s", run.id)
+                self.analysis_runs.mark_damage_failed(run, "Damage analysis failed")
 
         previous_run = self.analysis_runs.latest_before(claim.id, run.id)
         self.document_pipeline.process(run, previous_run, claim, by_category)

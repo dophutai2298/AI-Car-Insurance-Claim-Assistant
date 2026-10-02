@@ -84,7 +84,7 @@ uvicorn app.main:app --reload --reload-dir app
 
 Nếu PowerShell chặn kích hoạt virtual environment, dùng lệnh kích hoạt phù hợp với shell đang sử dụng hoặc gọi trực tiếp `.venv\Scripts\python.exe`.
 
-Khi khởi động, API tạo các bảng còn thiếu và tạo tài khoản demo cùng danh sách hãng xe nếu chưa có. Tài khoản hiện hữu không tự đổi mật khẩu khi cập nhật biến môi trường. Hãy cấu hình credential trước lần chạy đầu tiên. Để đổi mật khẩu tài khoản đã tồn tại, cần dùng quy trình quản trị tài khoản hoặc database được phê duyệt.
+Khi `DATABASE_MIGRATE_ON_STARTUP=true`, API chạy Alembic migration rồi tạo tài khoản demo và danh sách hãng xe nếu chưa có. Ứng dụng không dùng SQLAlchemy `create_all` thay cho migration. Database development cũ chưa có Alembic sẽ được đánh dấu tại baseline và nâng cấp tự động; hãy sao lưu trước khi nâng cấp dữ liệu dùng chung. Tài khoản hiện hữu không tự đổi mật khẩu khi cập nhật biến môi trường.
 
 Tài khoản demo trong cấu hình mẫu:
 
@@ -101,6 +101,34 @@ Backend chạy tại `http://localhost:8000`:
 - Swagger UI: `/docs`
 - ReDoc: `/redoc`
 - OpenAPI schema: `/openapi.json`
+
+### 3.1 Chạy migration và workflow worker
+
+Mọi thay đổi schema được quản lý bằng Alembic:
+
+```powershell
+cd backend
+alembic upgrade head
+alembic current
+alembic downgrade -1
+```
+
+Analysis và AI Review được lưu thành job trong PostgreSQL và xử lý ngoài API process. Giữ lệnh sau chạy ở một terminal riêng:
+
+```powershell
+cd backend
+python -m app.worker
+```
+
+`WORKFLOW_WORKER_EAGER=true` chỉ dành cho test xác định. Khi development hoặc deploy bình thường, worker cần chạy riêng để job tồn tại qua các lần API reload hoặc restart.
+
+Để chạy PostgreSQL, migration, API và worker bằng các container riêng:
+
+```powershell
+docker compose up --build
+```
+
+Wheel DeepDoc riêng tư phải có trong `backend/package/` trước khi build image.
 
 ### 4. Cài đặt và khởi động frontend
 
@@ -130,7 +158,13 @@ Detector xử lý từng ảnh xe đã upload và lưu ảnh kết quả vào `U
 ## Quyền truy cập
 
 - `ADMIN` được dùng tất cả API cần đăng nhập, quản lý hồ sơ và cấu hình, đồng thời có thể tạo tài khoản.
-- `ADJUSTER` được chạy Analysis, AI Review và Human Review. Adjuster cũng có thể đọc chi tiết hồ sơ và chứng cứ cần thiết cho các bước này; tạo/liệt kê hồ sơ, thay đổi chứng cứ, quản lý tài khoản và cấu hình chỉ dành cho admin.
+- `ADJUSTER` chỉ được chạy Analysis, AI Review và Human Review trên hồ sơ được gán trực tiếp cho tài khoản đó. Adjuster cũng có thể đọc chi tiết và chứng cứ của các hồ sơ được gán; tạo/liệt kê hồ sơ, gán hồ sơ, thay đổi chứng cứ, quản lý tài khoản và cấu hình chỉ dành cho admin.
+
+Trong migration của Task 23, hồ sơ cũ chưa được gán sẽ được gán cho tài khoản `ADJUSTER` đang active có ID nhỏ nhất nếu tài khoản đó tồn tại. Hồ sơ mới mặc định dùng adjuster đang active đầu tiên; admin có thể đổi người phụ trách qua `PATCH /api/claims/{claim_number}/assignment`. Hồ sơ còn chưa được gán chỉ admin mới xem được.
+
+Access token có thời hạn ngắn. `POST /api/auth/refresh` xoay vòng refresh token dạng opaque được lưu hash trong database, còn `POST /api/auth/logout` thu hồi cả token family. Đổi mật khẩu hoặc vô hiệu hóa tài khoản sẽ làm mất hiệu lực session đang hoạt động. Login, refresh và MFA challenge dùng rate limit chung được lưu trong database. TOTP secret của MFA được mã hóa và recovery code chỉ trả về một lần.
+
+Các collection API dùng thứ tự ổn định cùng tham số `page`/`page_size` có giới hạn. Metadata phân trang nằm trong các response header `X-Page`, `X-Page-Size`, `X-Total-Count` và `X-Total-Pages`.
 
 ## Package DeepDoc
 

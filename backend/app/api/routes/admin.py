@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import AdminUser
@@ -71,18 +71,36 @@ def update_assessment_rules(
 
 @router.get("/assessment-rules/history", response_model=list[AssessmentRuleChangeResponse])
 def get_assessment_rule_history(
+    response: Response,
     _current_user: AdminUser,
     service: AssessmentRuleServiceDependency,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> list[AssessmentRuleChangeResponse]:
-    return service.change_responses()
+    items, total = service.change_responses(page=page, page_size=page_size)
+    response.headers["X-Page"] = str(page)
+    response.headers["X-Page-Size"] = str(page_size)
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["X-Total-Pages"] = str((total + page_size - 1) // page_size)
+    return items
 
 
 @router.get("/vehicle-makes", response_model=list[VehicleManufacturerResponse])
 def list_vehicle_manufacturers(
+    response: Response,
     _current_user: AdminUser,
     service: VehicleManufacturerServiceDependency,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 100,
 ) -> list[VehicleManufacturerResponse]:
-    return service.all_responses()
+    items, total = service.page_responses(
+        page=page, page_size=page_size, active_only=False
+    )
+    response.headers["X-Page"] = str(page)
+    response.headers["X-Page-Size"] = str(page_size)
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["X-Total-Pages"] = str((total + page_size - 1) // page_size)
+    return items
 
 
 @router.post("/vehicle-makes", response_model=VehicleManufacturerResponse, status_code=status.HTTP_201_CREATED)

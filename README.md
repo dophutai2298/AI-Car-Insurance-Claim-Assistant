@@ -84,7 +84,7 @@ uvicorn app.main:app --reload --reload-dir app
 
 If PowerShell blocks virtual environment activation, use the activation command appropriate for your shell or invoke `.venv\Scripts\python.exe` directly.
 
-The API creates missing tables and seeds the configured demo users and vehicle manufacturers on startup. Existing users are not overwritten when environment credentials change. Configure credentials before the first startup. To change an existing account's password, use an approved database or account-administration procedure.
+The API runs Alembic migrations on startup when `DATABASE_MIGRATE_ON_STARTUP=true`, then seeds the configured demo users and vehicle manufacturers. It does not use SQLAlchemy `create_all` as a migration substitute. Existing pre-Alembic development databases are stamped at the baseline and upgraded automatically; take a backup before upgrading shared data. Existing users are not overwritten when environment credentials change.
 
 The example demo accounts are:
 
@@ -101,6 +101,34 @@ The backend is available at `http://localhost:8000`:
 - Swagger UI: `/docs`
 - ReDoc: `/redoc`
 - OpenAPI schema: `/openapi.json`
+
+### 3.1 Run migrations and the workflow worker
+
+Schema changes are managed only through Alembic:
+
+```powershell
+cd backend
+alembic upgrade head
+alembic current
+alembic downgrade -1
+```
+
+Analysis and AI Review are persisted in PostgreSQL-backed jobs and are processed outside the API process. Keep this command running in a separate terminal:
+
+```powershell
+cd backend
+python -m app.worker
+```
+
+`WORKFLOW_WORKER_EAGER=true` is intended for deterministic tests only. Normal development and deployment should run the worker separately so queued work survives API reloads and restarts.
+
+To run PostgreSQL, migrations, API, and worker as separate local containers:
+
+```powershell
+docker compose up --build
+```
+
+The private DeepDoc wheel must exist under `backend/package/` before building the image.
 
 ### 4. Install and start the frontend
 
@@ -130,7 +158,13 @@ The detector reads each uploaded vehicle image and stores its annotated result u
 ## Access rules
 
 - `ADMIN` can use all protected APIs and manage claims and configuration, and can create user accounts.
-- `ADJUSTER` can run Analysis, AI Review, and Human Review. Adjusters can also read claim details and evidence needed for those workflows; claim creation/listing, evidence changes, account management, and configuration are admin-only.
+- `ADJUSTER` can run Analysis, AI Review, and Human Review only for claims explicitly assigned to that account. Adjusters can also read those claim details and evidence; claim creation/listing, assignment, evidence changes, account management, and configuration are admin-only.
+
+During the Task 23 migration, existing unassigned claims are assigned to the lowest-ID active `ADJUSTER` account when one exists. New claims use the first active adjuster by default, and an administrator can change the assignment through `PATCH /api/claims/{claim_number}/assignment`. Claims left unassigned remain visible only to administrators.
+
+Access tokens are short-lived. `POST /api/auth/refresh` rotates opaque refresh tokens stored as hashes in the database, and `POST /api/auth/logout` revokes the token family. Password changes and account deactivation invalidate active sessions. Login, refresh, and MFA challenge attempts use shared database-backed rate limits. MFA enrollment stores the TOTP secret encrypted and returns recovery codes only once.
+
+Collection APIs use stable ordering and bounded `page`/`page_size` parameters. Pagination metadata is returned in `X-Page`, `X-Page-Size`, `X-Total-Count`, and `X-Total-Pages` response headers.
 
 ## DeepDoc package
 

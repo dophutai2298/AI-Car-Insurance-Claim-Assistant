@@ -22,6 +22,36 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[UserRole] = mapped_column(SqlEnum(UserRole, native_enum=False))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    auth_version: Mapped[int] = mapped_column(Integer, default=1)
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    mfa_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mfa_recovery_codes_json: Mapped[str] = mapped_column(Text, default="[]")
+
+
+class RefreshSession(Base):
+    __tablename__ = "refresh_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    family_id: Mapped[str] = mapped_column(String(64), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AuthRateLimit(Base):
+    __tablename__ = "auth_rate_limits"
+    __table_args__ = (UniqueConstraint("operation", "identifier", name="uq_auth_rate_limit_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    operation: Mapped[str] = mapped_column(String(40))
+    identifier: Mapped[str] = mapped_column(String(320))
+    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class VehicleManufacturer(Base):
@@ -190,6 +220,11 @@ class Claim(Base):
         SqlEnum(ClaimStatus, native_enum=False), default=ClaimStatus.DRAFT
     )
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    assigned_adjuster_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", name="fk_claims_assigned_adjuster_user_id"),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -282,6 +317,51 @@ class WorkflowAnalysisRun(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WorkflowJobType(str, Enum):
+    ANALYSIS = "ANALYSIS"
+    AI_REVIEW = "AI_REVIEW"
+
+
+class WorkflowJobStatus(str, Enum):
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class WorkflowJob(Base):
+    __tablename__ = "workflow_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_type: Mapped[WorkflowJobType] = mapped_column(
+        SqlEnum(WorkflowJobType, native_enum=False), index=True
+    )
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id"), index=True)
+    analysis_run_id: Mapped[int] = mapped_column(
+        ForeignKey("workflow_analysis_runs.id"), index=True
+    )
+    dedupe_key: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    status: Mapped[WorkflowJobStatus] = mapped_column(
+        SqlEnum(WorkflowJobStatus, native_enum=False),
+        default=WorkflowJobStatus.PENDING,
+        index=True,
+    )
+    progress_stage: Mapped[str] = mapped_column(String(80), default="QUEUED")
+    progress_percent: Mapped[int] = mapped_column(Integer, default=0)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True
+    )
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    locked_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
@@ -592,6 +672,12 @@ class WorkflowAiReview(Base):
     analysis_run_id: Mapped[int] = mapped_column(ForeignKey("workflow_analysis_runs.id"), index=True)
     conclusion_id: Mapped[int] = mapped_column(
         ForeignKey("copilot_conclusions.id"), unique=True, index=True
+    )
+    source_job_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workflow_jobs.id", name="fk_workflow_ai_reviews_source_job_id"),
+        nullable=True,
+        unique=True,
+        index=True,
     )
     validity_percentage: Mapped[int] = mapped_column(Integer)
     review_status: Mapped[str] = mapped_column(String(64), default="REVIEW_REQUIRED")

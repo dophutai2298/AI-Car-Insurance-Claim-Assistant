@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from collections import defaultdict
 import json
 
 from app.models import (
     Claim, CopilotConclusion, CopilotConclusionReview, CopilotConclusionStatus, DamageAnalysis,
-    DocumentOcrResult, Evidence, EvidenceCategory, ReferencePartPrice, ReferencePriceLookupStatus,
-    ReferencePriceStatus, WorkflowAnalysisRun,
+    DocumentExtractedField, DocumentExtractionResult, DocumentOcrResult, Evidence, EvidenceCategory, ReferencePartPrice, ReferencePriceLookupStatus,
+    ReferencePriceStatus, WorkflowAnalysisRun, WorkflowJobType,
 )
 from app.repositories.analysis_runs import AnalysisRunRepository
 from app.repositories.claims import ClaimRepository
@@ -15,6 +16,8 @@ from app.repositories.evidence import EvidenceRepository
 from app.repositories.copilot_conclusions import CopilotConclusionRepository
 from app.repositories.copilot_conclusion_reviews import CopilotConclusionReviewRepository
 from app.repositories.workflow_ai_reviews import WorkflowAiReviewRepository
+from app.repositories.workflow_jobs import WorkflowJobRepository
+from app.repositories.users import UserRepository
 from app.services.analysis_snapshots import AnalysisSnapshotOperations
 from app.schemas.claims import (
     ClaimResponse,
@@ -49,6 +52,8 @@ class ClaimResponseAssembler:
         copilot_conclusion_reviews: CopilotConclusionReviewRepository,
         workflow_ai_reviews: WorkflowAiReviewRepository,
         analysis_runs: AnalysisRunRepository,
+        workflow_jobs: WorkflowJobRepository,
+        users: UserRepository,
         claim_consistency: ClaimConsistencyService,
         snapshots: AnalysisSnapshotOperations,
     ) -> None:
@@ -60,6 +65,8 @@ class ClaimResponseAssembler:
         self.copilot_conclusion_reviews = copilot_conclusion_reviews
         self.workflow_ai_reviews = workflow_ai_reviews
         self.analysis_runs = analysis_runs
+        self.workflow_jobs = workflow_jobs
+        self.users = users
         self.claim_consistency = claim_consistency
         self.snapshots = snapshots
 
@@ -77,6 +84,15 @@ class ClaimResponseAssembler:
             if terminal_run
             else set()
         )
+        assigned_adjuster = (
+            self.users.find_by_id(claim.assigned_adjuster_user_id)
+            if claim.assigned_adjuster_user_id
+            else None
+        )
+        claim_reviews = self.copilot_conclusion_reviews.list_for_claim(claim.id)
+        claim_reversions = self.copilot_conclusion_reviews.reversions_for_reviews(
+            [review.id for review, _reviewer in claim_reviews]
+        )
         return ClaimResponse(
             id=claim.claim_number,
             claimant_name=claim.claimant_name,
@@ -89,6 +105,7 @@ class ClaimResponseAssembler:
             ),
             incident=self.snapshots.incident_response(claim.id),
             status=claim.status,
+            assigned_adjuster_email=assigned_adjuster.email if assigned_adjuster else None,
             created_at=claim.created_at,
             updated_at=claim.updated_at,
             evidence=[
@@ -106,8 +123,13 @@ class ClaimResponseAssembler:
             latest_damage_analysis=self._latest_damage_analysis_response(claim.claim_number, claim.id),
             latest_analysis_run=self._latest_analysis_run_response(claim.claim_number, claim.id),
             copilot_review_history=[
-                self._to_copilot_conclusion_review_response(claim.claim_number, item, reviewer)
-                for item, reviewer in self.copilot_conclusion_reviews.list_for_claim(claim.id)
+                self._to_copilot_conclusion_review_response(
+                    claim.claim_number,
+                    item,
+                    reviewer,
+                    claim_reversions.get(item.id),
+                )
+                for item, reviewer in claim_reviews
             ],
         )
 
@@ -120,6 +142,8 @@ class ClaimResponseAssembler:
     def _to_analysis_run_response(
         self, claim_number: str, run: WorkflowAnalysisRun
     ) -> WorkflowAnalysisRunResponse:
+        analysis_job = self.workflow_jobs.latest_for_run(run.id, WorkflowJobType.ANALYSIS)
+        ai_review_job = self.workflow_jobs.latest_for_run(run.id, WorkflowJobType.AI_REVIEW)
         damage = self.analysis_runs.damage_analysis(run.id)
         incident = self.claim_incidents.find_for_claim(run.claim_id)
         claim = self.claims.find_by_id(run.claim_id)
@@ -133,6 +157,21 @@ class ClaimResponseAssembler:
         analysis_readiness, analysis_snapshot = self.snapshots.state(
             claim, run
         )
+        documents = self.analysis_runs.documents(run.id)
+        fields_by_document: dict[int, list] = defaultdict(list)
+        for field in self.analysis_runs.document_fields_for_run(run.id):
+            fields_by_document[field.document_analysis_id].append(field)
+        ocr_results = self.analysis_runs.document_ocr_results(run.id)
+        extractions_by_ocr = {
+            extraction.document_ocr_result_id: extraction
+            for extraction in self.analysis_runs.document_extractions(run.id)
+        }
+        fields_by_extraction: dict[int, list[DocumentExtractedField]] = defaultdict(list)
+        for field in self.analysis_runs.extracted_fields(run.id):
+            fields_by_extraction[field.extraction_result_id].append(field)
+        validations_by_ocr: dict[int, list] = defaultdict(list)
+        for validation in self.analysis_runs.field_validations(run.id):
+            validations_by_ocr[validation.document_ocr_result_id].append(validation)
         return WorkflowAnalysisRunResponse(
             id=run.id,
             status=run.status,
@@ -153,11 +192,11 @@ class ClaimResponseAssembler:
                             confidence=field.confidence,
                             status=field.status,
                         )
-                        for field in self.analysis_runs.fields(document.id)
+                        for field in fields_by_document[document.id]
                     ],
                     warnings=json.loads(document.warnings_json),
                 )
-                for document in self.analysis_runs.documents(run.id)
+                for document in documents
             ],
             document_ocr_results=[
                 DocumentOcrResultResponse(
@@ -179,7 +218,8 @@ class ClaimResponseAssembler:
                         json.loads(result.adapter_metadata_json).get("ocr_reused", False)
                     ),
                     extraction=self._document_extraction_response(
-                        result.id,
+                        extractions_by_ocr.get(result.id),
+                        fields_by_extraction,
                         claim_facts,
                         json.loads(result.adapter_metadata_json),
                     ),
@@ -198,12 +238,10 @@ class ClaimResponseAssembler:
                             summary=validation.summary,
                             warnings=json.loads(validation.warnings_json),
                         )
-                        for validation in self.analysis_runs.field_validations_for_ocr(
-                            result.id
-                        )
+                        for validation in validations_by_ocr[result.id]
                     ],
                 )
-                for result in self.analysis_runs.document_ocr_results(run.id)
+                for result in ocr_results
             ],
             consistency_checks=[
                 ClaimConsistencyCheckResponse(
@@ -225,15 +263,21 @@ class ClaimResponseAssembler:
             started_at=run.started_at,
             completed_at=run.completed_at,
             inputs_changed=incident is None or incident.input_revision != run.input_revision,
+            job_status=analysis_job.status if analysis_job else None,
+            progress_stage=analysis_job.progress_stage if analysis_job else None,
+            progress_percent=analysis_job.progress_percent if analysis_job else None,
+            ai_review_job_status=ai_review_job.status if ai_review_job else None,
+            ai_review_progress_stage=ai_review_job.progress_stage if ai_review_job else None,
+            ai_review_progress_percent=ai_review_job.progress_percent if ai_review_job else None,
         )
 
     def _document_extraction_response(
         self,
-        document_ocr_result_id: int,
+        extraction: DocumentExtractionResult | None,
+        fields_by_extraction: dict[int, list[DocumentExtractedField]],
         claim_facts: ClaimFacts,
         ocr_metadata: dict[str, object] | None = None,
     ) -> DocumentExtractionResultResponse | None:
-        extraction = self.analysis_runs.document_extraction_for_ocr(document_ocr_result_id)
         if extraction is None:
             return None
         return DocumentExtractionResultResponse(
@@ -271,43 +315,9 @@ class ClaimResponseAssembler:
                         )
                     ),
                 )
-                for field in self.analysis_runs.extracted_fields_for_result(extraction.id)
+                for field in fields_by_extraction[extraction.id]
             ],
         )
-
-    def _confirmed_fields_by_category(
-        self,
-        ocr_results: list[DocumentOcrResult],
-        claim_facts: ClaimFacts,
-    ) -> dict[EvidenceCategory, list[dict[str, object]]]:
-        fields_by_category: dict[EvidenceCategory, list[dict[str, object]]] = {}
-        for ocr_result in ocr_results:
-            extraction = self.analysis_runs.document_extraction_for_ocr(ocr_result.id)
-            if extraction is None:
-                continue
-            category_fields: list[dict[str, object]] = []
-            for field in self.analysis_runs.extracted_fields_for_result(extraction.id):
-                comparison = self.snapshots.comparison_response(
-                    self.claim_consistency.compare_value(
-                        claim_facts,
-                        field.field_key,
-                        field.source_evidence_id,
-                        field.confirmed_value,
-                    )
-                )
-                category_fields.append(
-                    {
-                        "field_key": field.field_key,
-                        "source_evidence_id": field.source_evidence_id,
-                        "ai_extracted_value": field.ai_extracted_value,
-                        "confirmed_value": field.confirmed_value,
-                        "comparison": (
-                            comparison.model_dump(mode="json") if comparison else None
-                        ),
-                    }
-                )
-            fields_by_category[ocr_result.document_type] = category_fields
-        return fields_by_category
 
     @staticmethod
     def _public_adapter_metadata(metadata_json: str) -> dict[str, object]:
@@ -428,6 +438,12 @@ class ClaimResponseAssembler:
             if workflow_review
             else []
         )
+        conclusion_reviews = self.copilot_conclusion_reviews.list_for_conclusion(
+            conclusion.id
+        )
+        conclusion_reversions = self.copilot_conclusion_reviews.reversions_for_reviews(
+            [review.id for review, _reviewer in conclusion_reviews]
+        )
         return CopilotConclusionResponse(
             id=conclusion.id,
             revision=self.copilot_conclusions.revision_for(conclusion),
@@ -458,8 +474,13 @@ class ClaimResponseAssembler:
             warnings=workflow_warnings or ([warning] if warning else []),
             reference_prices=reference_prices,
             review_history=[
-                self._to_copilot_conclusion_review_response(claim_number, item, reviewer)
-                for item, reviewer in self.copilot_conclusion_reviews.list_for_conclusion(conclusion.id)
+                self._to_copilot_conclusion_review_response(
+                    claim_number,
+                    item,
+                    reviewer,
+                    conclusion_reversions.get(item.id),
+                )
+                for item, reviewer in conclusion_reviews
             ],
             validity_percentage=workflow_review.validity_percentage if workflow_review else None,
             review_status=workflow_review.review_status if workflow_review else None,
@@ -476,9 +497,12 @@ class ClaimResponseAssembler:
         )
 
     def _to_copilot_conclusion_review_response(
-        self, claim_number: str, review: CopilotConclusionReview, reviewer: str
+        self,
+        claim_number: str,
+        review: CopilotConclusionReview,
+        reviewer: str,
+        reversion,
     ) -> CopilotConclusionReviewResponse:
-        reversion = self.copilot_conclusion_reviews.reversion_for_review(review.id)
         return CopilotConclusionReviewResponse(
             claim_id=claim_number,
             conclusion_id=review.conclusion_id,

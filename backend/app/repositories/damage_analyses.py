@@ -34,6 +34,8 @@ class DamageAnalysisRepository:
         rules: AssessmentRuleValues,
         reference_prices: list[ReferencePartPriceResult],
         update_claim_status: bool = True,
+        *,
+        commit: bool = True,
     ) -> DamageAnalysis:
         analysis = DamageAnalysis(claim_id=claim.id, assessment=assessment.assessment, warning=assessment.warning)
         self.session.add(analysis)
@@ -119,8 +121,9 @@ class DamageAnalysisRepository:
         )
         if update_claim_status:
             claim.status = ClaimStatus.REVIEW_REQUIRED
-        self.session.commit()
-        self.session.refresh(analysis)
+        if commit:
+            self.session.commit()
+            self.session.refresh(analysis)
         return analysis
 
     def latest_for_claim(self, claim_id: int) -> DamageAnalysis | None:

@@ -52,7 +52,49 @@ class ClaimReviewOperations:
         self.llm_copilot = llm_copilot
         self.llm_model = llm_model
 
-    def run_workflow_ai_review(self, claim_number: str, run_id: int) -> Claim | None:
+    def validate_workflow_ai_review(self, claim_number: str, run_id: int) -> Claim | None:
+        ready = self._ready_review(claim_number, run_id)
+        return ready[0] if ready else None
+
+    def run_workflow_ai_review(
+        self, claim_number: str, run_id: int, source_job_id: int | None = None
+    ) -> Claim | None:
+        ready = self._ready_review(claim_number, run_id)
+        if ready is None:
+            return None
+        claim, run, snapshot, damage = ready
+        if (
+            source_job_id is not None
+            and self.workflow_ai_reviews.find_for_source_job(source_job_id) is not None
+        ):
+            return claim
+
+        payload = json.loads(snapshot.payload_json)
+        warnings = payload.get("warnings", [])
+        evidence_references = payload.get("evidence_references", [])
+        input_data = self._copilot_input_from_snapshot(payload)
+        result = self.llm_copilot.generate(input_data)
+        provider_model = self.llm_model if result.status is CopilotConclusionStatus.GENERATED else None
+        conclusion = self.copilot_conclusions.create(
+            damage, result, provider_model, commit=False
+        )
+        failed_documents = sum(
+            document["status"] == AnalysisResultStatus.FAILED.value
+            for document in payload.get("documents", [])
+        )
+        validity_percentage = max(0, min(100, 85 - failed_documents * 15 - len(warnings) * 5))
+        self.workflow_ai_reviews.create(
+            run.id,
+            conclusion,
+            validity_percentage,
+            warnings,
+            evidence_references,
+            source_job_id,
+        )
+        self.claims.update_status(claim, ClaimStatus.REVIEW_REQUIRED)
+        return claim
+
+    def _ready_review(self, claim_number: str, run_id: int):
         claim = self.claims.find_by_claim_number(claim_number)
         if claim is None:
             return None
@@ -96,27 +138,7 @@ class ClaimReviewOperations:
                 ]
             )
 
-        payload = json.loads(snapshot.payload_json)
-        warnings = payload.get("warnings", [])
-        evidence_references = payload.get("evidence_references", [])
-        input_data = self._copilot_input_from_snapshot(payload)
-        result = self.llm_copilot.generate(input_data)
-        provider_model = self.llm_model if result.status is CopilotConclusionStatus.GENERATED else None
-        conclusion = self.copilot_conclusions.create(damage, result, provider_model)
-        failed_documents = sum(
-            document["status"] == AnalysisResultStatus.FAILED.value
-            for document in payload.get("documents", [])
-        )
-        validity_percentage = max(0, min(100, 85 - failed_documents * 15 - len(warnings) * 5))
-        self.workflow_ai_reviews.create(
-            run.id,
-            conclusion,
-            validity_percentage,
-            warnings,
-            evidence_references,
-        )
-        self.claims.update_status(claim, ClaimStatus.REVIEW_REQUIRED)
-        return claim
+        return claim, run, snapshot, damage
 
     def review_copilot_conclusion(
         self,

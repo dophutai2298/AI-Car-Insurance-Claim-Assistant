@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import get_settings
-from app.db import Base, create_database_engine, create_session_factory
+from app.db import create_database_engine, create_session_factory, run_database_migrations
 from app.models import UserRole
 from app.schemas.auth import UserCreateRequest
 from app.services.auth import AuthService
@@ -30,8 +30,8 @@ ACCOUNTS: tuple[AccountSpec, ...] = (
 
 def main() -> None:
     settings = get_settings()
+    run_database_migrations(settings.database_url)
     engine = create_database_engine(settings)
-    Base.metadata.create_all(engine)
     session_factory = create_session_factory(engine)
 
     with session_factory() as session:

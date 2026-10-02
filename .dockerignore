@@ -1,0 +1,14 @@
+.git
+.agents
+.codex
+.scratch
+.env
+frontend
+uploads
+backend/.venv
+backend/outputs
+backend/migration_task23.db
+AI/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache

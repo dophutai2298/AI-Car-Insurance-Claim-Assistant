@@ -16,6 +16,8 @@ class CopilotConclusionRepository:
         analysis: DamageAnalysis,
         conclusion: CopilotConclusionResult,
         provider_model: str | None,
+        *,
+        commit: bool = True,
     ) -> CopilotConclusion:
         record = CopilotConclusion(
             analysis_id=analysis.id,
@@ -38,8 +40,9 @@ class CopilotConclusionRepository:
                 schema_version=conclusion.schema_version,
             )
         )
-        self.session.commit()
-        self.session.refresh(record)
+        if commit:
+            self.session.commit()
+            self.session.refresh(record)
         return record
 
     def find_for_analysis(self, analysis_id: int) -> CopilotConclusion | None:

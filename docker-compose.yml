@@ -17,5 +17,51 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment: &backend-environment
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-claim_user}:${POSTGRES_PASSWORD:-claim_password}@postgres:5432/${POSTGRES_DB:-claim_assistant}
+      DATABASE_MIGRATE_ON_STARTUP: "false"
+      JWT_SECRET: ${JWT_SECRET:-local-development-secret-change-me}
+      LLM_MODE: ${LLM_MODE:-mock}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      DOCUMENT_OCR_MODE: ${DOCUMENT_OCR_MODE:-deepdoc}
+      WORKFLOW_WORKER_EAGER: "false"
+    command: ["python", "-m", "app.migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment: *backend-environment
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./uploads:/workspace/uploads
+      - ./backend/outputs:/workspace/backend/outputs
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment: *backend-environment
+    command: ["python", "-m", "app.worker"]
+    volumes:
+      - ./uploads:/workspace/uploads
+      - ./backend/outputs:/workspace/backend/outputs
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
 volumes:
   postgres-data:

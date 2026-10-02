@@ -9,11 +9,10 @@ from app.api.routes import admin, auth, claims, vehicle_makes
 from app.api.dependencies import require_admin
 from app.core.config import get_settings
 from app.db import (
-    Base,
     create_database_engine,
     create_session_factory,
     ping_database,
-    upgrade_legacy_ai_review_constraints,
+    run_database_migrations,
 )
 from app.services.auth import seed_demo_users
 from app.services.vehicle_manufacturers import seed_vehicle_manufacturers
@@ -32,9 +31,9 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        if settings.database_migrate_on_startup:
+            run_database_migrations(settings.database_url)
         engine = create_database_engine(settings)
-        Base.metadata.create_all(engine)
-        upgrade_legacy_ai_review_constraints(engine)
         app.state.session_factory = create_session_factory(engine)
         with app.state.session_factory() as session:
             seed_demo_users(session, settings)
@@ -62,6 +61,7 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["X-Page", "X-Page-Size", "X-Total-Count", "X-Total-Pages"],
     )
 
     @app.exception_handler(Exception)

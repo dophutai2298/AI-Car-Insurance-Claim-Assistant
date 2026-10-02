@@ -431,6 +431,9 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
     (!run.analysis_readiness || run.analysis_readiness.status === "READY"),
   );
   const blockedReasons = run?.analysis_readiness?.blocked_reasons ?? [];
+  const aiReviewRunning =
+    review.isPending ||
+    ["PENDING", "PROCESSING"].includes(run?.ai_review_job_status ?? "");
   return (
     <Card
       className="rounded-lg border border-slate-200 bg-white shadow-sm"
@@ -451,8 +454,8 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
           </div>
         </div>
         <Button
-          isDisabled={!ready || review.isPending}
-          isPending={review.isPending}
+          isDisabled={!ready || aiReviewRunning}
+          isPending={aiReviewRunning}
           onPress={() => review.mutate()}
           variant="primary"
         >
@@ -460,7 +463,7 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
         </Button>
       </Card.Header>
       <Card.Content className="grid gap-5 p-6">
-        {review.isPending ? (
+        {aiReviewRunning ? (
           <div
             aria-live="polite"
             className="flex items-start gap-3 border-l-2 border-teal-500 bg-teal-50 p-4 text-sm text-teal-950"

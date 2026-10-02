@@ -36,4 +36,5 @@ def build_claim_service(session: Session, settings: Settings) -> ClaimService:
         DocumentExtractionService(get_document_extraction_adapter(settings), DocumentPromptResolver()),
         DocumentFieldValidationService(get_document_field_validation_adapter(settings)),
         ClaimConsistencyService(),
+        settings.workflow_job_max_attempts,
     )

@@ -14,8 +14,26 @@ class Settings(BaseSettings):
         default="postgresql+psycopg://claim_user:claim_password@localhost:5432/claim_assistant",
         validation_alias="DATABASE_URL",
     )
+    database_migrate_on_startup: bool = Field(
+        default=True, validation_alias="DATABASE_MIGRATE_ON_STARTUP"
+    )
     jwt_secret: str = Field(min_length=16, validation_alias="JWT_SECRET")
-    jwt_access_token_minutes: int = Field(default=480, validation_alias="JWT_ACCESS_TOKEN_MINUTES")
+    jwt_access_token_minutes: int = Field(default=15, ge=1, validation_alias="JWT_ACCESS_TOKEN_MINUTES")
+    jwt_refresh_token_days: int = Field(default=7, ge=1, validation_alias="JWT_REFRESH_TOKEN_DAYS")
+    auth_rate_limit_attempts: int = Field(default=10, ge=1, validation_alias="AUTH_RATE_LIMIT_ATTEMPTS")
+    auth_rate_limit_window_seconds: int = Field(
+        default=60, ge=1, validation_alias="AUTH_RATE_LIMIT_WINDOW_SECONDS"
+    )
+    workflow_worker_eager: bool = Field(default=False, validation_alias="WORKFLOW_WORKER_EAGER")
+    workflow_worker_poll_seconds: float = Field(
+        default=1.0, gt=0, validation_alias="WORKFLOW_WORKER_POLL_SECONDS"
+    )
+    workflow_job_lease_seconds: int = Field(
+        default=300, ge=30, validation_alias="WORKFLOW_JOB_LEASE_SECONDS"
+    )
+    workflow_job_max_attempts: int = Field(
+        default=3, ge=1, validation_alias="WORKFLOW_JOB_MAX_ATTEMPTS"
+    )
     admin_email: str = Field(default="admin@example.com", validation_alias="ADMIN_EMAIL")
     admin_password: str = Field(default="Admin123!", validation_alias="ADMIN_PASSWORD")
     adjuster_email: str = Field(default="adjuster@example.com", validation_alias="ADJUSTER_EMAIL")

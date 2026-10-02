@@ -18,7 +18,7 @@ from sqlalchemy import select
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import get_settings
-from app.db import Base, create_database_engine, create_session_factory
+from app.db import create_database_engine, create_session_factory, run_database_migrations
 from app.models import Claim, ClaimStatus, User, UserRole
 from app.services.auth import seed_demo_users
 from app.services.vehicle_manufacturers import seed_vehicle_manufacturers
@@ -61,8 +61,8 @@ DEMO_CLAIMS: tuple[DemoClaim, ...] = (
 
 def main() -> None:
     settings = get_settings()
+    run_database_migrations(settings.database_url)
     engine = create_database_engine(settings)
-    Base.metadata.create_all(engine)
     session_factory = create_session_factory(engine)
 
     try:
@@ -77,6 +77,12 @@ def main() -> None:
             )
             if creator is None:
                 raise RuntimeError("An admin user is required to seed dashboard claims")
+            adjuster = session.scalar(
+                select(User)
+                .where(User.role == UserRole.ADJUSTER, User.is_active.is_(True))
+                .order_by(User.id)
+                .limit(1)
+            )
 
             existing_claims = {
                 claim.vin: claim
@@ -104,6 +110,7 @@ def main() -> None:
                         vin=vin,
                         status=demo_claim.status,
                         created_by_user_id=creator.id,
+                        assigned_adjuster_user_id=adjuster.id if adjuster else None,
                         created_at=timestamp,
                         updated_at=timestamp,
                     )

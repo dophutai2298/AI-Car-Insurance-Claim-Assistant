@@ -4,12 +4,20 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select, text
+from sqlalchemy import event, select, text
 
 from app.core.config import get_settings
 from app.main import create_app
-from app.models import Claim, CopilotConclusion, Evidence, EvidenceCategory
+from app.models import (
+    Claim,
+    CopilotConclusion,
+    DamageAnalysis,
+    Evidence,
+    EvidenceCategory,
+)
 from app.api import composition as claim_composition
+from app.repositories.analysis_runs import AnalysisRunRepository
+from app.repositories.workflow_ai_reviews import WorkflowAiReviewRepository
 from app.services.document_ocr import (
     DocumentOcrError,
     DocumentOcrResult,
@@ -40,6 +48,7 @@ def client(tmp_path, monkeypatch) -> Iterator[TestClient]:
     monkeypatch.setenv("LLM_MODE", "mock")
     monkeypatch.setenv("DOCUMENT_OCR_MODE", "mock")
     monkeypatch.setenv("DAMAGE_MODEL_MODE", "local")
+    monkeypatch.setenv("WORKFLOW_WORKER_EAGER", "true")
     get_settings.cache_clear()
 
     class FakeDamageAdapter:
@@ -160,6 +169,34 @@ def test_dashboard_lists_claim_summary_and_last_updated(client: TestClient):
     assert claims[0]["updated_at"]
 
 
+def test_claim_list_has_bounded_stable_pagination_and_metadata(client: TestClient):
+    admin = admin_headers(client)
+    for index in range(25):
+        response = client.post(
+            "/api/claims",
+            headers=admin,
+            json={
+                "claimant_name": f"Pagination {index:02d}",
+                "vehicle": {"make": "Toyota", "model": "Camry", "year": 2022},
+            },
+        )
+        assert response.status_code == 201
+
+    first = client.get("/api/claims?page=1&page_size=10", headers=admin)
+    second = client.get("/api/claims?page=2&page_size=10", headers=admin)
+
+    assert first.status_code == second.status_code == 200
+    assert len(first.json()) == len(second.json()) == 10
+    assert first.headers["x-total-count"] == "25"
+    assert first.headers["x-total-pages"] == "3"
+    assert {item["id"] for item in first.json()}.isdisjoint(
+        {item["id"] for item in second.json()}
+    )
+    assert [item["id"] for item in first.json()] == [
+        f"CLM-{number:06d}" for number in range(25, 15, -1)
+    ]
+
+
 def test_admin_can_open_claim_detail(client: TestClient):
     created_claim = create_claim(client)
 
@@ -242,6 +279,30 @@ def test_vehicle_manufacturer_catalog_is_seeded_and_admin_can_manage_active_stat
     )
     assert reenable_response.status_code == 200
     assert reenable_response.json()["is_active"] is True
+
+
+def test_vehicle_manufacturer_catalog_has_bounded_stable_pagination(
+    client: TestClient,
+):
+    admin = admin_headers(client)
+
+    first = client.get(
+        "/api/admin/vehicle-makes?page=1&page_size=5", headers=admin
+    )
+    second = client.get(
+        "/api/admin/vehicle-makes?page=2&page_size=5", headers=admin
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.headers["x-page-size"] == "5"
+    assert int(first.headers["x-total-count"]) >= 10
+    assert {item["id"] for item in first.json()}.isdisjoint(
+        {item["id"] for item in second.json()}
+    )
+    assert client.get(
+        "/api/admin/vehicle-makes?page_size=101", headers=admin
+    ).status_code == 422
 
 
 def test_claim_creation_rejects_a_disabled_vehicle_manufacturer(client: TestClient):
@@ -887,6 +948,30 @@ def test_workflow_analysis_returns_pending_then_persists_grouped_results(client:
         item for item in run["document_ocr_results"] if item["document_type"] == "INSURANCE_POLICY"
     )
     assert policy["status"] == "FAILED"
+
+
+def test_claim_detail_query_count_is_bounded_for_document_bundle(client: TestClient):
+    claim = prepare_claim_for_workflow_analysis(client)
+    assert client.post(
+        f"/api/claims/{claim['id']}/analysis-runs", headers=admin_headers(client)
+    ).status_code == 202
+    engine = client.app.state.session_factory.kw["bind"]
+    headers = admin_headers(client)
+    statements: list[str] = []
+
+    def count_query(_connection, _cursor, statement, _parameters, _context, _many):
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", count_query)
+    try:
+        response = client.get(
+            f"/api/claims/{claim['id']}", headers=headers
+        )
+    finally:
+        event.remove(engine, "before_cursor_execute", count_query)
+
+    assert response.status_code == 200
+    assert len(statements) <= 45
 
 
 def test_workflow_analysis_persists_ocr_results_per_image_and_marks_unsupported_files(client: TestClient):
@@ -1706,6 +1791,26 @@ def test_admin_can_start_workflow_analysis(client: TestClient):
     assert started.status_code == 202
 
 
+def test_workflow_damage_result_rolls_back_when_run_link_fails(
+    client: TestClient, monkeypatch
+):
+    claim = prepare_claim_for_workflow_analysis(client)
+
+    def fail_link(*_args, **_kwargs):
+        raise RuntimeError("simulated link failure")
+
+    monkeypatch.setattr(AnalysisRunRepository, "attach_damage", fail_link)
+
+    started = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=admin_headers(client),
+    )
+
+    assert started.status_code == 202
+    with client.app.state.session_factory() as session:
+        assert list(session.scalars(select(DamageAnalysis))) == []
+
+
 def test_workflow_analysis_preserves_successful_results_when_one_document_fails(client: TestClient):
     claim = prepare_claim_for_workflow_analysis(client, driver_license_filename="analysis-fail.jpg")
 
@@ -1821,8 +1926,12 @@ def test_adjuster_can_correct_document_fields_then_run_structured_ai_review(clie
 
 def test_ai_review_rejects_analysis_run_after_claim_inputs_change(client: TestClient):
     claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
-    client.post(f"/api/claims/{claim['id']}/analysis-runs", headers=admin_headers(client))
-    detail = client.get(f"/api/claims/{claim['id']}", headers=admin_headers(client)).json()
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs", headers=admin_headers(client)
+    )
+    detail = client.get(
+        f"/api/claims/{claim['id']}", headers=admin_headers(client)
+    ).json()
     run = detail["latest_analysis_run"]
     assert save_ready_analysis_snapshot(client, claim, run).status_code == 200
 
@@ -1886,6 +1995,30 @@ def test_ai_review_can_be_rerun_without_overwriting_prior_human_review(client: T
     assert payload["status"] == "REVIEW_REQUIRED"
     assert payload["copilot_review_history"][0]["conclusion_id"] == first_conclusion["id"]
     assert payload["copilot_review_history"][0]["status"] == "APPROVED"
+
+
+def test_ai_review_conclusion_rolls_back_when_workflow_review_link_fails(
+    client: TestClient, monkeypatch
+):
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
+    client.post(f"/api/claims/{claim['id']}/analysis-runs", headers=admin_headers(client))
+    detail = client.get(f"/api/claims/{claim['id']}", headers=admin_headers(client)).json()
+    run = detail["latest_analysis_run"]
+    assert save_ready_analysis_snapshot(client, claim, run).status_code == 200
+
+    def fail_link(*_args, **_kwargs):
+        raise RuntimeError("simulated review link failure")
+
+    monkeypatch.setattr(WorkflowAiReviewRepository, "create", fail_link)
+
+    reviewed = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=admin_headers(client),
+    )
+
+    assert reviewed.status_code == 200
+    with client.app.state.session_factory() as session:
+        assert list(session.scalars(select(CopilotConclusion))) == []
 
 
 def test_human_review_requires_a_note_and_can_be_reverted_without_losing_history(client: TestClient):

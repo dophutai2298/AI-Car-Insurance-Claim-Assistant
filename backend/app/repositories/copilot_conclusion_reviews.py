@@ -92,6 +92,21 @@ class CopilotConclusionReviewRepository:
         )
         return self.session.execute(statement).first()
 
+    def reversions_for_reviews(
+        self, review_ids: list[int]
+    ) -> dict[int, tuple[CopilotConclusionReviewReversion, str]]:
+        if not review_ids:
+            return {}
+        statement = (
+            select(CopilotConclusionReviewReversion, User.email)
+            .join(User, User.id == CopilotConclusionReviewReversion.reverted_by_user_id)
+            .where(CopilotConclusionReviewReversion.review_id.in_(review_ids))
+        )
+        return {
+            reversion.review_id: (reversion, email)
+            for reversion, email in self.session.execute(statement).all()
+        }
+
     def revert(
         self,
         claim: Claim,

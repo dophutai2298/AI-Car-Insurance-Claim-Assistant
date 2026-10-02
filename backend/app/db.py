@@ -1,11 +1,17 @@
 from collections.abc import Iterator
+from pathlib import Path
 
+from alembic import command
+from alembic.config import Config
 from fastapi import Request
 from sqlalchemy import create_engine, inspect, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import Settings, get_settings
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+BASELINE_REVISION = "dd4475f105f2"
 
 
 class Base(DeclarativeBase):
@@ -22,49 +28,26 @@ def create_session_factory(engine: Engine) -> sessionmaker[Session]:
     return sessionmaker(bind=engine, expire_on_commit=False)
 
 
-def upgrade_legacy_ai_review_constraints(engine: Engine) -> None:
-    """Allow multiple AI-review revisions in an existing PostgreSQL database."""
-    if engine.dialect.name != "postgresql":
-        return
+def run_database_migrations(database_url: str) -> None:
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
+    engine = create_engine(
+        database_url,
+        connect_args={"check_same_thread": False}
+        if database_url.startswith("sqlite")
+        else {},
+    )
+    try:
+        table_names = set(inspect(engine).get_table_names())
+    finally:
+        engine.dispose()
 
-    inspector = inspect(engine)
-    targets = {
-        "copilot_conclusions": "analysis_id",
-        "workflow_ai_reviews": "analysis_run_id",
-    }
-    quote = engine.dialect.identifier_preparer.quote
-
-    with engine.begin() as connection:
-        for table_name, column_name in targets.items():
-            replaced_unique_index = False
-
-            for constraint in inspector.get_unique_constraints(table_name):
-                if constraint["column_names"] != [column_name] or not constraint["name"]:
-                    continue
-                connection.exec_driver_sql(
-                    f"ALTER TABLE {quote(table_name)} "
-                    f"DROP CONSTRAINT IF EXISTS {quote(constraint['name'])}"
-                )
-                replaced_unique_index = True
-
-            for index in inspector.get_indexes(table_name):
-                if (
-                    index.get("column_names") != [column_name]
-                    or not index.get("unique")
-                    or not index.get("name")
-                ):
-                    continue
-                connection.exec_driver_sql(
-                    f"DROP INDEX IF EXISTS {quote(index['name'])}"
-                )
-                replaced_unique_index = True
-
-            if replaced_unique_index:
-                index_name = f"ix_{table_name}_{column_name}"
-                connection.exec_driver_sql(
-                    f"CREATE INDEX IF NOT EXISTS {quote(index_name)} "
-                    f"ON {quote(table_name)} ({quote(column_name)})"
-                )
+    legacy_schema_markers = {"users", "claims", "workflow_analysis_runs"}
+    if "alembic_version" not in table_names and legacy_schema_markers.issubset(
+        table_names
+    ):
+        command.stamp(config, BASELINE_REVISION)
+    command.upgrade(config, "head")
 
 
 def get_db(request: Request) -> Iterator[Session]:

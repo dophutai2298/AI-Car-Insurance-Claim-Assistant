@@ -119,6 +119,9 @@ class AnalysisRunRepository:
         result: DocumentAnalysisResult | None = None,
         warning: str | None = None,
     ) -> DocumentAnalysis:
+        existing = self.document_for_category(run.id, category)
+        if existing is not None:
+            return existing
         warnings = result.warnings if result else ([warning] if warning else [])
         analysis = DocumentAnalysis(
             analysis_run_id=run.id,
@@ -146,6 +149,18 @@ class AnalysisRunRepository:
         self.session.commit()
         self.session.refresh(analysis)
         return analysis
+
+    def document_for_category(
+        self, run_id: int, category: EvidenceCategory
+    ) -> DocumentAnalysis | None:
+        return self.session.scalar(
+            select(DocumentAnalysis)
+            .where(
+                DocumentAnalysis.analysis_run_id == run_id,
+                DocumentAnalysis.document_type == category,
+            )
+            .order_by(DocumentAnalysis.id.desc())
+        )
 
     def create_document_ocr_result(
         self, run: WorkflowAnalysisRun, evidence: Evidence
@@ -217,12 +232,35 @@ class AnalysisRunRepository:
             )
         )
 
+    def document_fields_for_run(self, run_id: int) -> list[DocumentAnalysisField]:
+        return list(
+            self.session.scalars(
+                select(DocumentAnalysisField)
+                .join(
+                    DocumentAnalysis,
+                    DocumentAnalysis.id == DocumentAnalysisField.document_analysis_id,
+                )
+                .where(DocumentAnalysis.analysis_run_id == run_id)
+                .order_by(DocumentAnalysisField.id)
+            )
+        )
+
     def document_ocr_results(self, run_id: int) -> list[DocumentOcrResult]:
         return list(
             self.session.scalars(
                 select(DocumentOcrResult)
                 .where(DocumentOcrResult.analysis_run_id == run_id)
                 .order_by(DocumentOcrResult.id)
+            )
+        )
+
+    def document_ocr_for_evidence(
+        self, run_id: int, evidence_id: int
+    ) -> DocumentOcrResult | None:
+        return self.session.scalar(
+            select(DocumentOcrResult).where(
+                DocumentOcrResult.analysis_run_id == run_id,
+                DocumentOcrResult.evidence_id == evidence_id,
             )
         )
 
@@ -326,6 +364,29 @@ class AnalysisRunRepository:
             )
         )
 
+    def document_extractions(self, run_id: int) -> list[DocumentExtractionResult]:
+        return list(
+            self.session.scalars(
+                select(DocumentExtractionResult)
+                .where(DocumentExtractionResult.analysis_run_id == run_id)
+                .order_by(DocumentExtractionResult.id)
+            )
+        )
+
+    def extracted_fields_with_category(
+        self, run_id: int
+    ) -> list[tuple[DocumentExtractedField, EvidenceCategory]]:
+        statement = (
+            select(DocumentExtractedField, DocumentExtractionResult.document_type)
+            .join(
+                DocumentExtractionResult,
+                DocumentExtractionResult.id == DocumentExtractedField.extraction_result_id,
+            )
+            .where(DocumentExtractedField.analysis_run_id == run_id)
+            .order_by(DocumentExtractedField.id)
+        )
+        return list(self.session.execute(statement).all())
+
     def document_extraction_for_category(
         self,
         run_id: int,
@@ -342,6 +403,18 @@ class AnalysisRunRepository:
                 DocumentExtractionResult.schema_version == schema_version
             )
         return self.session.scalar(statement.order_by(DocumentExtractionResult.id))
+
+    def any_document_extraction_for_category(
+        self, run_id: int, category: EvidenceCategory
+    ) -> DocumentExtractionResult | None:
+        return self.session.scalar(
+            select(DocumentExtractionResult)
+            .where(
+                DocumentExtractionResult.analysis_run_id == run_id,
+                DocumentExtractionResult.document_type == category,
+            )
+            .order_by(DocumentExtractionResult.id.desc())
+        )
 
     def copy_document_extraction(
         self,
