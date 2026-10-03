@@ -114,9 +114,9 @@ export function ClaimDetailPage() {
         <div className="flex items-center gap-3">
           {canDelete ? (
             <Button
-              className="text-red-700 hover:bg-red-50"
+              className="text-white"
               onPress={() => setIsDeleteOpen(true)}
-              variant="ghost"
+              variant="danger"
             >
               <TrashCan size={17} />
               {t("claim.deleteDraft")}
