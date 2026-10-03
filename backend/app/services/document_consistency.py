@@ -27,6 +27,7 @@ class ClaimFacts:
     claimant_name: str
     vehicle_make: str
     license_plate: str | None
+    vehicle_model: str = ""
 
 
 @dataclass(frozen=True)
@@ -64,7 +65,7 @@ class ClaimConsistencyService:
         document_value: str | None,
     ) -> ConsistencyResult | None:
         claim_value = self._claim_value(field_key, claim)
-        if field_key not in NAME_FIELD_KEYS | VEHICLE_MAKE_FIELD_KEYS | {"license_plate"}:
+        if field_key not in NAME_FIELD_KEYS | VEHICLE_MAKE_FIELD_KEYS | {"license_plate", "vehicle_model"}:
             return None
         if not claim_value or not document_value:
             return ConsistencyResult(
@@ -97,6 +98,8 @@ class ClaimConsistencyService:
             return claim.claimant_name
         if field_key in VEHICLE_MAKE_FIELD_KEYS:
             return claim.vehicle_make
+        if field_key == "vehicle_model":
+            return claim.vehicle_model
         if field_key == "license_plate":
             return claim.license_plate
         return None

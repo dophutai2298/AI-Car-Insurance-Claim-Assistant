@@ -384,6 +384,7 @@ test("claim detail blocks analysis until all required evidence is present", asyn
   expect(await screen.findByText("Vehicle damage images")).toBeVisible();
   expect(screen.getByText("ID cards")).toBeVisible();
   expect(screen.getByRole("button", { name: /^analyze$/i })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "Run all analysis again" })).not.toBeInTheDocument();
   expect(screen.getByText(/5 required evidence section/i)).toBeVisible();
 });
 
@@ -951,6 +952,7 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
   renderRoute("/claims/CLM-000081");
 
   expect(await screen.findByText("Document analysis")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Run all analysis again" })).toBeVisible();
   expect(screen.getByText("Partial results available")).toBeVisible();
   const front = screen.getByRole("article", { name: "id_card.jpg" });
   const back = screen.getByRole("article", { name: "id_card_back.jpg" });

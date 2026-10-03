@@ -571,6 +571,7 @@ def ready_confirmed_fields(run: dict[str, object], claim: dict[str, object]):
         "vehicle_owner": claim["claimant_name"],
         "vehicle_brand": claim["vehicle"]["make"],
         "vehicle_make": claim["vehicle"]["make"],
+        "vehicle_model": claim["vehicle"]["model"],
         "license_plate": claim["vehicle"]["license_plate"],
     }
     default_values = {"expiry_date": "31/12/2099"}
@@ -1146,7 +1147,7 @@ def test_document_analysis_aggregates_each_category_and_only_reprocesses_changes
         headers=admin_headers(client),
     ).status_code == 202
     assert len(ocr_adapter.calls) == 5
-    assert len(extraction_adapter.calls) == 4
+    assert len(extraction_adapter.calls) == 5
     reused_run = client.get(
         f"/api/claims/{claim['id']}", headers=admin_headers(client)
     ).json()["latest_analysis_run"]
@@ -1156,7 +1157,7 @@ def test_document_analysis_aggregates_each_category_and_only_reprocesses_changes
         if result["document_type"] == "INSURANCE_POLICY"
     )
     assert reused_policy["extraction"]["schema_version"] == (
-        "document-extraction-schema-v2-aggregated"
+        "document-extraction-schema-v3-vehicle-model"
     )
 
     current = client.get(
@@ -1197,7 +1198,7 @@ def test_document_analysis_aggregates_each_category_and_only_reprocesses_changes
         headers=admin_headers(client),
     ).status_code == 202
     assert len(ocr_adapter.calls) == 6
-    assert len(extraction_adapter.calls) == 5
+    assert len(extraction_adapter.calls) == 6
     assert extraction_adapter.calls[-1][0] == "INSURANCE_POLICY"
     incremental_run = client.get(
         f"/api/claims/{claim['id']}", headers=admin_headers(client)
@@ -1327,9 +1328,10 @@ def test_identity_and_policy_extraction_persists_structured_fields_and_confirmed
     policy_fields = {
         field["field_key"]: field for field in policy["extraction"]["fields"]
     }
-    assert set(policy_fields) == {"vehicle_owner", "vehicle_brand"}
+    assert set(policy_fields) == {"vehicle_owner", "vehicle_brand", "vehicle_model"}
     assert policy_fields["vehicle_owner"]["ai_extracted_value"] == "Nguyen Van A"
     assert policy_fields["vehicle_brand"]["ai_extracted_value"] == "Toyota"
+    assert policy_fields["vehicle_model"]["ai_extracted_value"] == "Camry"
 
     raw_ocr_before_edit = id_card["raw_text"]
     full_name = identity_fields["full_name"]
@@ -1468,10 +1470,12 @@ def test_registration_and_driver_license_extraction_supports_multiple_images_and
         "vehicle_owner",
         "vehicle_brand",
         "vehicle_type",
+        "vehicle_model",
         "license_plate",
     }
     assert fields["vehicle_owner"]["ai_extracted_value"] == "Nguyen Van A"
     assert fields["vehicle_brand"]["ai_extracted_value"] == "Toyota"
+    assert fields["vehicle_model"]["ai_extracted_value"] == "Camry"
     assert fields["vehicle_type"]["ai_extracted_value"] == "Ô tô con"
     assert fields["license_plate"]["ai_extracted_value"] == "51H-123.45"
     assert all(
@@ -1777,6 +1781,243 @@ def test_admin_can_start_workflow_analysis(client: TestClient):
     )
 
     assert started.status_code == 202
+
+
+def test_vehicle_model_mismatch_blocks_save_all_until_confirmed_value_matches(
+    client: TestClient, monkeypatch
+):
+    original_factory = claim_composition.get_document_ocr_adapter
+
+    class MismatchedPolicyOcr:
+        def __init__(self, delegate):
+            self.delegate = delegate
+
+        def extract(self, evidence, source_path):
+            result = self.delegate.extract(evidence, source_path)
+            if evidence.category is EvidenceCategory.INSURANCE_POLICY:
+                return DocumentOcrResult(
+                    raw_text=result.raw_text.replace("Vehicle model: Camry", "Vehicle model: Vios"),
+                    adapter_name=result.adapter_name,
+                    metadata=result.metadata,
+                )
+            return result
+
+    monkeypatch.setattr(
+        claim_composition,
+        "get_document_ocr_adapter",
+        lambda settings: MismatchedPolicyOcr(original_factory(settings)),
+    )
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
+    assert client.post(
+        f"/api/claims/{claim['id']}/analysis-runs", headers=admin_headers(client)
+    ).status_code == 202
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=admin_headers(client)
+    ).json()["latest_analysis_run"]
+    policy = next(
+        item for item in run["document_ocr_results"]
+        if item["document_type"] == "INSURANCE_POLICY"
+    )
+    model_field = next(
+        field for field in policy["extraction"]["fields"]
+        if field["field_key"] == "vehicle_model"
+    )
+    assert model_field["ai_extracted_value"] == "Vios"
+    assert model_field["comparison"]["status"] == "MISMATCH"
+
+    values = ready_confirmed_fields(run, claim)
+    next(item for item in values if item["id"] == model_field["id"])["confirmed_value"] = "Vios"
+    blocked = client.put(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields",
+        headers=admin_headers(client),
+        json={"fields": values},
+    )
+    assert blocked.status_code == 409
+    assert any(
+        reason["field_key"] == "vehicle_model" and reason["code"] == "COMPARISON_MISMATCH"
+        for reason in blocked.json()["detail"]["blocked_reasons"]
+    )
+    next(item for item in values if item["id"] == model_field["id"])["confirmed_value"] = "Camry"
+    saved = client.put(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields",
+        headers=admin_headers(client),
+        json={"fields": values},
+    )
+    assert saved.status_code == 200
+
+
+def test_changed_only_and_full_rerun_call_expected_adapters(client: TestClient, monkeypatch):
+    damage_calls: list[list[int]] = []
+    ocr_calls: list[int] = []
+    llm_calls: list[str] = []
+    original_damage_factory = claim_composition.get_damage_model_adapter
+    original_ocr_factory = claim_composition.get_document_ocr_adapter
+
+    class CountingDamage:
+        def __init__(self, delegate):
+            self.delegate = delegate
+            self.storage = delegate.storage
+
+        def analyze(self, images):
+            damage_calls.append([item.id for item in images])
+            return self.delegate.analyze(images)
+
+    class CountingOcr:
+        def __init__(self, delegate):
+            self.delegate = delegate
+
+        def extract(self, evidence, source_path):
+            ocr_calls.append(evidence.id)
+            return self.delegate.extract(evidence, source_path)
+
+    class CountingExtraction:
+        delegate = DeterministicDocumentExtractionAdapter()
+
+        def extract(self, definition, raw_ocr_text):
+            llm_calls.append(definition.category.value)
+            return self.delegate.extract(definition, raw_ocr_text)
+
+    monkeypatch.setattr(
+        claim_composition, "get_damage_model_adapter",
+        lambda settings, storage: CountingDamage(original_damage_factory(settings, storage)),
+    )
+    monkeypatch.setattr(
+        claim_composition, "get_document_ocr_adapter",
+        lambda settings: CountingOcr(original_ocr_factory(settings)),
+    )
+    monkeypatch.setattr(
+        claim_composition, "get_document_extraction_adapter",
+        lambda settings: CountingExtraction(),
+    )
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
+    url = f"/api/claims/{claim['id']}/analysis-runs"
+    headers = admin_headers(client)
+    assert client.post(f"{url}?force=true", headers=headers).status_code == 422
+    assert client.post(url, headers=headers).status_code == 202
+    first = client.get(f"/api/claims/{claim['id']}", headers=headers).json()["latest_analysis_run"]
+    assert (len(damage_calls), len(ocr_calls), len(llm_calls)) == (1, 4, 4)
+
+    assert client.post(url, headers=headers).status_code == 202
+    unchanged = client.get(f"/api/claims/{claim['id']}", headers=headers).json()["latest_analysis_run"]
+    assert (len(damage_calls), len(ocr_calls), len(llm_calls)) == (1, 4, 4)
+    assert unchanged["damage_analysis"]["id"] != first["damage_analysis"]["id"]
+    assert unchanged["damage_analysis"]["model_output"] == first["damage_analysis"]["model_output"]
+
+    policy = next(
+        item for item in client.get(f"/api/claims/{claim['id']}", headers=headers).json()["evidence"]
+        if item["category"] == "INSURANCE_POLICY"
+    )
+    assert client.delete(f"/api/claims/{claim['id']}/evidence/{policy['id']}", headers=headers).status_code == 200
+    assert client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=headers,
+        data={"categories": ["INSURANCE_POLICY"]},
+        files=[("files", ("policy-new.jpg", evidence_bytes("policy-new.jpg", b"new"), "image/jpeg"))],
+    ).status_code == 200
+    assert client.post(url, headers=headers).status_code == 202
+    assert (len(damage_calls), len(ocr_calls), len(llm_calls)) == (1, 5, 5)
+
+    assert client.post(f"{url}?force=true", headers=headers).status_code == 202
+    full = client.get(f"/api/claims/{claim['id']}", headers=headers).json()["latest_analysis_run"]
+    assert (len(damage_calls), len(ocr_calls), len(llm_calls)) == (2, 9, 9)
+    assert all(not result["reused"] for result in full["document_ocr_results"])
+    assert all(
+        not result["extraction"]["reused"]
+        for result in full["document_ocr_results"] if result["extraction"]
+    )
+    with client.app.state.session_factory() as session:
+        assert session.scalar(text("SELECT COUNT(*) FROM workflow_analysis_runs")) == 4
+
+
+def test_changed_only_rerun_retries_failed_ocr_instead_of_reusing_failure(
+    client: TestClient, monkeypatch
+):
+    original_factory = claim_composition.get_document_ocr_adapter
+    attempts: list[int] = []
+
+    class FailPolicyOnce:
+        def __init__(self, delegate):
+            self.delegate = delegate
+
+        def extract(self, evidence, source_path):
+            attempts.append(evidence.id)
+            if evidence.category is EvidenceCategory.INSURANCE_POLICY and attempts.count(evidence.id) == 1:
+                raise DocumentOcrError("Temporary OCR failure")
+            return self.delegate.extract(evidence, source_path)
+
+    monkeypatch.setattr(
+        claim_composition, "get_document_ocr_adapter",
+        lambda settings: FailPolicyOnce(original_factory(settings)),
+    )
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
+    url = f"/api/claims/{claim['id']}/analysis-runs"
+    headers = admin_headers(client)
+    assert client.post(url, headers=headers).status_code == 202
+    first = client.get(f"/api/claims/{claim['id']}", headers=headers).json()["latest_analysis_run"]
+    failed = next(
+        item for item in first["document_ocr_results"]
+        if item["document_type"] == "INSURANCE_POLICY"
+    )
+    assert failed["status"] == "FAILED"
+
+    assert client.post(url, headers=headers).status_code == 202
+    second = client.get(f"/api/claims/{claim['id']}", headers=headers).json()["latest_analysis_run"]
+    policy = next(
+        item for item in second["document_ocr_results"]
+        if item["document_type"] == "INSURANCE_POLICY"
+    )
+    assert policy["status"] == "COMPLETED"
+    assert policy["reused"] is False
+    assert attempts.count(policy["source_evidence_id"]) == 2
+    assert len(attempts) == 5
+
+
+def test_damage_with_failed_image_is_not_reused_after_that_image_is_removed(
+    client: TestClient, monkeypatch
+):
+    original_factory = claim_composition.get_damage_model_adapter
+    calls: list[list[int]] = []
+
+    class PartialDamage:
+        def __init__(self, delegate):
+            self.delegate = delegate
+            self.storage = delegate.storage
+
+        def analyze(self, images):
+            calls.append([image.id for image in images])
+            result = self.delegate.analyze(images[:1] if len(images) > 1 else images)
+            if len(images) > 1:
+                return DamageModelAnalysisResult(
+                    result.adapter_name, result.results, ("Second image failed",)
+                )
+            return result
+
+    monkeypatch.setattr(
+        claim_composition, "get_damage_model_adapter",
+        lambda settings, storage: PartialDamage(original_factory(settings, storage)),
+    )
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
+    headers = admin_headers(client)
+    assert client.post(
+        f"/api/claims/{claim['id']}/evidence",
+        headers=headers,
+        data={"categories": ["VEHICLE_DAMAGE_IMAGE"]},
+        files=[("files", ("second.jpg", evidence_bytes("second.jpg", b"second"), "image/jpeg"))],
+    ).status_code == 200
+    url = f"/api/claims/{claim['id']}/analysis-runs"
+    assert client.post(url, headers=headers).status_code == 202
+    assert len(calls) == 1
+    second_image = next(
+        item for item in client.get(f"/api/claims/{claim['id']}", headers=headers).json()["evidence"]
+        if item["original_filename"] == "second.jpg"
+    )
+    assert client.delete(
+        f"/api/claims/{claim['id']}/evidence/{second_image['id']}", headers=headers
+    ).status_code == 200
+    assert client.post(url, headers=headers).status_code == 202
+    assert len(calls) == 2
+    latest = client.get(f"/api/claims/{claim['id']}", headers=headers).json()["latest_analysis_run"]
+    assert latest["damage_analysis"]["model_output"]["warnings"] == []
 
 
 def test_workflow_analysis_preserves_successful_results_when_one_document_fails(client: TestClient):

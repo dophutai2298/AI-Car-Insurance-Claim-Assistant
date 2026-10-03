@@ -43,6 +43,7 @@ const comparableFieldKeys = new Set([
   "vehicle_owner",
   "vehicle_make",
   "vehicle_brand",
+  "vehicle_model",
   "license_plate",
 ]);
 const expiryDateCategories = new Set<EvidenceCategory>([
@@ -660,6 +661,7 @@ function claimValueForField(claim: ClaimDetail, fieldKey: string) {
   )
     return claim.claimant_name;
   if (["vehicle_make", "vehicle_brand"].includes(fieldKey)) return claim.vehicle.make;
+  if (fieldKey === "vehicle_model") return claim.vehicle.model;
   if (fieldKey === "license_plate") return claim.vehicle.license_plate;
   return null;
 }

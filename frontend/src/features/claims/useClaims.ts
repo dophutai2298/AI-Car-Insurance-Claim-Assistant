@@ -26,6 +26,7 @@ import type {
   ClaimStatus,
   CopilotConclusionReviewInput,
   EvidenceUploadItem,
+  WorkflowAnalysisRun,
 } from "./types";
 
 export const claimsQueryKey = ["claims"] as const;
@@ -150,8 +151,8 @@ export function useDamageAnalysis(claimId: string | undefined) {
 export function useWorkflowAnalysis(claimId: string | undefined) {
   const { session } = useAuth();
   const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => startWorkflowAnalysis(claimId!, session!.access_token),
+  return useMutation<WorkflowAnalysisRun, Error, boolean>({
+    mutationFn: (force) => startWorkflowAnalysis(claimId!, session!.access_token, force),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: [...claimsQueryKey, claimId] }),
   });

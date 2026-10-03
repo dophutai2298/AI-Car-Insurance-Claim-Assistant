@@ -44,9 +44,9 @@ def get_claim_service(
     return build_claim_service(session, settings)
 
 
-def process_analysis_in_background(session_factory, settings: Settings, run_id: int) -> None:
+def process_analysis_in_background(session_factory, settings: Settings, run_id: int, force: bool = False) -> None:
     with session_factory() as session:
-        build_claim_service(session, settings).process_workflow_analysis(run_id)
+        build_claim_service(session, settings).process_workflow_analysis(run_id, force=force)
 
 
 ClaimServiceDependency = Annotated[ClaimService, Depends(get_claim_service)]
@@ -259,9 +259,10 @@ def start_workflow_analysis(
     _current_user: AnalysisUser,
     service: ClaimServiceDependency,
     settings: Annotated[Settings, Depends(get_settings)],
+    force: bool = False,
 ) -> WorkflowAnalysisRunResponse:
     try:
-        run = service.start_workflow_analysis(claim_number)
+        run = service.start_workflow_analysis(claim_number, force=force)
     except ClaimValidationError as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
     except ClaimConflictError as error:
@@ -273,6 +274,7 @@ def start_workflow_analysis(
         request.app.state.session_factory,
         settings,
         run.id,
+        force,
     )
     return run
 

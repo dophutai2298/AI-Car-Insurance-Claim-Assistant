@@ -35,11 +35,12 @@ class MockDocumentOcrAdapter:
             "Date of expiry: 18/04/2033"
         ),
         EvidenceCategory.INSURANCE_POLICY: (
-            "Vehicle owner: Nguyen Van A\nVehicle brand: Toyota"
+            "Vehicle owner: Nguyen Van A\nVehicle brand: Toyota\nVehicle model: Camry"
         ),
         EvidenceCategory.VEHICLE_REGISTRATION: (
             "Vehicle owner: Nguyen Van A\n"
             "Vehicle make: Toyota\n"
+            "Model code: Camry\n"
             "Vehicle type: Ô tô con\n"
             "License plate: 51H-123.45"
         ),

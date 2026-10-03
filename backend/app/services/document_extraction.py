@@ -6,6 +6,7 @@ import json
 import logging
 from pathlib import Path
 import re
+import unicodedata
 from time import perf_counter
 from typing import Protocol
 
@@ -18,6 +19,7 @@ from app.services.llm_token_usage import log_llm_token_usage
 
 PROMPT_VERSION = "document-extraction-v1"
 SCHEMA_VERSION = "document-extraction-schema-v2-aggregated"
+VEHICLE_MODEL_SCHEMA_VERSION = "document-extraction-schema-v3-vehicle-model"
 PROMPT_RESOURCE = Path(__file__).resolve().parents[1] / "prompts" / "systemprompt_document.md"
 SUPPORTED_EXTRACTION_CATEGORIES = {
     EvidenceCategory.ID_CARD,
@@ -71,13 +73,21 @@ class IdentityCardExtraction(NormalizedExtractionModel):
 class InsurancePolicyExtraction(NormalizedExtractionModel):
     vehicle_owner: str | None = None
     vehicle_brand: str | None = None
+    vehicle_model: str | None = None
 
 
 class VehicleRegistrationExtraction(NormalizedExtractionModel):
     vehicle_owner: str | None = None
     vehicle_brand: str | None = None
     vehicle_type: str | None = None
+    vehicle_model: str | None = None
     license_plate: str | None = None
+
+
+def schema_version_for_category(category: EvidenceCategory) -> str:
+    if category in {EvidenceCategory.INSURANCE_POLICY, EvidenceCategory.VEHICLE_REGISTRATION}:
+        return VEHICLE_MODEL_SCHEMA_VERSION
+    return SCHEMA_VERSION
 
 
 class DriverLicenseExtraction(NormalizedExtractionModel):
@@ -170,6 +180,27 @@ def _labeled_value(raw_ocr_text: str, aliases: tuple[str, ...]) -> str | None:
     return None
 
 
+def _is_vehicle_class(value: str) -> bool:
+    decomposed = unicodedata.normalize("NFD", value.casefold().replace("đ", "d"))
+    normalized = "".join(character for character in decomposed if not unicodedata.combining(character))
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized in {
+        "o to con", "o to tai", "xe mo to", "xe ban tai", "passenger car",
+        "truck", "pickup", "motorbike", "sedan", "suv",
+    }
+
+
+def _vehicle_model_value(raw_ocr_text: str, brand: str | None) -> str | None:
+    model = _labeled_value(raw_ocr_text, ("vehicle model", "model code", "số loại", "so loai"))
+    if model is None:
+        model = _labeled_value(raw_ocr_text, ("loại xe", "loai xe"))
+    if model is None or _is_vehicle_class(model):
+        return None
+    if brand:
+        model = re.sub(rf"^{re.escape(brand)}(?:\s+|[-/])+", "", model, flags=re.IGNORECASE).strip()
+    return model or None
+
+
 class DeterministicDocumentExtractionAdapter:
     def extract(
         self,
@@ -193,26 +224,31 @@ class DeterministicDocumentExtractionAdapter:
                 ),
             )
         if definition.category is EvidenceCategory.INSURANCE_POLICY:
+            brand = _labeled_value(
+                raw_ocr_text, ("vehicle brand", "brand", "make", "hiệu xe", "hieu xe")
+            )
             return InsurancePolicyExtraction(
                 vehicle_owner=_labeled_value(
                     raw_ocr_text, ("vehicle owner", "policy vehicle owner", "chủ xe", "chu xe")
                 ),
-                vehicle_brand=_labeled_value(
-                    raw_ocr_text, ("vehicle brand", "brand", "make", "hiệu xe", "hieu xe")
-                ),
+                vehicle_brand=brand,
+                vehicle_model=_vehicle_model_value(raw_ocr_text, brand),
             )
         if definition.category is EvidenceCategory.VEHICLE_REGISTRATION:
+            brand = _labeled_value(
+                raw_ocr_text,
+                ("vehicle brand", "vehicle make", "brand", "make", "nhãn hiệu", "nhan hieu"),
+            )
+            ambiguous_type = _labeled_value(raw_ocr_text, ("loại xe", "loai xe"))
             return VehicleRegistrationExtraction(
                 vehicle_owner=_labeled_value(
                     raw_ocr_text, ("vehicle owner", "owner name", "tên chủ xe", "ten chu xe")
                 ),
-                vehicle_brand=_labeled_value(
-                    raw_ocr_text,
-                    ("vehicle brand", "vehicle make", "brand", "make", "nhãn hiệu", "nhan hieu"),
-                ),
+                vehicle_brand=brand,
                 vehicle_type=_labeled_value(
-                    raw_ocr_text, ("vehicle type", "type", "loại xe", "loai xe")
-                ),
+                    raw_ocr_text, ("vehicle type", "type", "vehicle category", "phân loại xe", "phan loai xe")
+                ) or (ambiguous_type if ambiguous_type and _is_vehicle_class(ambiguous_type) else None),
+                vehicle_model=_vehicle_model_value(raw_ocr_text, brand),
                 license_plate=_labeled_value(
                     raw_ocr_text,
                     ("license plate", "number plate", "biển số đăng ký", "bien so dang ky"),
@@ -355,6 +391,7 @@ class DocumentExtractionService:
                 category=category,
                 system_prompt=self.prompt_resolver.resolve(category),
                 output_schema=schema,
+                schema_version=schema_version_for_category(category),
             )
             extracted = self.adapter.extract(definition, raw_ocr_text)
             validated = schema.model_validate(extracted)
@@ -375,7 +412,7 @@ class DocumentExtractionService:
                 status=AnalysisResultStatus.FAILED,
                 fields=[],
                 prompt_version=PROMPT_VERSION,
-                schema_version=SCHEMA_VERSION,
+                schema_version=schema_version_for_category(category),
                 warning=str(error),
             )
         except Exception as error:
@@ -385,7 +422,7 @@ class DocumentExtractionService:
                 status=AnalysisResultStatus.FAILED,
                 fields=[],
                 prompt_version=PROMPT_VERSION,
-                schema_version=SCHEMA_VERSION,
+                schema_version=schema_version_for_category(category),
                 warning=f"Structured document extraction failed ({type(error).__name__}).",
             )
 

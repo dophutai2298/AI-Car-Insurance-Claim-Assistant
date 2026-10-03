@@ -48,6 +48,7 @@ Your task is to extract ONLY the following information:
 
 * `vehicle_owner`: Chủ xe / Tên chủ xe / Vehicle owner / Policy vehicle owner
 * `vehicle_brand`: Hiệu xe / Nhãn hiệu xe / Brand / Make
+* `vehicle_model`: Loại xe / Model code / Số loại / Vehicle model
 
 ### Extraction rules
 
@@ -56,16 +57,18 @@ Your task is to extract ONLY the following information:
 3. Distinguish the vehicle owner from the policyholder, beneficiary, insurance company, representative, or driver when possible.
 4. For `vehicle_brand`, return only the manufacturer/brand name such as `Toyota`, `Honda`, `Ford`, `Volvo`, `VinFast`, etc.
 5. Do not include vehicle model information in `vehicle_brand` unless the OCR document itself combines them and the brand cannot otherwise be separated.
-6. Ignore unrelated insurance terms, addresses, prices, policy numbers, coverage information, and OCR noise.
-7. Correct obvious OCR formatting errors only when the intended value is clear.
-8. If a field cannot be reliably identified, return `null`.
-9. Return ONLY valid JSON. Do not include explanations, Markdown, or additional text.
+6. `vehicle_model` is the manufacturer's specific model or model code, such as `Camry`, `Vios`, or `Innova`, not the manufacturer and not a broad class such as passenger car. Extract it from the OCR text even if its label is `Loại xe`, `Model code`, or `Số loại`. If brand and model are combined, return only the model portion.
+7. Never infer a model from the brand alone. If the model cannot be identified from OCR text, return `null`.
+8. Ignore unrelated insurance terms, addresses, prices, policy numbers, coverage information, and OCR noise.
+9. Correct obvious OCR formatting errors only when the intended value is clear.
+10. Return ONLY valid JSON. Do not include explanations, Markdown, or additional text.
 
 Output format:
 
 {
 "vehicle_owner": "string or null",
-"vehicle_brand": "string or null"
+"vehicle_brand": "string or null",
+"vehicle_model": "string or null"
 }
 
 ---
@@ -81,7 +84,8 @@ Your task is to extract ONLY the following information:
 
 * `vehicle_owner`: Tên chủ xe / Owner's full name
 * `vehicle_brand`: Nhãn hiệu / Brand
-* `vehicle_type`: Loại xe / Type
+* `vehicle_type`: Broad vehicle class / Category (for example passenger car or truck)
+* `vehicle_model`: Loại xe / Model code / Số loại / Vehicle model
 * `license_plate`: Biển số đăng ký / Number Plate / License Plate
 
 ### Extraction rules
@@ -90,17 +94,19 @@ Your task is to extract ONLY the following information:
 2. Do not invent or infer missing values.
 3. Ignore unrelated fields such as address, engine number, chassis number, color, number of seats, weight, issue date, and expiry date.
 4. `vehicle_brand` should contain the vehicle manufacturer/brand only.
-5. `vehicle_type` should preserve the document meaning, for example:
+5. `vehicle_type` should preserve a broad class if explicitly present, for example:
 
    * `Ô tô con`
    * `Ô tô tải`
    * `Xe mô tô`
    * `Xe bán tải`
-6. Normalize `license_plate` by removing obvious OCR spaces or duplicated punctuation when the intended plate is clear.
-7. Do not change letters or digits in a license plate unless the correction is unambiguous from the OCR context.
-8. Correct obvious OCR formatting noise only when the intended value is clear.
-9. If a field cannot be reliably identified, return `null`.
-10. Return ONLY valid JSON. Do not include explanations, Markdown, or additional text.
+6. `vehicle_model` is the brand-specific model or model code, such as `Camry`, `Vios`, or `Innova`. Look for `Loại xe`, `Model code`, `Số loại`, or equivalent labels. If brand and model are combined, return only the model portion. A broad class belongs in `vehicle_type`, not `vehicle_model`.
+7. Never infer a model from the brand alone. If the OCR text only identifies a broad vehicle class, return `null` for `vehicle_model`.
+8. Normalize `license_plate` by removing obvious OCR spaces or duplicated punctuation when the intended plate is clear.
+9. Do not change letters or digits in a license plate unless the correction is unambiguous from the OCR context.
+10. Correct obvious OCR formatting noise only when the intended value is clear.
+11. If a field cannot be reliably identified, return `null`.
+12. Return ONLY valid JSON. Do not include explanations, Markdown, or additional text.
 
 Output format:
 
@@ -108,6 +114,7 @@ Output format:
 "vehicle_owner": "string or null",
 "vehicle_brand": "string or null",
 "vehicle_type": "string or null",
+"vehicle_model": "string or null",
 "license_plate": "string or null"
 }
 
