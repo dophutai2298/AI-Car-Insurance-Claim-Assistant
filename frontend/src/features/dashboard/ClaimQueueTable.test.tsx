@@ -76,3 +76,24 @@ test("paginates filtered claims and resets to the first page when page size chan
   expect(screen.getByRole("link", { name: "CLM-000201" })).toBeVisible();
   expect(screen.getByRole("link", { name: "CLM-000212" })).toBeVisible();
 });
+
+test("sorts the claim queue in both directions without losing table interactions", async () => {
+  const user = userEvent.setup();
+  render(
+    <MemoryRouter>
+      <ClaimQueueTable claims={claims} />
+    </MemoryRouter>,
+  );
+
+  await user.click(screen.getByRole("button", { name: "Sort Claim ascending" }));
+  expect(screen.getAllByRole("link").map((link) => link.textContent)).toEqual([
+    "CLM-000101",
+    "CLM-000102",
+  ]);
+
+  await user.click(screen.getByRole("button", { name: "Sort Claim descending" }));
+  expect(screen.getAllByRole("link").map((link) => link.textContent)).toEqual([
+    "CLM-000102",
+    "CLM-000101",
+  ]);
+});

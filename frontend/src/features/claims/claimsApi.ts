@@ -33,7 +33,7 @@ async function request<T>(
       ...init?.headers,
     },
   });
-  const body: unknown = await response.json();
+  const body: unknown = response.status === 204 ? null : await response.json();
   if (!response.ok) {
     const detail =
       typeof body === "object" && body !== null && "detail" in body
@@ -64,6 +64,8 @@ export const listClaims = (accessToken: string) =>
   request<ClaimListItem[]>("/api/claims", accessToken);
 export const getClaim = (claimId: string, accessToken: string) =>
   request<ClaimDetail>(`/api/claims/${claimId}`, accessToken);
+export const deleteClaim = (claimId: string, accessToken: string) =>
+  request<void>(`/api/claims/${claimId}`, accessToken, { method: "DELETE" });
 export const createClaim = (input: ClaimCreateInput, accessToken: string) =>
   request<ClaimDetail>("/api/claims", accessToken, {
     method: "POST",

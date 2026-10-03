@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../auth/AuthProvider";
 import {
   createClaim,
+  deleteClaim,
   deleteEvidence,
   getClaim,
   listClaims,
@@ -69,6 +70,19 @@ export function useCreateClaim() {
     mutationFn: (input: ClaimCreateInput) =>
       createClaim(input, session!.access_token),
     onSuccess: cache,
+  });
+}
+
+export function useDeleteClaim(claimId: string | undefined) {
+  const { session } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => deleteClaim(claimId!, session!.access_token),
+    onSuccess: () => {
+      queryClient.removeQueries({ queryKey: [...claimsQueryKey, claimId] });
+      void queryClient.invalidateQueries({ queryKey: claimsQueryKey });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard-overview"] });
+    },
   });
 }
 

@@ -72,6 +72,11 @@ const en = {
     case: "Claim case",
     claimNumber: "Claim {{id}}",
     createdFor: "Created for {{name}}",
+    deleteDraft: "Delete draft",
+    deleteDraftTitle: "Delete this draft claim?",
+    deleteDraftDescription:
+      "Delete claim {{id}} and its uploaded evidence? This cannot be undone.",
+    deleteFailed: "Claim could not be deleted",
     safetyTitle: "Decision-support boundary",
     safetyDescription:
       "AI and human review statuses describe the evidence review only. They are not a final insurance claim decision.",

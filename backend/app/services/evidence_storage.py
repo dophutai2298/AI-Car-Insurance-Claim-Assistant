@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import logging
 from pathlib import Path
+from shutil import rmtree
 from typing import Protocol
 from uuid import uuid4
 
@@ -57,6 +58,12 @@ class StoredEvidence:
     file_size: int
 
 
+@dataclass(frozen=True)
+class StagedClaimDeletion:
+    claim_directory: Path
+    staged_directory: Path | None
+
+
 class EvidenceStorage(Protocol):
     max_files: int
 
@@ -67,6 +74,12 @@ class EvidenceStorage(Protocol):
     def delete_stored(self, uploads: list[StoredEvidence]) -> None: ...
 
     def delete(self, relative_path: str) -> None: ...
+
+    def stage_claim_for_deletion(self, claim_number: str) -> StagedClaimDeletion: ...
+
+    def restore_staged_claim_deletion(self, staged: StagedClaimDeletion) -> None: ...
+
+    def finalize_staged_claim_deletion(self, staged: StagedClaimDeletion) -> None: ...
 
     def save_annotation(
         self, claim_number: str, image_bytes: bytes, filename: str
@@ -172,6 +185,46 @@ class LocalEvidenceStorage:
 
     def delete(self, relative_path: str) -> None:
         self.delete_paths([self.resolve_path(relative_path)])
+
+    def stage_claim_for_deletion(self, claim_number: str) -> StagedClaimDeletion:
+        claim_directory = self._claim_directory(claim_number)
+        if not claim_directory.exists():
+            return StagedClaimDeletion(claim_directory, None)
+
+        staging_root = (self.root / ".deleting").resolve()
+        if not staging_root.is_relative_to(self.root):
+            raise EvidenceStorageError("Stored evidence path is invalid")
+        staged_directory = staging_root / f"{claim_number}-{uuid4().hex}"
+        try:
+            staging_root.mkdir(parents=True, exist_ok=True)
+            claim_directory.replace(staged_directory)
+        except OSError as error:
+            raise EvidenceStorageError("Unable to prepare claim files for deletion") from error
+        return StagedClaimDeletion(claim_directory, staged_directory)
+
+    def restore_staged_claim_deletion(self, staged: StagedClaimDeletion) -> None:
+        if staged.staged_directory is None or not staged.staged_directory.exists():
+            return
+        try:
+            staged.staged_directory.replace(staged.claim_directory)
+        except OSError as error:
+            raise EvidenceStorageError("Unable to restore claim files after deletion failure") from error
+
+    def finalize_staged_claim_deletion(self, staged: StagedClaimDeletion) -> None:
+        if staged.staged_directory is None or not staged.staged_directory.exists():
+            return
+        try:
+            rmtree(staged.staged_directory)
+        except OSError:
+            logger.exception("Claim files remain in deletion staging after database removal")
+
+    def _claim_directory(self, claim_number: str) -> Path:
+        if not claim_number or Path(claim_number).name != claim_number:
+            raise EvidenceStorageError("Stored evidence path is invalid")
+        directory = (self.root / claim_number).resolve()
+        if not directory.is_relative_to(self.root):
+            raise EvidenceStorageError("Stored evidence path is invalid")
+        return directory
 
     @staticmethod
     def delete_paths(paths: list[Path]) -> None:

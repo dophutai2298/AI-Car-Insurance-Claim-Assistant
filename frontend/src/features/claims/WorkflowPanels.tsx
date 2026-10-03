@@ -1,6 +1,9 @@
 import {
   Analytics,
   CheckmarkOutline,
+  ChevronSort,
+  ChevronSortDown,
+  ChevronSortUp,
   DataStructured,
   Document,
   Image,
@@ -20,9 +23,12 @@ import {
 import {
   getCoreRowModel,
   getFilteredRowModel,
+  getSortedRowModel,
+  type LegacyColumn,
   type LegacyColumnDef,
   useLegacyTable,
 } from "@tanstack/react-table/legacy";
+import type { SortingState } from "@tanstack/react-table";
 import { useMemo, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -200,6 +206,7 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
   const { t } = useTranslation();
   const [globalFilter, setGlobalFilter] = useState("");
   const [damageTypeFilter, setDamageTypeFilter] = useState("ALL");
+  const [sorting, setSorting] = useState<SortingState>([]);
   const annotatedEvidence = analysis.model_output?.annotated_evidence ?? Array.from(
     new Map(
       analysis.detections.map((detection) => [
@@ -248,11 +255,15 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
         damageTypeFilter === "ALL"
           ? []
           : [{ id: "damageType", value: damageTypeFilter }],
+      sorting,
     },
     onGlobalFilterChange: setGlobalFilter,
+    onSortingChange: setSorting,
     globalFilterFn: "includesString",
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    enableSortingRemoval: false,
   });
   const rows = table.getRowModel().rows;
   const damageTypes = Array.from(
@@ -358,13 +369,23 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
                 <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-600">
                   <tr>
                     <th className="px-4 py-3" scope="col">
-                      {t("analysis.part")}
+                      <DamageSortHeader
+                        column={table.getColumn("part")!}
+                        label={t("analysis.part")}
+                      />
                     </th>
                     <th className="px-4 py-3" scope="col">
-                      {t("analysis.damageType")}
+                      <DamageSortHeader
+                        column={table.getColumn("damageType")!}
+                        label={t("analysis.damageType")}
+                      />
                     </th>
                     <th className="px-4 py-3 text-right" scope="col">
-                      {t("analysis.areaPercent")}
+                      <DamageSortHeader
+                        align="right"
+                        column={table.getColumn("damagePercentage")!}
+                        label={t("analysis.areaPercent")}
+                      />
                     </th>
                   </tr>
                 </thead>
@@ -406,6 +427,35 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
         </div>
       )}
     </section>
+  );
+}
+
+function DamageSortHeader({
+  align = "left",
+  column,
+  label,
+}: {
+  align?: "left" | "right";
+  column: LegacyColumn<DamageFindingRow>;
+  label: string;
+}) {
+  const direction = column.getIsSorted();
+  const Icon =
+    direction === "asc"
+      ? ChevronSortUp
+      : direction === "desc"
+        ? ChevronSortDown
+        : ChevronSort;
+  return (
+    <button
+      aria-label={`Sort ${label} ${direction === "asc" ? "descending" : "ascending"}`}
+      className={`inline-flex items-center gap-1 hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-500 ${align === "right" ? "justify-end" : ""}`}
+      onClick={column.getToggleSortingHandler()}
+      type="button"
+    >
+      {label}
+      <Icon aria-hidden="true" size={16} />
+    </button>
   );
 }
 

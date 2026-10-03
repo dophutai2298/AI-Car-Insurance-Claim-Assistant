@@ -1,7 +1,8 @@
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import AdminUser, AiReviewUser, AnalysisSupportUser, AnalysisUser, HumanReviewUser
@@ -81,6 +82,31 @@ def get_claim(
     if claim is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
     return claim
+
+
+@router.delete("/{claim_number}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_draft_claim(
+    claim_number: str,
+    _current_user: AdminUser,
+    service: ClaimServiceDependency,
+) -> Response:
+    try:
+        deleted = service.delete_draft_claim(claim_number)
+    except ClaimValidationError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+    except EvidenceStorageError as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Claim deletion failed",
+        ) from error
+    except SQLAlchemyError as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Claim deletion failed",
+        ) from error
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.patch("/{claim_number}/status", response_model=ClaimResponse)
