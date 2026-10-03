@@ -92,9 +92,72 @@ class DamageAnalysisRepository:
                 warnings_json=json.dumps(list(model_result.warnings), ensure_ascii=False),
             )
         )
+        self._save_assessment_context(analysis.id, rules, reference_prices)
+        if update_claim_status:
+            claim.status = ClaimStatus.REVIEW_REQUIRED
+        self.session.commit()
+        self.session.refresh(analysis)
+        return analysis
+
+    def latest_for_claim(self, claim_id: int) -> DamageAnalysis | None:
+        statement = select(DamageAnalysis).where(DamageAnalysis.claim_id == claim_id).order_by(DamageAnalysis.created_at.desc())
+        return self.session.scalar(statement)
+
+    def copy_for_run(
+        self,
+        source: DamageAnalysis,
+        assessment: AssessmentResult,
+        rules: AssessmentRuleValues,
+        reference_prices: list[ReferencePartPriceResult],
+    ) -> DamageAnalysis:
+        output = self.model_output(source.id)
+        if output is None:
+            raise ValueError("Cannot reuse damage analysis without model output")
+        analysis = DamageAnalysis(
+            claim_id=source.claim_id,
+            assessment=assessment.assessment,
+            warning=assessment.warning,
+        )
+        self.session.add(analysis)
+        self.session.flush()
+        analysis.analysis_number = f"DA-{analysis.id:06d}"
+        self.session.add_all(
+            [
+                DamageDetection(
+                    analysis_id=analysis.id,
+                    source_evidence_id=item.source_evidence_id,
+                    annotated_evidence_id=item.annotated_evidence_id,
+                    vehicle_part=item.vehicle_part,
+                    damage_type=item.damage_type,
+                    damage_percentage=item.damage_percentage,
+                    confidence=item.confidence,
+                    status=item.status,
+                )
+                for item in self.list_detections(source.id)
+            ]
+        )
+        self.session.add(
+            DamageModelOutput(
+                analysis_id=analysis.id,
+                adapter_name=output.adapter_name,
+                output_json=output.output_json,
+                warnings_json=output.warnings_json,
+            )
+        )
+        self._save_assessment_context(analysis.id, rules, reference_prices)
+        self.session.commit()
+        self.session.refresh(analysis)
+        return analysis
+
+    def _save_assessment_context(
+        self,
+        analysis_id: int,
+        rules: AssessmentRuleValues,
+        reference_prices: list[ReferencePartPriceResult],
+    ) -> None:
         self.session.add(
             DamageAnalysisRuleSnapshot(
-                analysis_id=analysis.id,
+                analysis_id=analysis_id,
                 confidence_threshold=rules.confidence_threshold,
                 repair_max_percentage=rules.repair_max_percentage,
                 replacement_min_percentage=rules.replacement_min_percentage,
@@ -103,7 +166,7 @@ class DamageAnalysisRepository:
         self.session.add_all(
             [
                 ReferencePartPrice(
-                    analysis_id=analysis.id,
+                    analysis_id=analysis_id,
                     part_identity=price.part_identity,
                     amount=price.amount,
                     currency=price.currency,
@@ -117,15 +180,6 @@ class DamageAnalysisRepository:
                 for price in reference_prices
             ]
         )
-        if update_claim_status:
-            claim.status = ClaimStatus.REVIEW_REQUIRED
-        self.session.commit()
-        self.session.refresh(analysis)
-        return analysis
-
-    def latest_for_claim(self, claim_id: int) -> DamageAnalysis | None:
-        statement = select(DamageAnalysis).where(DamageAnalysis.claim_id == claim_id).order_by(DamageAnalysis.created_at.desc())
-        return self.session.scalar(statement)
 
     def list_detections(self, analysis_id: int) -> list[DamageDetection]:
         statement = select(DamageDetection).where(DamageDetection.analysis_id == analysis_id).order_by(DamageDetection.id)

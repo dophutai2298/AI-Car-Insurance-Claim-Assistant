@@ -122,12 +122,23 @@ export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
           ) : null}
           <Button
             isDisabled={!canStart || start.isPending}
-            isPending={start.isPending}
-            onPress={() => start.mutate()}
+            isPending={start.isPending && start.variables === false}
+            onPress={() => start.mutate(false)}
             variant="primary"
           >
             {run ? t("analysis.runAgain") : t("analysis.analyze")}
           </Button>
+          {run ? (
+            <Button
+              isDisabled={!canStart || start.isPending}
+              isPending={start.isPending && start.variables === true}
+              onPress={() => start.mutate(true)}
+              variant="secondary"
+            >
+              <Reset size={16} />
+              {t("analysis.runAllAgain")}
+            </Button>
+          ) : null}
         </div>
       </Card.Header>
       <Card.Content className="grid gap-6 p-6">

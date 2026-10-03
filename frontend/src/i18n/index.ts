@@ -133,6 +133,7 @@ const en = {
       "Damage and document processing runs independently in the background.",
     analyze: "Analyze",
     runAgain: "Run analysis again",
+    runAllAgain: "Run all analysis again",
     startFailed: "Analysis could not start",
     notReady: "Analysis is not ready",
     incidentMissing: "Complete incident information first.",
@@ -264,6 +265,7 @@ const en = {
       coverage_end: "Coverage end",
       vehicle_owner: "Vehicle owner",
       vehicle_brand: "Vehicle brand",
+      vehicle_model: "Vehicle model",
       vehicle_type: "Vehicle type",
       owner_name: "Owner name",
       license_plate: "License plate",
@@ -515,6 +517,7 @@ const vi = {
 
     analyze: "Phân tích",
     runAgain: "Phân tích lại",
+    runAllAgain: "Phân tích lại toàn bộ",
 
     startFailed: "Không thể bắt đầu phân tích",
     notReady: "Phân tích chưa sẵn sàng",
@@ -666,6 +669,7 @@ const vi = {
       coverage_end: "Ngày hết hạn bảo hiểm",
       vehicle_owner: "Chủ xe",
       vehicle_brand: "Hãng xe",
+      vehicle_model: "Dòng xe / mẫu xe",
       vehicle_type: "Loại xe",
 
       owner_name: "Tên chủ sở hữu",

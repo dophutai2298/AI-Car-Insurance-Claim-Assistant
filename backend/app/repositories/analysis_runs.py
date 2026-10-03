@@ -234,9 +234,6 @@ class AnalysisRunRepository:
             .where(
                 DocumentOcrResult.evidence_id == evidence_id,
                 DocumentOcrResult.analysis_run_id < before_run_id,
-                DocumentOcrResult.status.in_(
-                    [AnalysisResultStatus.COMPLETED, AnalysisResultStatus.FAILED]
-                ),
             )
             .order_by(DocumentOcrResult.analysis_run_id.desc(), DocumentOcrResult.id.desc())
         )

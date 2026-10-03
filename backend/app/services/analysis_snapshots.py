@@ -110,6 +110,7 @@ class AnalysisSnapshotOperations:
             claimant_name=claim.claimant_name,
             vehicle_make=claim.vehicle_make,
             license_plate=claim.license_plate,
+            vehicle_model=claim.vehicle_model,
         )
         for category in DOCUMENT_EVIDENCE_CATEGORIES:
             document = documents.get(category)
@@ -219,6 +220,7 @@ class AnalysisSnapshotOperations:
             claimant_name=claim.claimant_name,
             vehicle_make=claim.vehicle_make,
             license_plate=claim.license_plate,
+            vehicle_model=claim.vehicle_model,
         )
         fields_by_category = self._extracted_fields_by_category(run.id)
         documents_by_category = {

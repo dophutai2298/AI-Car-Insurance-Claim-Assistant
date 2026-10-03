@@ -264,12 +264,12 @@ class ClaimService:
             raise ClaimValidationError("Invalid claim lifecycle transition")
         return self._to_response(self.claims.update_status(claim, next_status))
 
-    def start_workflow_analysis(self, claim_number: str) -> WorkflowAnalysisRunResponse | None:
-        run = self.workflow.start_workflow_analysis(claim_number)
+    def start_workflow_analysis(self, claim_number: str, *, force: bool = False) -> WorkflowAnalysisRunResponse | None:
+        run = self.workflow.start_workflow_analysis(claim_number, force=force)
         return self._to_analysis_run_response(claim_number, run) if run else None
 
-    def process_workflow_analysis(self, run_id: int) -> None:
-        self.workflow.process_workflow_analysis(run_id)
+    def process_workflow_analysis(self, run_id: int, *, force: bool = False) -> None:
+        self.workflow.process_workflow_analysis(run_id, force=force)
 
     def update_document_analysis_field(
         self,
@@ -317,6 +317,7 @@ class ClaimService:
                 claimant_name=claim.claimant_name,
                 vehicle_make=claim.vehicle_make,
                 license_plate=claim.license_plate,
+                vehicle_model=claim.vehicle_model,
             ),
             [
                 ValidatedDocumentField(

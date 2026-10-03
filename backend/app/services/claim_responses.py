@@ -129,6 +129,7 @@ class ClaimResponseAssembler:
             claimant_name=claim.claimant_name,
             vehicle_make=claim.vehicle_make,
             license_plate=claim.license_plate,
+            vehicle_model=claim.vehicle_model,
         )
         analysis_readiness, analysis_snapshot = self.snapshots.state(
             claim, run
