@@ -8,6 +8,14 @@ export type ClaimStepState =
 export type ClaimStepId =
   "information" | "evidence" | "analysis" | "aiReview" | "humanReview";
 
+export const claimSteps = [
+  { id: "information", labelKey: "claim.information" },
+  { id: "evidence", labelKey: "claim.stepEvidence" },
+  { id: "analysis", labelKey: "claim.stepAnalysis" },
+  { id: "aiReview", labelKey: "claim.stepAiReview" },
+  { id: "humanReview", labelKey: "claim.stepHumanReview" },
+] as const;
+
 const styles: Record<
   ClaimStepState,
   { indicator: string; state: string; surface: string }
@@ -54,14 +62,7 @@ export function ClaimWorkflowStepper({
   onNavigate?: (step: ClaimStepId) => void;
 }) {
   const { t } = useTranslation();
-  const steps = [
-    { id: "information", label: t("claim.information") },
-    { id: "evidence", label: t("claim.stepEvidence") },
-    { id: "analysis", label: t("claim.stepAnalysis") },
-    { id: "aiReview", label: t("claim.stepAiReview") },
-    { id: "humanReview", label: t("claim.stepHumanReview") },
-  ] as const;
-  const currentIndex = steps.findIndex((step) => step.id === current);
+  const currentIndex = claimSteps.findIndex((step) => step.id === current);
   const progressWidths = ["w-1/5", "w-2/5", "w-3/5", "w-4/5", "w-full"];
 
   return (
@@ -71,7 +72,7 @@ export function ClaimWorkflowStepper({
           {t("claim.workflow")}
         </h2>
         <span className="font-mono text-xs font-semibold tabular-nums text-slate-500">
-          {currentIndex + 1} / {steps.length}
+          {currentIndex + 1} / {claimSteps.length}
         </span>
       </header>
       <div aria-hidden="true" className="h-1 bg-slate-100">
@@ -83,7 +84,7 @@ export function ClaimWorkflowStepper({
         aria-label={t("claim.workflow")}
         className="grid divide-y divide-slate-100 sm:grid-cols-5 sm:divide-x sm:divide-y-0"
       >
-        {steps.map((step, index) => {
+        {claimSteps.map((step, index) => {
           const state =
             states?.[step.id] ??
             (index < currentIndex
@@ -101,7 +102,7 @@ export function ClaimWorkflowStepper({
               </span>
               <span className="min-w-0 text-left">
                 <span className="block text-sm font-semibold leading-5">
-                  {step.label}
+                  {t(step.labelKey)}
                 </span>
                 <span
                   className={`mt-1 block text-xs font-medium leading-4 ${style.state}`}

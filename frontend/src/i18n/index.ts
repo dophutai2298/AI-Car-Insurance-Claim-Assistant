@@ -32,6 +32,9 @@ const en = {
     informationDescription:
       "Claimant, vehicle and incident facts used throughout the review.",
     workflow: "Claim workflow",
+    layoutMode: "Workflow layout",
+    singlePage: "Single page",
+    tabLayout: "Tabs",
     current: "Current",
     available: "Available",
     blocked: "Blocked",
@@ -106,6 +109,8 @@ const en = {
     selectFiles: "Select files",
     selectFor: "Select files for {{category}}",
     removeFile: "Remove {{filename}}",
+    openImage: "View {{filename}}",
+    closeImage: "Close image",
     deleteAction: "Delete",
     deleteFailed: "Evidence could not be deleted",
     confirmDeleteTitle: "Delete evidence?",
@@ -390,6 +395,9 @@ const vi = {
       "Thông tin người yêu cầu, phương tiện và sự cố được sử dụng xuyên suốt quá trình xem xét.",
 
     workflow: "Quy trình xử lý hồ sơ",
+    layoutMode: "Bố cục quy trình",
+    singlePage: "Một trang",
+    tabLayout: "Các tab",
 
     current: "Hiện tại",
     available: "Khả dụng",
@@ -484,6 +492,8 @@ const vi = {
     selectFiles: "Chọn tệp",
     selectFor: "Chọn tệp cho {{category}}",
     removeFile: "Xóa {{filename}}",
+    openImage: "Xem {{filename}}",
+    closeImage: "Đóng ảnh",
     deleteAction: "Xóa",
     deleteFailed: "Không thể xóa bằng chứng",
     confirmDeleteTitle: "Xóa bằng chứng?",

@@ -1,6 +1,7 @@
 import {
   Add,
   CheckmarkOutline,
+  Close,
   Document,
   Image,
   TrashCan,
@@ -384,6 +385,8 @@ export function EvidenceImagePreview({
 }) {
   const { session } = useAuth();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const { t } = useTranslation();
   useEffect(() => {
     let objectUrl: string | null = null;
     let active = true;
@@ -398,16 +401,68 @@ export function EvidenceImagePreview({
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [item.content_url, session]);
-  return previewUrl ? (
-    <a href={previewUrl} rel="noopener noreferrer" target="_blank">
-      <img
-        alt={item.original_filename}
-        className={className}
-        src={previewUrl}
-      />
-    </a>
-  ) : (
-    <Image className="text-slate-500" size={28} />
+  if (!previewUrl) return <Image className="text-slate-500" size={28} />;
+
+  return (
+    <>
+      <button
+        aria-label={t("evidence.openImage", {
+          filename: item.original_filename,
+        })}
+        className="block w-full cursor-zoom-in focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+        onClick={() => setIsOpen(true)}
+        title={t("evidence.openImage", {
+          filename: item.original_filename,
+        })}
+        type="button"
+      >
+        <img
+          alt={item.original_filename}
+          className={className}
+          src={previewUrl}
+        />
+      </button>
+      <Modal>
+        <Modal.Backdrop isOpen={isOpen} onOpenChange={setIsOpen}>
+          <Modal.Container placement="center">
+            <Modal.Dialog
+              className="h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-hidden rounded-lg p-4 sm:h-[70vh] sm:w-[70vw] sm:p-5"
+              style={{ maxWidth: "none" }}
+            >
+              <Modal.Header className="min-w-0 pr-12">
+                <Modal.Heading
+                  className="truncate"
+                  title={item.original_filename}
+                >
+                  {item.original_filename}
+                </Modal.Heading>
+                <span
+                  className="absolute right-4 top-4"
+                  title={t("evidence.closeImage")}
+                >
+                  <Button
+                    aria-label={t("evidence.closeImage")}
+                    isIconOnly
+                    onPress={() => setIsOpen(false)}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    <Close size={20} />
+                  </Button>
+                </span>
+              </Modal.Header>
+              <Modal.Body className="flex min-h-0 items-center justify-center overflow-hidden p-0">
+                <img
+                  alt={item.original_filename}
+                  className="h-full w-full object-contain"
+                  src={previewUrl}
+                />
+              </Modal.Body>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
+      </Modal>
+    </>
   );
 }
 

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { expect, test, vi } from "vitest";
@@ -34,7 +34,7 @@ function renderRoute(path: string) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
+  const result = render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[path]}>
         <AuthProvider>
@@ -43,6 +43,7 @@ function renderRoute(path: string) {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return { ...result, queryClient };
 }
 
 test("unauthenticated user is redirected to login", async () => {
@@ -389,6 +390,100 @@ test("claim detail blocks analysis until all required evidence is present", asyn
   expect(screen.queryByRole("button", { name: "Delete claim" })).not.toBeInTheDocument();
 });
 
+test("claim workflow tabs preserve unsaved information when switching layouts", async () => {
+  const claim: ClaimDetail = {
+    id: "CLM-000053",
+    claimant_name: "Mai Nguyen",
+    vehicle: {
+      make: "Toyota",
+      model: "Camry",
+      year: 2022,
+      license_plate: null,
+      vin: null,
+    },
+    incident: {
+      occurred_at: "2026-09-09T01:30:00Z",
+      location: "District 1",
+      description: "Rear impact.",
+    },
+    status: "DRAFT",
+    created_at: "2026-09-08T00:00:00Z",
+    updated_at: "2026-09-08T00:00:00Z",
+    evidence: [],
+    latest_damage_analysis: null,
+    latest_analysis_run: null,
+    copilot_review_history: [],
+  };
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const path = String(input);
+    if (path.endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adjusterSession.user));
+    if (path.endsWith("/api/vehicle-makes"))
+      return new Response(
+        JSON.stringify([{ id: 1, name: "Toyota", is_active: true }]),
+      );
+    return new Response(JSON.stringify(claim));
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  const user = userEvent.setup();
+  const { queryClient } = renderRoute(`/claims/${claim.id}`);
+
+  expect(await screen.findByText("Vehicle damage images")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Single page" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await user.click(screen.getByRole("button", { name: "Tabs" }));
+
+  const tabs = screen.getByRole("tablist", { name: "Claim workflow" });
+  expect(screen.queryByRole("button", { name: "Delete claim" })).not.toBeInTheDocument();
+  expect(within(tabs).getAllByRole("tab")).toHaveLength(5);
+  expect(
+    within(tabs).getByRole("tab", { name: /Evidence & documents/i }),
+  ).toHaveAttribute("aria-selected", "true");
+  within(tabs).getByRole("tab", { name: /Evidence & documents/i }).focus();
+  await user.keyboard("{ArrowRight}");
+  expect(within(tabs).getByRole("tab", { name: /^Analysis/i })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await user.click(within(tabs).getByRole("tab", { name: /Claim information/i }));
+  expect(screen.getByRole("tabpanel", { name: /Claim information/i })).toBeVisible();
+
+  await user.click(screen.getByRole("button", { name: "Edit" }));
+  const claimantName = screen.getByLabelText("Claimant name");
+  await user.clear(claimantName);
+  await user.type(claimantName, "Mai Nguyen updated");
+
+  act(() => {
+    queryClient.setQueryData(["claims", claim.id], {
+      ...claim,
+      evidence: [{ id: 1, category: "ID_CARD", original_filename: "id.jpg" }],
+    });
+  });
+  expect(screen.getByLabelText("Claimant name")).toHaveValue(
+    "Mai Nguyen updated",
+  );
+
+  await user.click(
+    within(tabs).getByRole("tab", { name: /Evidence & documents/i }),
+  );
+  expect(screen.getByRole("tabpanel", { name: /Evidence & documents/i })).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "Single page" }));
+  expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Claimant name")).toHaveValue("Mai Nguyen updated");
+  await user.click(screen.getByRole("button", { name: "Tabs" }));
+  await user.click(screen.getByRole("tab", { name: /Claim information/i }));
+  expect(screen.getByLabelText("Claimant name")).toHaveValue("Mai Nguyen updated");
+
+  await i18n.changeLanguage("vi");
+  expect(screen.getByRole("button", { name: "Một trang" })).toBeVisible();
+  expect(screen.getByRole("tab", { name: /Thông tin hồ sơ/i })).toBeVisible();
+});
+
 test("admin confirms deletion of a reviewed claim", async () => {
   const claim = {
     id: "CLM-000052",
@@ -542,9 +637,24 @@ test("evidence cards render a constrained thumbnail for uploaded images", async 
 
   const preview = await screen.findByRole("img", { name: "repair.jpg" });
   expect(preview).toHaveClass("size-20");
-  expect(preview.closest("a")).toHaveAttribute("href", "blob:evidence-preview");
-  expect(preview.closest("a")).toHaveAttribute("target", "_blank");
-  expect(preview.closest("a")).toHaveAttribute("rel", "noopener noreferrer");
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Tabs" }));
+  await user.click(screen.getByRole("tab", { name: /Evidence & documents/i }));
+  await user.click(screen.getByRole("button", { name: "View repair.jpg" }));
+  const dialog = await screen.findByRole("dialog");
+  expect(within(dialog).getByRole("img", { name: "repair.jpg" })).toHaveAttribute(
+    "src",
+    "blob:evidence-preview",
+  );
+  expect(dialog).toHaveClass("sm:w-[70vw]");
+  expect(dialog).toHaveClass("w-[calc(100vw-2rem)]");
+  await user.click(within(dialog).getByRole("button", { name: "Close image" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /Evidence & documents/i })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
 });
 
 test("deleting evidence requires confirmation", async () => {
@@ -1033,11 +1143,19 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
   expect(annotatedDamage.parentElement).toHaveClass(
     "xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]",
   );
-  expect(damagePreview.closest("a")).toHaveAttribute(
-    "href",
-    "blob:evidence-preview",
+  await user.click(within(annotatedDamage).getByRole("button", {
+    name: "View vehicle_damage_image-annotated.jpg",
+  }));
+  expect(
+    within(await screen.findByRole("dialog")).getByRole("img", {
+      name: "vehicle_damage_image-annotated.jpg",
+    }),
+  ).toHaveAttribute("src", "blob:evidence-preview");
+  await user.click(
+    within(screen.getByRole("dialog")).getByRole("button", {
+      name: "Close image",
+    }),
   );
-  expect(damagePreview.closest("a")).toHaveAttribute("target", "_blank");
   const damageTable = screen.getByRole("table", {
     name: "Vehicle damage findings",
   });

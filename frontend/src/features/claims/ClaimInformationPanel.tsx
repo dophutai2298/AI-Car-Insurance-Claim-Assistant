@@ -28,7 +28,9 @@ export function ClaimInformationPanel({ claim }: { claim: ClaimDetail }) {
   const [editing, setEditing] = useState(false);
   const [values, setValues] = useState(() => formValues(claim));
 
-  useEffect(() => setValues(formValues(claim)), [claim]);
+  useEffect(() => {
+    if (!editing) setValues(formValues(claim));
+  }, [claim, editing]);
   const locked =
     claim.status === "ANALYZING" ||
     claim.status === "AI_APPROVED" ||

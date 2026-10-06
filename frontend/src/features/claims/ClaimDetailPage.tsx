@@ -1,6 +1,6 @@
 import { ArrowLeft, Document, TrashCan } from "@carbon/icons-react";
 import { Alert, Button, Chip, Modal, Skeleton } from "@heroui/react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router";
 
@@ -11,6 +11,7 @@ import {
   claimWorkflowForClaim,
   type ClaimStepId,
 } from "./ClaimWorkflowStepper";
+import { ClaimWorkflowTabs } from "./ClaimWorkflowTabs";
 import { EvidencePanel } from "./EvidencePanel";
 import {
   AiReviewPanel,
@@ -31,6 +32,11 @@ export function ClaimDetailPage() {
   const remove = useDeleteClaim(claimId);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [view, setView] = useState<{
+    claimId: string;
+    mode: "page" | "tabs";
+    step: ClaimStepId;
+  } | null>(null);
 
   if (isPending)
     return (
@@ -69,6 +75,33 @@ export function ClaimDetailPage() {
   const evidenceLocked =
     analysisLocked || Boolean(reviewed && !reviewed.reverted_at);
   const canDelete = session?.user.role === "ADMIN";
+  const currentClaimId = claim.id;
+  const mode = view?.claimId === claim.id ? view.mode : "page";
+  const selectedStep = view?.claimId === claim.id ? view.step : workflow.current;
+  const panels: { id: ClaimStepId; content: ReactNode }[] = [
+    { id: "information", content: <ClaimInformationPanel claim={claim} /> },
+    {
+      id: "evidence",
+      content: (
+        <EvidencePanel
+          claimId={claim.id}
+          evidence={claim.evidence ?? []}
+          locked={evidenceLocked}
+        />
+      ),
+    },
+    { id: "analysis", content: <AnalysisPanel claim={claim} /> },
+    { id: "aiReview", content: <AiReviewPanel claim={claim} /> },
+    {
+      id: "humanReview",
+      content: (
+        <div className="grid gap-6">
+          <HumanReviewPanel claim={claim} />
+          <CopilotReviewHistory history={claim.copilot_review_history ?? []} />
+        </div>
+      ),
+    },
+  ];
 
   async function confirmDelete() {
     setDeleteError("");
@@ -85,9 +118,12 @@ export function ClaimDetailPage() {
   }
 
   function navigateToStep(step: ClaimStepId) {
-    document
-      .getElementById(step)
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setView({ claimId: currentClaimId, mode, step });
+    if (mode === "page") {
+      document
+        .getElementById(step)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }
 
   return (
@@ -133,21 +169,59 @@ export function ClaimDetailPage() {
           <Alert.Description>{deleteError}</Alert.Description>
         </Alert>
       ) : null}
-      <ClaimWorkflowStepper
-        current={workflow.current}
-        onNavigate={navigateToStep}
-        states={workflow.states}
-      />
-      <ClaimInformationPanel claim={claim} />
-      <EvidencePanel
-        claimId={claim.id}
-        evidence={claim.evidence ?? []}
-        locked={evidenceLocked}
-      />
-      <AnalysisPanel claim={claim} />
-      <AiReviewPanel claim={claim} />
-      <HumanReviewPanel claim={claim} />
-      <CopilotReviewHistory history={claim.copilot_review_history ?? []} />
+      <div className="flex justify-end">
+        <div
+          aria-label={t("claim.layoutMode")}
+          className="inline-flex gap-1 rounded-lg border border-slate-200 bg-white p-1"
+          role="group"
+        >
+          <Button
+            aria-pressed={mode === "page"}
+            onPress={() =>
+              setView({ claimId: claim.id, mode: "page", step: selectedStep })
+            }
+            size="sm"
+            variant={mode === "page" ? "primary" : "ghost"}
+          >
+            {t("claim.singlePage")}
+          </Button>
+          <Button
+            aria-pressed={mode === "tabs"}
+            onPress={() =>
+              setView({ claimId: claim.id, mode: "tabs", step: selectedStep })
+            }
+            size="sm"
+            variant={mode === "tabs" ? "primary" : "ghost"}
+          >
+            {t("claim.tabLayout")}
+          </Button>
+        </div>
+      </div>
+      {mode === "page" ? (
+        <ClaimWorkflowStepper
+          current={workflow.current}
+          onNavigate={navigateToStep}
+          states={workflow.states}
+        />
+      ) : (
+        <ClaimWorkflowTabs
+          onSelect={navigateToStep}
+          selected={selectedStep}
+          states={workflow.states}
+        />
+      )}
+      {panels.map(({ id, content }) => (
+        <div
+          aria-labelledby={mode === "tabs" ? `claim-tab-${id}` : undefined}
+          hidden={mode === "tabs" && selectedStep !== id}
+          id={mode === "tabs" ? `claim-panel-${id}` : undefined}
+          key={id}
+          role={mode === "tabs" ? "tabpanel" : undefined}
+          tabIndex={mode === "tabs" ? 0 : undefined}
+        >
+          {content}
+        </div>
+      ))}
       <Alert status="warning">
         <Document size={18} />
         <Alert.Title>{t("claim.safetyTitle")}</Alert.Title>
