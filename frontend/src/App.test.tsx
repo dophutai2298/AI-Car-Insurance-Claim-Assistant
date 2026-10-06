@@ -979,7 +979,10 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
   const damagePreview = await within(annotatedDamage).findByRole("img", {
     name: "vehicle_damage_image-annotated.jpg",
   });
-  expect(damagePreview).toHaveClass("h-44");
+  expect(damagePreview).toHaveClass("aspect-[4/3]");
+  expect(annotatedDamage.parentElement).toHaveClass(
+    "xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]",
+  );
   expect(damagePreview.closest("a")).toHaveAttribute(
     "href",
     "blob:evidence-preview",
