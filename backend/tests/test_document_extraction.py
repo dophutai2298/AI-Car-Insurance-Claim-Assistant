@@ -60,13 +60,7 @@ def test_langchain_adapter_sends_system_and_human_messages_with_structured_schem
     adapter = LangChainOpenAiDocumentExtractionAdapter(
         None, "test-key", "test-model", token_usage_logging_enabled=True
     )
-    assert captured["options"] == {
-        "model": "test-model",
-        "api_key": "test-key",
-        # "temperature": 0,
-        "timeout": 60.0,
-        "max_retries": 0,
-    }
+    assert captured == {}
     definition = DocumentExtractionDefinition(
         category=EvidenceCategory.ID_CARD,
         system_prompt="Extract identity fields only.",
@@ -79,6 +73,13 @@ def test_langchain_adapter_sends_system_and_human_messages_with_structured_schem
             "Identity number: 000123456789",
         )
 
+    assert captured["options"] == {
+        "model": "test-model",
+        "api_key": "test-key",
+        # "temperature": 0,
+        "timeout": 60.0,
+        "max_retries": 0,
+    }
     messages = captured["messages"]
     assert isinstance(messages, list)
     assert isinstance(messages[0], SystemMessage)

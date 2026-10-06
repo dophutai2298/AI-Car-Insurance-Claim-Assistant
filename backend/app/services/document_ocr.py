@@ -59,18 +59,20 @@ class MockDocumentOcrAdapter:
 
 class DeepDocOcrAdapter:
     def __init__(self) -> None:
-        try:
-            from deepdoc_vietocr import DocumentReader
-        except ImportError as error:
-            raise DocumentOcrError("deepdoc_vietocr is not installed.") from error
-        self.reader_type = DocumentReader
+        self.reader_type = None
         self.reader = None
 
     def extract(self, evidence: Evidence, source_path: Path) -> DocumentOcrResult:
         try:
             if self.reader is None:
+                if self.reader_type is None:
+                    from deepdoc_vietocr import DocumentReader
+
+                    self.reader_type = DocumentReader
                 self.reader = self.reader_type()
             result = self.reader.extract(str(source_path))
+        except ImportError as error:
+            raise DocumentOcrError("deepdoc_vietocr is not installed.") from error
         except Exception as error:
             logger.exception(
                 "DeepDoc OCR provider failed for evidence_id=%s error_type=%s",
@@ -112,7 +114,4 @@ def get_document_ocr_adapter(mode: str) -> DocumentOcrAdapter:
     mock = MockDocumentOcrAdapter()
     if mode == "mock":
         return mock
-    try:
-        return FallbackDocumentOcrAdapter(DeepDocOcrAdapter(), mock)
-    except DocumentOcrError:
-        return mock
+    return FallbackDocumentOcrAdapter(DeepDocOcrAdapter(), mock)
