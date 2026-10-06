@@ -6,7 +6,7 @@ from app.repositories.analysis_runs import AnalysisRunRepository
 from app.services.document_analysis import DocumentAnalysisAdapter, DocumentAnalysisResult
 from app.services.document_consistency import ClaimConsistencyService, ClaimFacts
 from app.services.document_extraction import DocumentExtractionService
-from app.services.document_extraction import SCHEMA_VERSION as DOCUMENT_EXTRACTION_SCHEMA_VERSION
+from app.services.document_extraction import schema_version_for_category
 from app.services.document_field_validation import DocumentFieldValidationService, ValidatedDocumentField
 from app.services.document_ocr import DocumentOcrAdapter, DocumentOcrError
 from app.services.evidence_storage import EvidenceStorage, EvidenceStorageError
@@ -42,13 +42,14 @@ class DocumentAnalysisPipeline:
         previous_run: WorkflowAnalysisRun | None,
         claim: Claim,
         by_category: dict[EvidenceCategory, list[Evidence]],
+        force: bool = False,
     ) -> None:
         ocr_by_category = {
-            category: self._process_document_ocr_category(run, category, items)
+            category: self._process_document_ocr_category(run, category, items, force=force)
             for category, items in by_category.items()
             if category is not EvidenceCategory.VEHICLE_DAMAGE_IMAGE
         }
-        self._extract_document_fields(run, previous_run, ocr_by_category)
+        self._extract_document_fields(run, previous_run, ocr_by_category, force=force)
         self._validate_document_fields(run, claim)
 
     def _extract_document_fields(
@@ -56,6 +57,7 @@ class DocumentAnalysisPipeline:
         run: WorkflowAnalysisRun,
         previous_run: WorkflowAnalysisRun | None,
         ocr_by_category: dict[EvidenceCategory, list[DocumentOcrResult]],
+        force: bool = False,
     ) -> None:
         for category, ocr_results in ocr_by_category.items():
             completed = [
@@ -77,20 +79,23 @@ class DocumentAnalysisPipeline:
             unchanged = {result.evidence_id for result in previous_ocr} == {
                 result.evidence_id for result in ocr_results
             }
+            schema_version = schema_version_for_category(category)
             previous_extraction = (
                 self.analysis_runs.document_extraction_for_category(
                     previous_run.id,
                     category,
-                    DOCUMENT_EXTRACTION_SCHEMA_VERSION,
+                    schema_version,
                 )
-                if previous_run and unchanged
+                if previous_run and unchanged and not force
                 else None
             )
             if (
                 previous_extraction is None
                 and previous_run
                 and unchanged
+                and not force
                 and len(ocr_results) == 1
+                and category not in {EvidenceCategory.INSURANCE_POLICY, EvidenceCategory.VEHICLE_REGISTRATION}
             ):
                 previous_extraction = self.analysis_runs.document_extraction_for_category(
                     previous_run.id,
@@ -102,7 +107,7 @@ class DocumentAnalysisPipeline:
                     run,
                     representative,
                     previous_extraction,
-                    DOCUMENT_EXTRACTION_SCHEMA_VERSION,
+                    schema_version,
                 )
                 self.analysis_runs.mark_document_extraction_reuse(
                     representative,
@@ -129,6 +134,7 @@ class DocumentAnalysisPipeline:
         claim_information = {
             "claimant_name": claim.claimant_name,
             "vehicle_make": claim.vehicle_make,
+            "vehicle_model": claim.vehicle_model,
             "license_plate": claim.license_plate or "",
         }
         validated_fields: list[ValidatedDocumentField] = []
@@ -155,6 +161,7 @@ class DocumentAnalysisPipeline:
                 claimant_name=claim.claimant_name,
                 vehicle_make=claim.vehicle_make,
                 license_plate=claim.license_plate,
+                vehicle_model=claim.vehicle_model,
             ),
             validated_fields,
         )
@@ -163,7 +170,7 @@ class DocumentAnalysisPipeline:
         )
 
     def _process_document_ocr_category(
-        self, run: WorkflowAnalysisRun, category: EvidenceCategory, evidence_items: list[Evidence]
+        self, run: WorkflowAnalysisRun, category: EvidenceCategory, evidence_items: list[Evidence], *, force: bool = False
     ) -> list[DocumentOcrResult]:
         ocr_records = [
             (item, self.analysis_runs.create_document_ocr_result(run, item))
@@ -173,10 +180,10 @@ class DocumentAnalysisPipeline:
         statuses: list[AnalysisResultStatus] = []
 
         for evidence, record in ocr_records:
-            reusable = self.analysis_runs.latest_document_ocr_for_evidence(
+            reusable = None if force else self.analysis_runs.latest_document_ocr_for_evidence(
                 evidence.id, run.id
             )
-            if reusable is not None:
+            if reusable is not None and reusable.status is AnalysisResultStatus.COMPLETED:
                 self.analysis_runs.copy_document_ocr_result(record, reusable)
                 if reusable.warning:
                     warnings.append(f"{evidence.original_filename}: {reusable.warning}")

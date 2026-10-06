@@ -13,7 +13,9 @@ from app.services.document_extraction import (
     DocumentPromptResolver,
     DriverLicenseExtraction,
     IdentityCardExtraction,
+    InsurancePolicyExtraction,
     LangChainOpenAiDocumentExtractionAdapter,
+    VehicleRegistrationExtraction,
     get_document_extraction_adapter,
 )
 
@@ -157,6 +159,57 @@ def test_prompt_resolver_selects_registration_and_driver_license_sections():
     assert "Driver License" in driver_prompt
     assert "`license_number`" in driver_prompt
     assert "`expiry_date`" in driver_prompt
+
+
+def test_vehicle_model_schema_and_prompts_cover_policy_and_registration():
+    resolver = DocumentPromptResolver()
+    for category, schema, label in (
+        (EvidenceCategory.INSURANCE_POLICY, InsurancePolicyExtraction, "Model code"),
+        (EvidenceCategory.VEHICLE_REGISTRATION, VehicleRegistrationExtraction, "Số loại"),
+    ):
+        prompt = resolver.resolve(category)
+        assert "`vehicle_model`" in prompt
+        assert label in prompt
+        assert "brand alone" in prompt
+        assert "vehicle_model" in schema.model_fields
+
+
+def test_deterministic_vehicle_model_extraction_uses_ocr_label_and_keeps_vehicle_class_separate():
+    service = DocumentExtractionService(DeterministicDocumentExtractionAdapter())
+    policy = service.extract(
+        EvidenceCategory.INSURANCE_POLICY,
+        "Vehicle brand: Toyota\nLoại xe: Camry",
+    )
+    registration = service.extract(
+        EvidenceCategory.VEHICLE_REGISTRATION,
+        "Vehicle brand: Toyota\nSố loại: Vios\nVehicle type: Passenger car",
+    )
+    assert {field.field_key: field.value for field in policy.fields}["vehicle_model"] == "Camry"
+    registration_fields = {field.field_key: field.value for field in registration.fields}
+    assert registration_fields["vehicle_model"] == "Vios"
+    assert registration_fields["vehicle_type"] == "Passenger car"
+
+    broad_class = service.extract(
+        EvidenceCategory.VEHICLE_REGISTRATION,
+        "Vehicle brand: Toyota\nLoại xe: Ô tô con",
+    )
+    class_fields = {field.field_key: field.value for field in broad_class.fields}
+    assert class_fields["vehicle_type"] == "Ô tô con"
+    assert class_fields["vehicle_model"] is None
+
+    both_labels = service.extract(
+        EvidenceCategory.VEHICLE_REGISTRATION,
+        "Vehicle brand: Toyota\nLoại xe: Ô tô con\nSố loại: Camry",
+    )
+    both_fields = {field.field_key: field.value for field in both_labels.fields}
+    assert both_fields["vehicle_type"] == "Ô tô con"
+    assert both_fields["vehicle_model"] == "Camry"
+
+    combined = service.extract(
+        EvidenceCategory.INSURANCE_POLICY,
+        "Vehicle brand: Toyota\nModel code: Toyota Camry",
+    )
+    assert {field.field_key: field.value for field in combined.fields}["vehicle_model"] == "Camry"
 
 
 def test_driver_license_schema_normalizes_expiry_and_keeps_leading_zeroes():

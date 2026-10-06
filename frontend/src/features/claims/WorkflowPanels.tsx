@@ -122,12 +122,23 @@ export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
           ) : null}
           <Button
             isDisabled={!canStart || start.isPending}
-            isPending={start.isPending}
-            onPress={() => start.mutate()}
+            isPending={start.isPending && start.variables === false}
+            onPress={() => start.mutate(false)}
             variant="primary"
           >
             {run ? t("analysis.runAgain") : t("analysis.analyze")}
           </Button>
+          {run ? (
+            <Button
+              isDisabled={!canStart || start.isPending}
+              isPending={start.isPending && start.variables === true}
+              onPress={() => start.mutate(true)}
+              variant="secondary"
+            >
+              <Reset size={16} />
+              {t("analysis.runAllAgain")}
+            </Button>
+          ) : null}
         </div>
       </Card.Header>
       <Card.Content className="grid gap-6 p-6">
@@ -305,12 +316,12 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
       ) : null}
       {damageRows.length || annotatedEvidence.length ? (
         <div
-          className={`grid items-start gap-4 ${annotatedEvidence.length ? "xl:grid-cols-[18rem_minmax(0,1fr)]" : ""}`}
+          className={`grid items-start gap-4 ${annotatedEvidence.length ? "xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]" : ""}`}
         >
           {annotatedEvidence.length ? (
             <div
               aria-label={t("analysis.annotatedEvidence")}
-              className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1"
+              className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-1"
               role="group"
             >
               {annotatedEvidence.map((item) => (
@@ -319,7 +330,7 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
                   key={item.id}
                 >
                   <EvidenceImagePreview
-                    className="h-44 w-full object-contain"
+                    className="aspect-[4/3] w-full object-contain"
                     item={item}
                   />
                   <figcaption className="truncate border-t border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
@@ -329,7 +340,7 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
               ))}
             </div>
           ) : null}
-          <div className="grid gap-4">
+          <div className="grid min-w-0 gap-4">
             <DataTableToolbar
               clearLabel={t("common.clearFilters", {
                 defaultValue: "Clear filters",
@@ -364,7 +375,7 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
             <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table
                 aria-label={t("analysis.damageTable")}
-                className="w-full min-w-[36rem] border-collapse text-left text-sm"
+                className="w-full min-w-[30rem] border-collapse text-left text-sm"
               >
                 <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-600">
                   <tr>

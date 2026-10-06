@@ -68,7 +68,7 @@ export function ClaimDetailPage() {
   const reviewed = currentConclusion?.review_history[0];
   const evidenceLocked =
     analysisLocked || Boolean(reviewed && !reviewed.reverted_at);
-  const canDelete = session?.user.role === "ADMIN" && claim.status === "DRAFT";
+  const canDelete = session?.user.role === "ADMIN";
 
   async function confirmDelete() {
     setDeleteError("");
@@ -119,7 +119,7 @@ export function ClaimDetailPage() {
               variant="danger"
             >
               <TrashCan size={17} />
-              {t("claim.deleteDraft")}
+              {t("claim.deleteClaim")}
             </Button>
           ) : null}
           <Chip color={statusTone[claim.status]} variant="soft">
@@ -163,11 +163,11 @@ export function ClaimDetailPage() {
           <Modal.Container>
             <Modal.Dialog className="sm:max-w-md">
               <Modal.Header>
-                <Modal.Heading>{t("claim.deleteDraftTitle")}</Modal.Heading>
+                <Modal.Heading>{t("claim.deleteClaimTitle")}</Modal.Heading>
               </Modal.Header>
               <Modal.Body>
                 <p className="text-sm text-slate-600">
-                  {t("claim.deleteDraftDescription", { id: claim.id })}
+                  {t("claim.deleteClaimDescription", { id: claim.id })}
                 </p>
               </Modal.Body>
               <Modal.Footer>
@@ -184,7 +184,7 @@ export function ClaimDetailPage() {
                   onPress={confirmDelete}
                 >
                   <TrashCan size={17} />
-                  {t("claim.deleteDraft")}
+                  {t("claim.deleteClaim")}
                 </Button>
               </Modal.Footer>
             </Modal.Dialog>

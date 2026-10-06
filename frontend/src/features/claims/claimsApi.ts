@@ -95,9 +95,9 @@ export const runDamageAnalysis = (claimId: string, accessToken: string) =>
     accessToken,
     { method: "POST" },
   );
-export const startWorkflowAnalysis = (claimId: string, accessToken: string) =>
+export const startWorkflowAnalysis = (claimId: string, accessToken: string, force = false) =>
   request<WorkflowAnalysisRun>(
-    `/api/claims/${claimId}/analysis-runs`,
+    `/api/claims/${claimId}/analysis-runs${force ? "?force=true" : ""}`,
     accessToken,
     { method: "POST" },
   );

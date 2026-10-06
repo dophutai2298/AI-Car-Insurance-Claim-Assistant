@@ -384,7 +384,58 @@ test("claim detail blocks analysis until all required evidence is present", asyn
   expect(await screen.findByText("Vehicle damage images")).toBeVisible();
   expect(screen.getByText("ID cards")).toBeVisible();
   expect(screen.getByRole("button", { name: /^analyze$/i })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "Run all analysis again" })).not.toBeInTheDocument();
   expect(screen.getByText(/5 required evidence section/i)).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Delete claim" })).not.toBeInTheDocument();
+});
+
+test("admin confirms deletion of a reviewed claim", async () => {
+  const claim = {
+    id: "CLM-000052",
+    claimant_name: "Mai Nguyen",
+    vehicle: {
+      make: "Toyota",
+      model: "Camry",
+      year: 2022,
+      license_plate: null,
+      vin: null,
+    },
+    incident: null,
+    status: "AI_APPROVED",
+    created_at: "2026-09-08T00:00:00Z",
+    updated_at: "2026-09-08T00:00:00Z",
+    evidence: [],
+    latest_damage_analysis: null,
+    latest_analysis_run: null,
+    copilot_review_history: [],
+  };
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const path = String(input);
+    if (path.endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adminSession.user));
+    if (path.endsWith(`/api/claims/${claim.id}`) && init?.method === "DELETE")
+      return new Response(null, { status: 204 });
+    if (path.endsWith(`/api/claims/${claim.id}`))
+      return new Response(JSON.stringify(claim));
+    return new Response(JSON.stringify([]));
+  });
+  sessionStorage.setItem("claim-assistant-session", JSON.stringify(adminSession));
+  const user = userEvent.setup();
+  renderRoute(`/claims/${claim.id}`);
+
+  await user.click(await screen.findByRole("button", { name: "Delete claim" }));
+  expect(screen.getByText(/analysis, and review history/i)).toBeVisible();
+  expect(fetchMock).not.toHaveBeenCalledWith(
+    expect.stringContaining(`/api/claims/${claim.id}`),
+    expect.objectContaining({ method: "DELETE" }),
+  );
+  await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete claim" }));
+
+  expect(await screen.findByRole("heading", { name: "Claim cases" })).toBeVisible();
+  expect(fetchMock).toHaveBeenCalledWith(
+    expect.stringContaining(`/api/claims/${claim.id}`),
+    expect.objectContaining({ method: "DELETE" }),
+  );
 });
 
 test("adjuster uploads evidence through its dedicated category section", async () => {
@@ -951,6 +1002,7 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
   renderRoute("/claims/CLM-000081");
 
   expect(await screen.findByText("Document analysis")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Run all analysis again" })).toBeVisible();
   expect(screen.getByText("Partial results available")).toBeVisible();
   const front = screen.getByRole("article", { name: "id_card.jpg" });
   const back = screen.getByRole("article", { name: "id_card_back.jpg" });
@@ -977,7 +1029,10 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
   const damagePreview = await within(annotatedDamage).findByRole("img", {
     name: "vehicle_damage_image-annotated.jpg",
   });
-  expect(damagePreview).toHaveClass("h-44");
+  expect(damagePreview).toHaveClass("aspect-[4/3]");
+  expect(annotatedDamage.parentElement).toHaveClass(
+    "xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]",
+  );
   expect(damagePreview.closest("a")).toHaveAttribute(
     "href",
     "blob:evidence-preview",

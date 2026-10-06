@@ -72,10 +72,10 @@ const en = {
     case: "Claim case",
     claimNumber: "Claim {{id}}",
     createdFor: "Created for {{name}}",
-    deleteDraft: "Delete draft",
-    deleteDraftTitle: "Delete this draft claim?",
-    deleteDraftDescription:
-      "Delete claim {{id}} and its uploaded evidence? This cannot be undone.",
+    deleteClaim: "Delete claim",
+    deleteClaimTitle: "Delete this claim?",
+    deleteClaimDescription:
+      "Permanently delete claim {{id}}, its uploaded files, analysis, and review history? This cannot be undone.",
     deleteFailed: "Claim could not be deleted",
     safetyTitle: "Decision-support boundary",
     safetyDescription:
@@ -133,6 +133,7 @@ const en = {
       "Damage and document processing runs independently in the background.",
     analyze: "Analyze",
     runAgain: "Run analysis again",
+    runAllAgain: "Run all analysis again",
     startFailed: "Analysis could not start",
     notReady: "Analysis is not ready",
     incidentMissing: "Complete incident information first.",
@@ -264,6 +265,7 @@ const en = {
       coverage_end: "Coverage end",
       vehicle_owner: "Vehicle owner",
       vehicle_brand: "Vehicle brand",
+      vehicle_model: "Vehicle model",
       vehicle_type: "Vehicle type",
       owner_name: "Owner name",
       license_plate: "License plate",
@@ -438,6 +440,11 @@ const vi = {
     case: "Hồ sơ bồi thường",
     claimNumber: "Hồ sơ {{id}}",
     createdFor: "Được tạo cho {{name}}",
+    deleteClaim: "Xóa hồ sơ",
+    deleteClaimTitle: "Xóa hồ sơ này?",
+    deleteClaimDescription:
+      "Xóa vĩnh viễn hồ sơ {{id}}, tệp đã tải lên, dữ liệu phân tích và lịch sử đánh giá? Không thể hoàn tác.",
+    deleteFailed: "Không thể xóa hồ sơ",
 
     safetyTitle: "Giới hạn hỗ trợ ra quyết định",
     safetyDescription:
@@ -515,6 +522,7 @@ const vi = {
 
     analyze: "Phân tích",
     runAgain: "Phân tích lại",
+    runAllAgain: "Phân tích lại toàn bộ",
 
     startFailed: "Không thể bắt đầu phân tích",
     notReady: "Phân tích chưa sẵn sàng",
@@ -666,6 +674,7 @@ const vi = {
       coverage_end: "Ngày hết hạn bảo hiểm",
       vehicle_owner: "Chủ xe",
       vehicle_brand: "Hãng xe",
+      vehicle_model: "Dòng xe / mẫu xe",
       vehicle_type: "Loại xe",
 
       owner_name: "Tên chủ sở hữu",
