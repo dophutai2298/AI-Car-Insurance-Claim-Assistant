@@ -72,10 +72,10 @@ const en = {
     case: "Claim case",
     claimNumber: "Claim {{id}}",
     createdFor: "Created for {{name}}",
-    deleteDraft: "Delete draft",
-    deleteDraftTitle: "Delete this draft claim?",
-    deleteDraftDescription:
-      "Delete claim {{id}} and its uploaded evidence? This cannot be undone.",
+    deleteClaim: "Delete claim",
+    deleteClaimTitle: "Delete this claim?",
+    deleteClaimDescription:
+      "Permanently delete claim {{id}}, its uploaded files, analysis, and review history? This cannot be undone.",
     deleteFailed: "Claim could not be deleted",
     safetyTitle: "Decision-support boundary",
     safetyDescription:
@@ -440,6 +440,11 @@ const vi = {
     case: "Hồ sơ bồi thường",
     claimNumber: "Hồ sơ {{id}}",
     createdFor: "Được tạo cho {{name}}",
+    deleteClaim: "Xóa hồ sơ",
+    deleteClaimTitle: "Xóa hồ sơ này?",
+    deleteClaimDescription:
+      "Xóa vĩnh viễn hồ sơ {{id}}, tệp đã tải lên, dữ liệu phân tích và lịch sử đánh giá? Không thể hoàn tác.",
+    deleteFailed: "Không thể xóa hồ sơ",
 
     safetyTitle: "Giới hạn hỗ trợ ra quyết định",
     safetyDescription:

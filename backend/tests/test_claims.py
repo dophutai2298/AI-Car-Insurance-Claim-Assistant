@@ -171,7 +171,7 @@ def test_admin_can_delete_a_draft_claim_and_its_owned_uploads(
     assert not (tmp_path / "uploads" / claim["id"]).exists()
 
 
-def test_only_admin_can_delete_draft_claims_and_non_drafts_are_rejected(
+def test_only_admin_can_delete_a_claim_after_it_leaves_draft(
     client: TestClient,
 ):
     claim = create_claim(client)
@@ -185,9 +185,68 @@ def test_only_admin_can_delete_draft_claims_and_non_drafts_are_rejected(
         json={"status": "ANALYZING"},
     )
     assert transitioned.status_code == 200
-    assert client.delete(
+    deleted = client.delete(
         f"/api/claims/{claim['id']}", headers=admin_headers(client)
-    ).status_code == 409
+    )
+    assert deleted.status_code == 204
+    assert client.get(
+        f"/api/claims/{claim['id']}", headers=admin_headers(client)
+    ).status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("review_status", "claim_status"),
+    [
+        (None, "REVIEW_REQUIRED"),
+        ("APPROVED", "AI_APPROVED"),
+        ("REJECTED", "AI_REJECTED"),
+    ],
+)
+def test_admin_can_delete_reviewed_claim_with_analysis_history_and_files(
+    client: TestClient, tmp_path, review_status: str | None, claim_status: str
+):
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
+    claim_url = f"/api/claims/{claim['id']}"
+    started = client.post(f"{claim_url}/analysis-runs", headers=admin_headers(client))
+    assert started.status_code == 202
+    run = client.get(claim_url, headers=admin_headers(client)).json()["latest_analysis_run"]
+    assert save_ready_analysis_snapshot(client, claim, run).status_code == 200
+
+    for revision in range(2):
+        reviewed = client.post(
+            f"{claim_url}/analysis-runs/{run['id']}/ai-review",
+            headers=admin_headers(client),
+        )
+        assert reviewed.status_code == 200
+        if revision == 0:
+            first_conclusion = reviewed.json()["latest_damage_analysis"]["copilot_conclusion"]
+            first_human_review = client.post(
+                f"{claim_url}/copilot-conclusions/{first_conclusion['id']}/review",
+                headers=admin_headers(client),
+                json={"status": "APPROVED", "comment": "Initial review completed."},
+            )
+            assert first_human_review.status_code == 200
+
+    conclusion = reviewed.json()["latest_damage_analysis"]["copilot_conclusion"]
+    if review_status is not None:
+        decision = {"status": review_status, "comment": "Reviewed against the evidence."}
+        if review_status == "REJECTED":
+            decision["reason_category"] = "DAMAGE_ASSESSMENT_ISSUE"
+        human_review = client.post(
+            f"{claim_url}/copilot-conclusions/{conclusion['id']}/review",
+            headers=admin_headers(client),
+            json=decision,
+        )
+        assert human_review.status_code == 200
+        assert human_review.json()["status"] == claim_status
+    else:
+        assert reviewed.json()["status"] == claim_status
+    assert (tmp_path / "uploads" / claim["id"]).exists()
+
+    assert client.delete(claim_url, headers=adjuster_headers(client)).status_code == 403
+    assert client.delete(claim_url, headers=admin_headers(client)).status_code == 204
+    assert client.get(claim_url, headers=admin_headers(client)).status_code == 404
+    assert not (tmp_path / "uploads" / claim["id"]).exists()
 
 
 def test_draft_claim_deletion_restores_staged_files_when_database_cleanup_fails(

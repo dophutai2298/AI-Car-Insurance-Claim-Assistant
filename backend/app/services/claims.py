@@ -219,12 +219,10 @@ class ClaimService:
         claim = self.claims.find_by_claim_number(claim_number)
         return self._to_response(claim) if claim else None
 
-    def delete_draft_claim(self, claim_number: str) -> bool:
+    def delete_claim(self, claim_number: str) -> bool:
         claim = self.claims.find_by_claim_number(claim_number)
         if claim is None:
             return False
-        if claim.status is not ClaimStatus.DRAFT:
-            raise ClaimValidationError("Only draft claims can be deleted")
 
         staged_files = self.storage.stage_claim_for_deletion(claim_number)
         try:

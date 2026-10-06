@@ -85,15 +85,13 @@ def get_claim(
 
 
 @router.delete("/{claim_number}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_draft_claim(
+def delete_claim(
     claim_number: str,
     _current_user: AdminUser,
     service: ClaimServiceDependency,
 ) -> Response:
     try:
-        deleted = service.delete_draft_claim(claim_number)
-    except ClaimValidationError as error:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        deleted = service.delete_claim(claim_number)
     except EvidenceStorageError as error:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
