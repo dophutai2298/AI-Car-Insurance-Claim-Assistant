@@ -669,9 +669,9 @@ test("analysis reports terminal feedback for the run accepted by the API", async
   });
 
   expect(await screen.findAllByText("Analysis failed")).toHaveLength(2);
-  expect(
-    screen.getAllByText("Damage detector did not respond."),
-  ).toHaveLength(2);
+  expect(screen.getAllByText("Damage detector did not respond.")).toHaveLength(
+    2,
+  );
 });
 
 test("admin confirms deletion of a reviewed claim", async () => {
@@ -728,6 +728,7 @@ test("admin confirms deletion of a reviewed claim", async () => {
   expect(
     await screen.findByRole("heading", { name: "Claim cases" }),
   ).toBeVisible();
+  expect(await screen.findByText("Claim deleted")).toBeVisible();
   expect(fetchMock).toHaveBeenCalledWith(
     expect.stringContaining(`/api/claims/${claim.id}`),
     expect.objectContaining({ method: "DELETE" }),

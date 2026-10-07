@@ -41,6 +41,8 @@ const en = {
     humanReviewFailed: "Human review was not saved",
     humanReviewReverted: "Human review reverted",
     humanReviewRevertFailed: "Human review was not reverted",
+    claimDeleted: "Claim deleted",
+    claimDeleteFailed: "Claim was not deleted",
   },
   navigation: {
     dashboard: "Dashboard",
@@ -430,6 +432,8 @@ const vi = {
       "\u0110\u00e3 ho\u00e0n t\u00e1c \u0111\u00e1nh gi\u00e1 th\u1ee7 c\u00f4ng",
     humanReviewRevertFailed:
       "Ch\u01b0a th\u1ec3 ho\u00e0n t\u00e1c \u0111\u00e1nh gi\u00e1 th\u1ee7 c\u00f4ng",
+    claimDeleted: "\u0110\u00e3 x\u00f3a h\u1ed3 s\u01a1",
+    claimDeleteFailed: "Ch\u01b0a th\u1ec3 x\u00f3a h\u1ed3 s\u01a1",
   },
   common: {
     backToTop: "L\u00ean \u0111\u1ea7u trang",

@@ -1,5 +1,5 @@
 import { ArrowLeft, Document, TrashCan } from "@carbon/icons-react";
-import { Alert, Button, Chip, Modal, Skeleton } from "@heroui/react";
+import { Alert, Button, Chip, Modal, Skeleton, toast } from "@heroui/react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router";
@@ -22,6 +22,7 @@ import {
 import { statusTone } from "./statusPresentation";
 import { ClaimsApiError } from "./claimsApi";
 import { useClaim, useDeleteClaim } from "./useClaims";
+import { showWorkflowActionError } from "./workflowToasts";
 
 export function ClaimDetailPage() {
   const { claimId } = useParams();
@@ -77,7 +78,8 @@ export function ClaimDetailPage() {
   const canDelete = session?.user.role === "ADMIN";
   const currentClaimId = claim.id;
   const mode = view?.claimId === claim.id ? view.mode : "page";
-  const selectedStep = view?.claimId === claim.id ? view.step : workflow.current;
+  const selectedStep =
+    view?.claimId === claim.id ? view.step : workflow.current;
   const panels: { id: ClaimStepId; content: ReactNode }[] = [
     { id: "information", content: <ClaimInformationPanel claim={claim} /> },
     {
@@ -107,12 +109,18 @@ export function ClaimDetailPage() {
     setDeleteError("");
     try {
       await remove.mutateAsync();
+      toast.success(t("toast.claimDeleted"));
       navigate("/claims", { replace: true });
     } catch (caught) {
-      setDeleteError(
+      const message =
         caught instanceof ClaimsApiError
           ? caught.message
-          : t("claim.deleteFailed"),
+          : t("claim.deleteFailed");
+      setDeleteError(message);
+      showWorkflowActionError(
+        t("toast.claimDeleteFailed"),
+        caught,
+        t("claim.deleteFailed"),
       );
     }
   }
