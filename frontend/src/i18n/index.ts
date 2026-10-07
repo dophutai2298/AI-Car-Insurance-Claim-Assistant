@@ -94,6 +94,7 @@ const en = {
     incidentInformation: "Incident information",
     incidentDescription: "Record when and where the incident happened.",
     incidentAt: "Incident date and time",
+    incidentAtMustBePast: "Incident date and time must be earlier than now.",
     incidentLocation: "Incident location",
     incidentDetails: "Incident description",
     unavailable: "Claim unavailable",
@@ -506,6 +507,7 @@ const vi = {
     incidentInformation: "Thông tin sự cố",
     incidentDescription: "Ghi nhận thời gian và địa điểm xảy ra sự cố.",
     incidentAt: "Ngày và giờ xảy ra sự cố",
+    incidentAtMustBePast: "Ngày và giờ xảy ra sự cố phải sớm hơn hiện tại.",
     incidentLocation: "Địa điểm xảy ra sự cố",
     incidentDetails: "Mô tả sự cố",
 
