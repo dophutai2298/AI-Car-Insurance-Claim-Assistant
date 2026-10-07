@@ -170,7 +170,7 @@ export function EvidencePanel({
           ))}
           {!locked ? (
             <div className="grid gap-3 border border-dashed border-slate-300 bg-slate-50 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
-              <TextField isRequired>
+              <TextField>
                 <Label>{t("evidence.documentName")}</Label>
                 <Input
                   value={otherLabel}

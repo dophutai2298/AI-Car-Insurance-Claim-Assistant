@@ -229,6 +229,7 @@ test("adjuster can create a claim and open its detail", async () => {
   );
   await user.click(screen.getByRole("button", { name: /create claim/i }));
 
+  expect(await screen.findByText("Claim created")).toBeVisible();
   expect(
     await screen.findByRole("heading", { name: /claim clm-000042/i }),
   ).toBeVisible();
@@ -236,6 +237,69 @@ test("adjuster can create a claim and open its detail", async () => {
   expect(
     screen.getByRole("navigation", { name: /primary navigation/i }),
   ).toBeVisible();
+});
+
+test("claim creation maps incident validation errors to the field and toast", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    if (String(input).endsWith("/api/auth/me")) {
+      return new Response(JSON.stringify(adjusterSession.user), {
+        status: 200,
+      });
+    }
+    if (String(input).endsWith("/api/vehicle-makes")) {
+      return new Response(
+        JSON.stringify([{ id: 1, name: "Toyota", is_active: true }]),
+        { status: 200 },
+      );
+    }
+    if (String(input).endsWith("/api/claims") && init?.method === "POST") {
+      return new Response(
+        JSON.stringify({
+          detail: [
+            {
+              loc: ["body", "incident", "occurred_at"],
+              msg: "Input should be in the past",
+              type: "datetime_past",
+            },
+          ],
+        }),
+        { status: 422 },
+      );
+    }
+    return new Response(JSON.stringify([]), { status: 200 });
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  const user = userEvent.setup();
+  renderRoute("/claims/new");
+
+  await user.type(await screen.findByLabelText(/claimant name/i), "Mai Nguyen");
+  await user.click(await screen.findByLabelText(/vehicle make/i));
+  await user.click(await screen.findByRole("option", { name: "Toyota" }));
+  await user.type(screen.getByLabelText(/model/i), "Camry");
+  await user.type(screen.getByLabelText(/year/i), "2022");
+  await user.type(
+    screen.getByLabelText(/incident date and time/i),
+    "2026-09-09T08:30",
+  );
+  await user.type(screen.getByLabelText(/incident location/i), "District 1");
+  await user.type(
+    screen.getByLabelText(/incident description/i),
+    "Rear impact.",
+  );
+  await user.click(screen.getByRole("button", { name: /create claim/i }));
+
+  expect(
+    await screen.findByText("Incident date and time must be earlier than now."),
+  ).toBeVisible();
+  expect(await screen.findByText("Claim was not created")).toBeVisible();
+  expect(
+    await screen.findAllByText(
+      "body.incident.occurred_at: Input should be in the past",
+    ),
+  ).toHaveLength(2);
 });
 
 test("claim information uses a vehicle-make autocomplete and persists the selected language", async () => {
