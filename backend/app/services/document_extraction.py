@@ -293,8 +293,6 @@ class LangChainOpenAiDocumentExtractionAdapter:
         max_retries: int = 0,
         token_usage_logging_enabled: bool = False,
     ) -> None:
-        from langchain_openai import ChatOpenAI
-
         options: dict[str, object] = {
             "model": model,
             "api_key": api_key,
@@ -304,7 +302,8 @@ class LangChainOpenAiDocumentExtractionAdapter:
         }
         if base_url:
             options["base_url"] = base_url
-        self.model = ChatOpenAI(**options)
+        self.model_options = options
+        self.model = None
         self.model_name = model
         self.token_usage_logging_enabled = token_usage_logging_enabled
 
@@ -316,6 +315,10 @@ class LangChainOpenAiDocumentExtractionAdapter:
         started_at = perf_counter()
         try:
             from langchain.messages import HumanMessage, SystemMessage
+            from langchain_openai import ChatOpenAI
+
+            if self.model is None:
+                self.model = ChatOpenAI(**self.model_options)
 
             structured_model = self.model.with_structured_output(
                 definition.output_schema, method="json_mode", include_raw=True

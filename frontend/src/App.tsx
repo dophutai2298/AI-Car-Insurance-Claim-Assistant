@@ -17,6 +17,7 @@ import {
   Chip,
   EmptyState,
   Skeleton,
+  Toast,
   Tooltip,
 } from "@heroui/react";
 import {
@@ -538,30 +539,37 @@ function AccessRestricted() {
 
 export function AppRoutes() {
   return (
-    <Routes>
-      <Route element={<LoginPage />} path="/login" />
-      <Route
-        element={
-          <ProtectedRoute>
-            <AppShell />
-          </ProtectedRoute>
-        }
-      >
-        <Route element={<DashboardPage />} path="/dashboard" />
-        <Route element={<ClaimsPage />} path="/claims" />
-        <Route element={<ClaimCreatePage />} path="/claims/new" />
-        <Route element={<ClaimDetailPage />} path="/claims/:claimId" />
+    <>
+      <Toast.Provider
+        className="z-50"
+        maxVisibleToasts={3}
+        placement="top end"
+      />
+      <Routes>
+        <Route element={<LoginPage />} path="/login" />
         <Route
           element={
-            <RoleRoute fallback={<AccessRestricted />} role="ADMIN">
-              <AdminConfigPage />
-            </RoleRoute>
+            <ProtectedRoute>
+              <AppShell />
+            </ProtectedRoute>
           }
-          path="/admin"
-        />
-      </Route>
-      <Route element={<Navigate replace to="/dashboard" />} path="*" />
-    </Routes>
+        >
+          <Route element={<DashboardPage />} path="/dashboard" />
+          <Route element={<ClaimsPage />} path="/claims" />
+          <Route element={<ClaimCreatePage />} path="/claims/new" />
+          <Route element={<ClaimDetailPage />} path="/claims/:claimId" />
+          <Route
+            element={
+              <RoleRoute fallback={<AccessRestricted />} role="ADMIN">
+                <AdminConfigPage />
+              </RoleRoute>
+            }
+            path="/admin"
+          />
+        </Route>
+        <Route element={<Navigate replace to="/dashboard" />} path="*" />
+      </Routes>
+    </>
   );
 }
 

@@ -13,10 +13,16 @@ import type {
 
 export class ClaimsApiError extends Error {
   blockedReasons: AnalysisBlockedReason[];
+  validationPaths: string[];
 
-  constructor(message: string, blockedReasons: AnalysisBlockedReason[] = []) {
+  constructor(
+    message: string,
+    blockedReasons: AnalysisBlockedReason[] = [],
+    validationPaths: string[] = [],
+  ) {
     super(message);
     this.blockedReasons = blockedReasons;
+    this.validationPaths = validationPaths;
   }
 }
 
@@ -39,15 +45,41 @@ async function request<T>(
       typeof body === "object" && body !== null && "detail" in body
         ? body.detail
         : null;
+    const validationPaths = Array.isArray(detail)
+      ? detail.flatMap((item) => {
+          if (
+            typeof item !== "object" ||
+            item === null ||
+            !("loc" in item) ||
+            !Array.isArray(item.loc)
+          )
+            return [];
+          return [
+            item.loc
+              .filter(
+                (path: unknown): path is string => typeof path === "string",
+              )
+              .join("."),
+          ];
+        })
+      : [];
+    const validationMessage = Array.isArray(detail)
+      ? detail.find(
+          (item): item is { loc?: unknown; msg?: unknown } =>
+            typeof item === "object" && item !== null,
+        )
+      : null;
     const message =
       typeof detail === "string"
         ? detail
-        : typeof detail === "object" &&
-            detail !== null &&
-            "message" in detail &&
-            typeof detail.message === "string"
-          ? detail.message
-          : "Unable to load claims";
+        : validationMessage && typeof validationMessage.msg === "string"
+          ? `${validationPaths[0] ? `${validationPaths[0]}: ` : ""}${validationMessage.msg}`
+          : typeof detail === "object" &&
+              detail !== null &&
+              "message" in detail &&
+              typeof detail.message === "string"
+            ? detail.message
+            : "Unable to load claims";
     const blockedReasons =
       typeof detail === "object" &&
       detail !== null &&
@@ -55,7 +87,7 @@ async function request<T>(
       Array.isArray(detail.blocked_reasons)
         ? (detail.blocked_reasons as AnalysisBlockedReason[])
         : [];
-    throw new ClaimsApiError(message, blockedReasons);
+    throw new ClaimsApiError(message, blockedReasons, validationPaths);
   }
   return body as T;
 }

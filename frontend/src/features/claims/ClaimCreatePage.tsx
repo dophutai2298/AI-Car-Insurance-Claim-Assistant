@@ -11,6 +11,7 @@ import {
   ListBox,
   SearchField,
   TextField,
+  toast,
   useFilter,
 } from "@heroui/react";
 import { useTranslation } from "react-i18next";
@@ -19,6 +20,7 @@ import { Link, useNavigate } from "react-router";
 import { ClaimsApiError } from "./claimsApi";
 import { useCreateClaim } from "./useClaims";
 import { ClaimWorkflowStepper } from "./ClaimWorkflowStepper";
+import { showWorkflowActionError } from "./workflowToasts";
 import { useVehicleMakes } from "../vehicleMakes/useVehicleMakes";
 
 export function ClaimCreatePage() {
@@ -28,6 +30,7 @@ export function ClaimCreatePage() {
   const createClaim = useCreateClaim();
   const vehicleMakes = useVehicleMakes();
   const [error, setError] = useState("");
+  const [incidentAtError, setIncidentAtError] = useState("");
   const [claimantName, setClaimantName] = useState("");
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
@@ -45,6 +48,12 @@ export function ClaimCreatePage() {
       setError(t("claim.selectMakeRequired"));
       return;
     }
+    const occurredAt = new Date(incidentAt);
+    if (Number.isNaN(occurredAt.getTime()) || occurredAt >= new Date()) {
+      setIncidentAtError(t("claim.incidentAtMustBePast"));
+      return;
+    }
+    setIncidentAtError("");
     try {
       const claim = await createClaim.mutateAsync({
         claimant_name: claimantName,
@@ -61,12 +70,24 @@ export function ClaimCreatePage() {
           description: incidentDescription,
         },
       });
+      toast.success(t("toast.claimCreated"));
       navigate(`/claims/${claim.id}`);
     } catch (caughtError) {
-      setError(
+      const message =
         caughtError instanceof ClaimsApiError
           ? caughtError.message
-          : t("claim.unableToCreate"),
+          : t("claim.unableToCreate");
+      if (
+        caughtError instanceof ClaimsApiError &&
+        caughtError.validationPaths.includes("body.incident.occurred_at")
+      ) {
+        setIncidentAtError(t("claim.incidentAtMustBePast"));
+      }
+      setError(message);
+      showWorkflowActionError(
+        t("toast.claimCreateFailed"),
+        caughtError,
+        message,
       );
     }
   }
@@ -231,18 +252,33 @@ export function ClaimCreatePage() {
               </p>
             </div>
             <div className="grid gap-5 sm:grid-cols-2">
-              <TextField
-                fullWidth
-                isRequired
-                name="incident_at"
-                type="datetime-local"
-              >
-                <Label>{t("claim.incidentAt")}</Label>
-                <Input
-                  onChange={(event) => setIncidentAt(event.target.value)}
-                  value={incidentAt}
-                />
-              </TextField>
+              <div>
+                <TextField
+                  fullWidth
+                  isRequired
+                  name="incident_at"
+                  type="datetime-local"
+                >
+                  <Label>{t("claim.incidentAt")}</Label>
+                  <Input
+                    max={localDateTimeValue(new Date())}
+                    onChange={(event) => {
+                      setIncidentAtError("");
+                      setIncidentAt(event.target.value);
+                    }}
+                    onInvalid={(event) => {
+                      if (event.currentTarget.validity.rangeOverflow)
+                        setIncidentAtError(t("claim.incidentAtMustBePast"));
+                    }}
+                    value={incidentAt}
+                  />
+                </TextField>
+                {incidentAtError ? (
+                  <p className="mt-1 text-xs text-red-700" role="alert">
+                    {incidentAtError}
+                  </p>
+                ) : null}
+              </div>
               <TextField fullWidth isRequired name="incident_location">
                 <Label>{t("claim.incidentLocation")}</Label>
                 <Input
@@ -276,4 +312,10 @@ export function ClaimCreatePage() {
       </Card>
     </div>
   );
+}
+
+function localDateTimeValue(date: Date) {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16);
 }

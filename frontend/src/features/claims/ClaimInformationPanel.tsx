@@ -10,6 +10,7 @@ import {
   ListBox,
   SearchField,
   TextField,
+  toast,
   useFilter,
 } from "@heroui/react";
 import { useEffect, useState, type FormEvent } from "react";
@@ -19,6 +20,7 @@ import { useVehicleMakes } from "../vehicleMakes/useVehicleMakes";
 import { ClaimsApiError } from "./claimsApi";
 import type { ClaimDetail } from "./types";
 import { useUpdateClaimInformation } from "./useClaims";
+import { showWorkflowActionError } from "./workflowToasts";
 
 export function ClaimInformationPanel({ claim }: { claim: ClaimDetail }) {
   const { t } = useTranslation();
@@ -27,8 +29,14 @@ export function ClaimInformationPanel({ claim }: { claim: ClaimDetail }) {
   const update = useUpdateClaimInformation(claim.id);
   const [editing, setEditing] = useState(false);
   const [values, setValues] = useState(() => formValues(claim));
+  const [incidentAtError, setIncidentAtError] = useState("");
 
-  useEffect(() => setValues(formValues(claim)), [claim]);
+  useEffect(() => {
+    if (!editing) {
+      setValues(formValues(claim));
+      setIncidentAtError("");
+    }
+  }, [claim, editing]);
   const locked =
     claim.status === "ANALYZING" ||
     claim.status === "AI_APPROVED" ||
@@ -36,22 +44,37 @@ export function ClaimInformationPanel({ claim }: { claim: ClaimDetail }) {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await update.mutateAsync({
-      claimant_name: values.claimantName,
-      vehicle: {
-        make: values.make,
-        model: values.model,
-        year: Number(values.year),
-        license_plate: values.licensePlate || null,
-        vin: values.vin || null,
-      },
-      incident: {
-        occurred_at: new Date(values.incidentAt).toISOString(),
-        location: values.location,
-        description: values.description,
-      },
-    });
-    setEditing(false);
+    const occurredAt = new Date(values.incidentAt);
+    if (Number.isNaN(occurredAt.getTime()) || occurredAt >= new Date()) {
+      setIncidentAtError(t("claim.incidentAtMustBePast"));
+      return;
+    }
+    setIncidentAtError("");
+    try {
+      await update.mutateAsync({
+        claimant_name: values.claimantName,
+        vehicle: {
+          make: values.make,
+          model: values.model,
+          year: Number(values.year),
+          license_plate: values.licensePlate || null,
+          vin: values.vin || null,
+        },
+        incident: {
+          occurred_at: new Date(values.incidentAt).toISOString(),
+          location: values.location,
+          description: values.description,
+        },
+      });
+      setEditing(false);
+      toast.success(t("toast.claimInformationSaved"));
+    } catch (error) {
+      showWorkflowActionError(
+        t("toast.claimInformationSaveFailed"),
+        error,
+        t("common.tryAgain"),
+      );
+    }
   }
 
   return (
@@ -187,15 +210,24 @@ export function ClaimInformationPanel({ claim }: { claim: ClaimDetail }) {
                   }
                 />
               </TextField>
-              <TextField isRequired type="datetime-local">
-                <Label>{t("claim.incidentAt")}</Label>
-                <Input
-                  value={values.incidentAt}
-                  onChange={(event) =>
-                    setValues({ ...values, incidentAt: event.target.value })
-                  }
-                />
-              </TextField>
+              <div>
+                <TextField isRequired type="datetime-local">
+                  <Label>{t("claim.incidentAt")}</Label>
+                  <Input
+                    max={localDateTimeValue(new Date())}
+                    value={values.incidentAt}
+                    onChange={(event) => {
+                      setIncidentAtError("");
+                      setValues({ ...values, incidentAt: event.target.value });
+                    }}
+                  />
+                </TextField>
+                {incidentAtError ? (
+                  <p className="mt-1 text-xs text-red-700" role="alert">
+                    {incidentAtError}
+                  </p>
+                ) : null}
+              </div>
               <TextField isRequired>
                 <Label>{t("claim.incidentLocation")}</Label>
                 <Input
@@ -304,12 +336,14 @@ function formValues(claim: ClaimDetail) {
     year: String(claim.vehicle.year),
     licensePlate: claim.vehicle.license_plate ?? "",
     vin: claim.vehicle.vin ?? "",
-    incidentAt: incidentAt
-      ? new Date(incidentAt.getTime() - incidentAt.getTimezoneOffset() * 60000)
-          .toISOString()
-          .slice(0, 16)
-      : "",
+    incidentAt: incidentAt ? localDateTimeValue(incidentAt) : "",
     location: claim.incident?.location ?? "",
     description: claim.incident?.description ?? "",
   };
+}
+
+function localDateTimeValue(date: Date) {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16);
 }

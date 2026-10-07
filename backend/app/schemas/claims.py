@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PastDatetime, model_validator
 
 from app.models import (
     AnalysisResultStatus,
@@ -33,7 +33,7 @@ class VehicleMetadata(BaseModel):
 class ClaimCreateRequest(BaseModel):
     claimant_name: str = Field(min_length=1, max_length=120)
     vehicle: VehicleMetadata
-    incident: "IncidentInformation | None" = None
+    incident: "IncidentInformationInput | None" = None
 
 
 class IncidentInformation(BaseModel):
@@ -42,10 +42,14 @@ class IncidentInformation(BaseModel):
     description: str = Field(min_length=1, max_length=4000)
 
 
+class IncidentInformationInput(IncidentInformation):
+    occurred_at: PastDatetime
+
+
 class ClaimInformationUpdateRequest(BaseModel):
     claimant_name: str = Field(min_length=1, max_length=120)
     vehicle: VehicleMetadata
-    incident: IncidentInformation
+    incident: IncidentInformationInput
 
 
 class ClaimResponse(BaseModel):

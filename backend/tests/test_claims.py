@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 import json
 
 import pytest
@@ -330,6 +330,27 @@ def test_admin_can_persist_and_edit_claim_incident_information(client: TestClien
         f"/api/claims/{claim['id']}", headers=admin_headers(client)
     ).json()
     assert persisted["incident"] == response.json()["incident"]
+
+
+def test_claim_incident_datetime_must_be_in_the_past(client: TestClient):
+    claim = create_claim(client)
+
+    response = client.patch(
+        f"/api/claims/{claim['id']}/information",
+        headers=admin_headers(client),
+        json={
+            "claimant_name": claim["claimant_name"],
+            "vehicle": claim["vehicle"],
+            "incident": {
+                "occurred_at": (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat(),
+                "location": "District 1, Ho Chi Minh City",
+                "description": "Rear impact while the vehicle was stopped at a traffic light.",
+            },
+        },
+    )
+
+    assert response.status_code == 422
+    assert any(error["loc"][-1] == "occurred_at" for error in response.json()["detail"])
 
 
 def test_vehicle_manufacturer_catalog_is_seeded_and_admin_can_manage_active_status(client: TestClient):

@@ -5,7 +5,7 @@ import {
   Save,
   WarningAlt,
 } from "@carbon/icons-react";
-import { Alert, Button, Chip, Input, Label } from "@heroui/react";
+import { Alert, Button, Chip, Input, Label, toast } from "@heroui/react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -15,6 +15,7 @@ import {
   useUpdateDocumentExtractedFields,
   useUpdateDocumentFieldValidation,
 } from "./useClaims";
+import { showWorkflowActionError } from "./workflowToasts";
 import type {
   ClaimConsistencyCheck,
   AnalysisBlockedReason,
@@ -89,9 +90,7 @@ export function DocumentAnalysisResults({
     [claim, draftValues, extractedFieldIds, run],
   );
   const serverBlockedReasons =
-    saveAll.error instanceof ClaimsApiError
-      ? saveAll.error.blockedReasons
-      : [];
+    saveAll.error instanceof ClaimsApiError ? saveAll.error.blockedReasons : [];
   const blockedReasons = serverBlockedReasons.length
     ? serverBlockedReasons
     : draftBlockedReasons;
@@ -100,6 +99,24 @@ export function DocumentAnalysisResults({
       .filter((reason) => reason.field_id !== null)
       .map((reason) => [reason.field_id, reason]),
   );
+
+  async function saveAllFields() {
+    try {
+      await saveAll.mutateAsync(
+        extractedFields.map((field) => ({
+          id: field.id,
+          confirmed_value: draftValues[field.id]?.trim() || null,
+        })),
+      );
+      toast.success(t("toast.documentFieldsSaved"));
+    } catch (error) {
+      showWorkflowActionError(
+        t("toast.documentFieldsSaveFailed"),
+        error,
+        t("documents.saveAllFailed"),
+      );
+    }
+  }
 
   return (
     <section className="grid gap-5 border-t border-slate-200 pt-5">
@@ -202,14 +219,7 @@ export function DocumentAnalysisResults({
                 ["PENDING", "PROCESSING"].includes(run.status)
               }
               isPending={saveAll.isPending}
-              onPress={() =>
-                saveAll.mutate(
-                  extractedFields.map((field) => ({
-                    id: field.id,
-                    confirmed_value: draftValues[field.id]?.trim() || null,
-                  })),
-                )
-              }
+              onPress={() => void saveAllFields()}
               variant="primary"
             >
               <Save size={16} />
@@ -581,11 +591,13 @@ function getDraftBlockedReasons(
       ),
     );
     for (const field of categoryFields) {
-      const value = (draftValues[field.id] ?? field.confirmed_value ?? "").trim();
+      const value = (
+        draftValues[field.id] ??
+        field.confirmed_value ??
+        ""
+      ).trim();
       if (!value) {
-        reasons.push(
-          blockedReason("REQUIRED_VALUE_MISSING", category, field),
-        );
+        reasons.push(blockedReason("REQUIRED_VALUE_MISSING", category, field));
         continue;
       }
       const expiryDateBlockCode = expiryDateValidationBlockCode(
@@ -602,9 +614,7 @@ function getDraftBlockedReasons(
         claimValue !== null &&
         normalizeComparisonValue(claimValue) !== normalizeComparisonValue(value)
       ) {
-        reasons.push(
-          blockedReason("COMPARISON_MISMATCH", category, field),
-        );
+        reasons.push(blockedReason("COMPARISON_MISMATCH", category, field));
       }
     }
   }
@@ -660,7 +670,8 @@ function claimValueForField(claim: ClaimDetail, fieldKey: string) {
     ].includes(fieldKey)
   )
     return claim.claimant_name;
-  if (["vehicle_make", "vehicle_brand"].includes(fieldKey)) return claim.vehicle.make;
+  if (["vehicle_make", "vehicle_brand"].includes(fieldKey))
+    return claim.vehicle.make;
   if (fieldKey === "vehicle_model") return claim.vehicle.model;
   if (fieldKey === "license_plate") return claim.vehicle.license_plate;
   return null;
@@ -713,6 +724,23 @@ function ValidatedField({
     defaultValue: field.field_key,
   });
   const changed = value.trim() !== (field.normalized_value ?? "");
+
+  async function saveField() {
+    try {
+      await update.mutateAsync({
+        fieldValidationId: field.id,
+        reviewedValue: value,
+      });
+      toast.success(t("toast.documentFieldSaved", { field: label }));
+    } catch (error) {
+      showWorkflowActionError(
+        t("toast.documentFieldSaveFailed", { field: label }),
+        error,
+        t("documents.saveFailed"),
+      );
+    }
+  }
+
   return (
     <div className="grid gap-3 border-t border-slate-100 pt-3 first:border-t-0 first:pt-0">
       <div className="flex items-center justify-between gap-3">
@@ -738,12 +766,7 @@ function ValidatedField({
               isDisabled={!editable || !changed || !value.trim()}
               isIconOnly
               isPending={update.isPending}
-              onPress={() =>
-                update.mutate({
-                  fieldValidationId: field.id,
-                  reviewedValue: value,
-                })
-              }
+              onPress={() => void saveField()}
               size="sm"
               variant="outline"
             >

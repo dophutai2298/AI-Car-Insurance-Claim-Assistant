@@ -19,6 +19,7 @@ import {
   Label,
   Spinner,
   TextField,
+  toast,
 } from "@heroui/react";
 import {
   getCoreRowModel,
@@ -49,6 +50,10 @@ import {
   useWorkflowAiReview,
   useWorkflowAnalysis,
 } from "./useClaims";
+import {
+  showWorkflowActionError,
+  useAnalysisCompletionToast,
+} from "./workflowToasts";
 import type {
   ClaimDetail,
   CopilotConclusion,
@@ -61,6 +66,7 @@ import type {
 export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
   const { t } = useTranslation();
   const start = useWorkflowAnalysis(claim.id);
+  const [acceptedRunId, setAcceptedRunId] = useState<number | null>(null);
   const run = claim.latest_analysis_run;
   const conclusion =
     run?.damage_analysis?.copilot_conclusion ??
@@ -84,6 +90,23 @@ export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
           ? "danger"
           : "default";
   const analysisRunning = ["PENDING", "PROCESSING"].includes(run?.status ?? "");
+  useAnalysisCompletionToast(run, acceptedRunId);
+
+  async function startAnalysis(force: boolean) {
+    try {
+      const acceptedRun = await start.mutateAsync(force);
+      setAcceptedRunId(acceptedRun.id);
+      toast.info(t("toast.analysisStarted"), {
+        description: t("toast.analysisStartedDescription"),
+      });
+    } catch (error) {
+      showWorkflowActionError(
+        t("toast.analysisStartFailed"),
+        error,
+        t("analysis.startFailed"),
+      );
+    }
+  }
 
   return (
     <Card
@@ -123,7 +146,7 @@ export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
           <Button
             isDisabled={!canStart || start.isPending}
             isPending={start.isPending && start.variables === false}
-            onPress={() => start.mutate(false)}
+            onPress={() => void startAnalysis(false)}
             variant="primary"
           >
             {run ? t("analysis.runAgain") : t("analysis.analyze")}
@@ -132,7 +155,7 @@ export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
             <Button
               isDisabled={!canStart || start.isPending}
               isPending={start.isPending && start.variables === true}
-              onPress={() => start.mutate(true)}
+              onPress={() => void startAnalysis(true)}
               variant="secondary"
             >
               <Reset size={16} />
@@ -218,14 +241,16 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
   const [globalFilter, setGlobalFilter] = useState("");
   const [damageTypeFilter, setDamageTypeFilter] = useState("ALL");
   const [sorting, setSorting] = useState<SortingState>([]);
-  const annotatedEvidence = analysis.model_output?.annotated_evidence ?? Array.from(
-    new Map(
-      analysis.detections.map((detection) => [
-        detection.annotated_evidence.id,
-        detection.annotated_evidence,
-      ]),
-    ).values(),
-  );
+  const annotatedEvidence =
+    analysis.model_output?.annotated_evidence ??
+    Array.from(
+      new Map(
+        analysis.detections.map((detection) => [
+          detection.annotated_evidence.id,
+          detection.annotated_evidence,
+        ]),
+      ).values(),
+    );
   const damageRows = useMemo<DamageFindingRow[]>(() => {
     const modelParts = analysis.model_output?.record.parts ?? [];
     if (modelParts.length) {
@@ -492,6 +517,20 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
     (!run.analysis_readiness || run.analysis_readiness.status === "READY"),
   );
   const blockedReasons = run?.analysis_readiness?.blocked_reasons ?? [];
+
+  async function generateReview() {
+    try {
+      await review.mutateAsync();
+      toast.success(t("toast.aiReviewGenerated"));
+    } catch (error) {
+      showWorkflowActionError(
+        t("toast.aiReviewFailed"),
+        error,
+        t("aiReview.failed"),
+      );
+    }
+  }
+
   return (
     <Card
       className="rounded-lg border border-slate-200 bg-white shadow-sm"
@@ -514,7 +553,7 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
         <Button
           isDisabled={!ready || review.isPending}
           isPending={review.isPending}
-          onPress={() => review.mutate()}
+          onPress={() => void generateReview()}
           variant="primary"
         >
           {conclusion ? t("aiReview.rerun") : t("aiReview.run")}
@@ -665,8 +704,13 @@ function AiReviewResult({ conclusion }: { conclusion: CopilotConclusion }) {
                 conclusion.structured_review.recommended_next_step,
               ],
             ].map(([label, value]) => (
-              <div className="grid gap-1 py-3 sm:grid-cols-[13rem_minmax(0,1fr)]" key={label}>
-                <dt className="text-xs font-semibold text-slate-600">{label}</dt>
+              <div
+                className="grid gap-1 py-3 sm:grid-cols-[13rem_minmax(0,1fr)]"
+                key={label}
+              >
+                <dt className="text-xs font-semibold text-slate-600">
+                  {label}
+                </dt>
                 <dd className="text-sm leading-6 text-slate-800">{value}</dd>
               </div>
             ))}
@@ -732,16 +776,45 @@ export function HumanReviewPanel({ claim }: { claim: ClaimDetail }) {
     conclusion &&
     !latest;
 
-  function save(event: FormEvent) {
+  async function save(event: FormEvent) {
     event.preventDefault();
     if (!note.trim() || (mode === "REJECTED" && !reason)) return;
-    submit.mutate({
-      status: mode,
-      comment: note.trim(),
-      ...(mode === "REJECTED"
-        ? { reason_category: reason as CopilotConclusionRejectionCategory }
-        : {}),
-    });
+    try {
+      await submit.mutateAsync({
+        status: mode,
+        comment: note.trim(),
+        ...(mode === "REJECTED"
+          ? { reason_category: reason as CopilotConclusionRejectionCategory }
+          : {}),
+      });
+      toast.success(
+        t(
+          mode === "APPROVED"
+            ? "toast.humanReviewApproved"
+            : "toast.humanReviewRejected",
+        ),
+      );
+    } catch (error) {
+      showWorkflowActionError(
+        t("toast.humanReviewFailed"),
+        error,
+        t("common.tryAgain"),
+      );
+    }
+  }
+
+  async function revertReview() {
+    if (!revertNote.trim()) return;
+    try {
+      await revert.mutateAsync(revertNote.trim());
+      toast.success(t("toast.humanReviewReverted"));
+    } catch (error) {
+      showWorkflowActionError(
+        t("toast.humanReviewRevertFailed"),
+        error,
+        t("common.tryAgain"),
+      );
+    }
   }
 
   return (
@@ -838,7 +911,7 @@ export function HumanReviewPanel({ claim }: { claim: ClaimDetail }) {
                 <Button
                   isDisabled={!revertNote.trim()}
                   isPending={revert.isPending}
-                  onPress={() => revert.mutate(revertNote.trim())}
+                  onPress={() => void revertReview()}
                   variant="outline"
                 >
                   <Reset size={17} />
