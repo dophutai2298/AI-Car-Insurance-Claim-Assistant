@@ -12,6 +12,7 @@ import type {
   ClaimDetail,
   EvidenceCategory,
   EvidenceItem,
+  WorkflowAnalysisRun,
 } from "./features/claims/types";
 
 const adminSession = {
@@ -385,9 +386,13 @@ test("claim detail blocks analysis until all required evidence is present", asyn
   expect(await screen.findByText("Vehicle damage images")).toBeVisible();
   expect(screen.getByText("ID cards")).toBeVisible();
   expect(screen.getByRole("button", { name: /^analyze$/i })).toBeDisabled();
-  expect(screen.queryByRole("button", { name: "Run all analysis again" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Run all analysis again" }),
+  ).not.toBeInTheDocument();
   expect(screen.getByText(/5 required evidence section/i)).toBeVisible();
-  expect(screen.queryByRole("button", { name: "Delete claim" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Delete claim" }),
+  ).not.toBeInTheDocument();
 });
 
 test("claim workflow tabs preserve unsaved information when switching layouts", async () => {
@@ -439,19 +444,27 @@ test("claim workflow tabs preserve unsaved information when switching layouts", 
   await user.click(screen.getByRole("button", { name: "Tabs" }));
 
   const tabs = screen.getByRole("tablist", { name: "Claim workflow" });
-  expect(screen.queryByRole("button", { name: "Delete claim" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Delete claim" }),
+  ).not.toBeInTheDocument();
   expect(within(tabs).getAllByRole("tab")).toHaveLength(5);
   expect(
     within(tabs).getByRole("tab", { name: /Evidence & documents/i }),
   ).toHaveAttribute("aria-selected", "true");
-  within(tabs).getByRole("tab", { name: /Evidence & documents/i }).focus();
+  within(tabs)
+    .getByRole("tab", { name: /Evidence & documents/i })
+    .focus();
   await user.keyboard("{ArrowRight}");
   expect(within(tabs).getByRole("tab", { name: /^Analysis/i })).toHaveAttribute(
     "aria-selected",
     "true",
   );
-  await user.click(within(tabs).getByRole("tab", { name: /Claim information/i }));
-  expect(screen.getByRole("tabpanel", { name: /Claim information/i })).toBeVisible();
+  await user.click(
+    within(tabs).getByRole("tab", { name: /Claim information/i }),
+  );
+  expect(
+    screen.getByRole("tabpanel", { name: /Claim information/i }),
+  ).toBeVisible();
 
   await user.click(screen.getByRole("button", { name: "Edit" }));
   const claimantName = screen.getByLabelText("Claimant name");
@@ -471,17 +484,194 @@ test("claim workflow tabs preserve unsaved information when switching layouts", 
   await user.click(
     within(tabs).getByRole("tab", { name: /Evidence & documents/i }),
   );
-  expect(screen.getByRole("tabpanel", { name: /Evidence & documents/i })).toBeVisible();
+  expect(
+    screen.getByRole("tabpanel", { name: /Evidence & documents/i }),
+  ).toBeVisible();
   await user.click(screen.getByRole("button", { name: "Single page" }));
   expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
-  expect(screen.getByLabelText("Claimant name")).toHaveValue("Mai Nguyen updated");
+  expect(screen.getByLabelText("Claimant name")).toHaveValue(
+    "Mai Nguyen updated",
+  );
   await user.click(screen.getByRole("button", { name: "Tabs" }));
   await user.click(screen.getByRole("tab", { name: /Claim information/i }));
-  expect(screen.getByLabelText("Claimant name")).toHaveValue("Mai Nguyen updated");
+  expect(screen.getByLabelText("Claimant name")).toHaveValue(
+    "Mai Nguyen updated",
+  );
 
   await i18n.changeLanguage("vi");
   expect(screen.getByRole("button", { name: "Một trang" })).toBeVisible();
   expect(screen.getByRole("tab", { name: /Thông tin hồ sơ/i })).toBeVisible();
+});
+
+test("claim information keeps its inline error and shows workflow toast feedback", async () => {
+  const claim: ClaimDetail = {
+    id: "CLM-000054",
+    claimant_name: "Mai Nguyen",
+    vehicle: {
+      make: "Toyota",
+      model: "Camry",
+      year: 2022,
+      license_plate: null,
+      vin: null,
+    },
+    incident: {
+      occurred_at: "2026-09-09T01:30:00Z",
+      location: "District 1",
+      description: "Rear impact.",
+    },
+    status: "DRAFT",
+    created_at: "2026-09-08T00:00:00Z",
+    updated_at: "2026-09-08T00:00:00Z",
+    evidence: [],
+    latest_damage_analysis: null,
+    latest_analysis_run: null,
+    copilot_review_history: [],
+  };
+  let updateAttempts = 0;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const path = String(input);
+    if (path.endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adjusterSession.user));
+    if (path.endsWith("/api/vehicle-makes"))
+      return new Response(
+        JSON.stringify([{ id: 1, name: "Toyota", is_active: true }]),
+      );
+    if (
+      path.endsWith(`/api/claims/${claim.id}/information`) &&
+      init?.method === "PATCH"
+    ) {
+      updateAttempts += 1;
+      if (updateAttempts === 1) {
+        return new Response(
+          JSON.stringify({ detail: "Vehicle data is invalid" }),
+          {
+            status: 422,
+          },
+        );
+      }
+    }
+    return new Response(JSON.stringify(claim));
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  const user = userEvent.setup();
+  renderRoute(`/claims/${claim.id}`);
+
+  await user.click(await screen.findByRole("button", { name: "Edit" }));
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findAllByText("Vehicle data is invalid")).toHaveLength(2);
+  expect(
+    await screen.findByText("Claim information could not be saved"),
+  ).toBeVisible();
+
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByText("Claim information saved")).toBeVisible();
+});
+
+test("analysis reports terminal feedback for the run accepted by the API", async () => {
+  const evidenceCategories: EvidenceItem["category"][] = [
+    "VEHICLE_DAMAGE_IMAGE",
+    "ID_CARD",
+    "INSURANCE_POLICY",
+    "VEHICLE_REGISTRATION",
+    "DRIVER_LICENSE",
+  ];
+  const claim = {
+    id: "CLM-000055",
+    claimant_name: "Mai Nguyen",
+    vehicle: {
+      make: "Toyota",
+      model: "Camry",
+      year: 2022,
+      license_plate: null,
+      vin: null,
+    },
+    incident: {
+      occurred_at: "2026-09-09T01:30:00Z",
+      location: "District 1",
+      description: "Rear impact.",
+    },
+    status: "DRAFT",
+    created_at: "2026-09-08T00:00:00Z",
+    updated_at: "2026-09-08T00:00:00Z",
+    evidence: evidenceCategories.map((category, index) => ({
+      id: index + 1,
+      category,
+      original_filename: `${category.toLowerCase()}.jpg`,
+      content_type: "image/jpeg",
+      file_size: 20,
+      uploaded_at: "2026-09-08T00:00:00Z",
+      content_url: `/api/claims/CLM-000055/evidence/${index + 1}/content`,
+    })),
+    latest_damage_analysis: null,
+    latest_analysis_run: null,
+    copilot_review_history: [],
+  } as unknown as ClaimDetail;
+  let currentClaim = claim;
+  let nextRunId = 55;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    if (String(input).endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adjusterSession.user));
+    if (String(input).endsWith("/analysis-runs") && init?.method === "POST") {
+      const run: WorkflowAnalysisRun = {
+        id: nextRunId++,
+        status: "PENDING",
+        damage_status: "PENDING",
+        damage_analysis: null,
+        document_analyses: [],
+        document_ocr_results: [],
+        consistency_checks: [],
+        failure_reason: null,
+        created_at: "2026-09-08T00:00:00Z",
+        started_at: "2026-09-08T00:00:00Z",
+        completed_at: null,
+      };
+      currentClaim = { ...claim, latest_analysis_run: run };
+      return new Response(JSON.stringify(run));
+    }
+    return new Response(JSON.stringify(currentClaim));
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  const user = userEvent.setup();
+  const { queryClient } = renderRoute(`/claims/${claim.id}`);
+
+  await user.click(await screen.findByRole("button", { name: "Analyze" }));
+  expect(await screen.findByText("Analysis started")).toBeVisible();
+
+  act(() => {
+    queryClient.setQueryData(["claims", claim.id], {
+      ...currentClaim,
+      latest_analysis_run: {
+        ...currentClaim.latest_analysis_run,
+        status: "COMPLETED",
+        completed_at: "2026-09-08T00:01:00Z",
+      },
+    });
+  });
+
+  expect(await screen.findByText("Analysis completed")).toBeVisible();
+
+  await user.click(screen.getByRole("button", { name: "Run analysis again" }));
+  act(() => {
+    queryClient.setQueryData(["claims", claim.id], {
+      ...currentClaim,
+      latest_analysis_run: {
+        ...currentClaim.latest_analysis_run,
+        status: "FAILED",
+        failure_reason: "Damage detector did not respond.",
+      },
+    });
+  });
+
+  expect(await screen.findAllByText("Analysis failed")).toHaveLength(2);
+  expect(
+    screen.getAllByText("Damage detector did not respond."),
+  ).toHaveLength(2);
 });
 
 test("admin confirms deletion of a reviewed claim", async () => {
@@ -504,17 +694,22 @@ test("admin confirms deletion of a reviewed claim", async () => {
     latest_analysis_run: null,
     copilot_review_history: [],
   };
-  const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-    const path = String(input);
-    if (path.endsWith("/api/auth/me"))
-      return new Response(JSON.stringify(adminSession.user));
-    if (path.endsWith(`/api/claims/${claim.id}`) && init?.method === "DELETE")
-      return new Response(null, { status: 204 });
-    if (path.endsWith(`/api/claims/${claim.id}`))
-      return new Response(JSON.stringify(claim));
-    return new Response(JSON.stringify([]));
-  });
-  sessionStorage.setItem("claim-assistant-session", JSON.stringify(adminSession));
+  const fetchMock = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (input, init) => {
+      const path = String(input);
+      if (path.endsWith("/api/auth/me"))
+        return new Response(JSON.stringify(adminSession.user));
+      if (path.endsWith(`/api/claims/${claim.id}`) && init?.method === "DELETE")
+        return new Response(null, { status: 204 });
+      if (path.endsWith(`/api/claims/${claim.id}`))
+        return new Response(JSON.stringify(claim));
+      return new Response(JSON.stringify([]));
+    });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adminSession),
+  );
   const user = userEvent.setup();
   renderRoute(`/claims/${claim.id}`);
 
@@ -524,9 +719,15 @@ test("admin confirms deletion of a reviewed claim", async () => {
     expect.stringContaining(`/api/claims/${claim.id}`),
     expect.objectContaining({ method: "DELETE" }),
   );
-  await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete claim" }));
+  await user.click(
+    within(screen.getByRole("dialog")).getByRole("button", {
+      name: "Delete claim",
+    }),
+  );
 
-  expect(await screen.findByRole("heading", { name: "Claim cases" })).toBeVisible();
+  expect(
+    await screen.findByRole("heading", { name: "Claim cases" }),
+  ).toBeVisible();
   expect(fetchMock).toHaveBeenCalledWith(
     expect.stringContaining(`/api/claims/${claim.id}`),
     expect.objectContaining({ method: "DELETE" }),
@@ -643,18 +844,16 @@ test("evidence cards render a constrained thumbnail for uploaded images", async 
   await user.click(screen.getByRole("tab", { name: /Evidence & documents/i }));
   await user.click(screen.getByRole("button", { name: "View repair.jpg" }));
   const dialog = await screen.findByRole("dialog");
-  expect(within(dialog).getByRole("img", { name: "repair.jpg" })).toHaveAttribute(
-    "src",
-    "blob:evidence-preview",
-  );
+  expect(
+    within(dialog).getByRole("img", { name: "repair.jpg" }),
+  ).toHaveAttribute("src", "blob:evidence-preview");
   expect(dialog).toHaveClass("sm:w-[70vw]");
   expect(dialog).toHaveClass("w-[calc(100vw-2rem)]");
   await user.click(within(dialog).getByRole("button", { name: "Close image" }));
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  expect(screen.getByRole("tab", { name: /Evidence & documents/i })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
+  expect(
+    screen.getByRole("tab", { name: /Evidence & documents/i }),
+  ).toHaveAttribute("aria-selected", "true");
 });
 
 test("deleting evidence requires confirmation", async () => {
@@ -711,6 +910,7 @@ test("deleting evidence requires confirmation", async () => {
   await user.click(within(dialog).getByRole("button", { name: "Delete" }));
   expect(deleted).toBe(true);
   expect(screen.queryByText("claimant-id.jpg")).not.toBeInTheDocument();
+  expect(await screen.findByText("Evidence deleted")).toBeVisible();
 });
 
 test("legacy claim data remains readable and requests the missing workflow information", async () => {
@@ -1112,7 +1312,9 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
   renderRoute("/claims/CLM-000081");
 
   expect(await screen.findByText("Document analysis")).toBeVisible();
-  expect(screen.getByRole("button", { name: "Run all analysis again" })).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "Run all analysis again" }),
+  ).toBeVisible();
   expect(screen.getByText("Partial results available")).toBeVisible();
   const front = screen.getByRole("article", { name: "id_card.jpg" });
   const back = screen.getByRole("article", { name: "id_card_back.jpg" });
@@ -1143,9 +1345,11 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
   expect(annotatedDamage.parentElement).toHaveClass(
     "xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]",
   );
-  await user.click(within(annotatedDamage).getByRole("button", {
-    name: "View vehicle_damage_image-annotated.jpg",
-  }));
+  await user.click(
+    within(annotatedDamage).getByRole("button", {
+      name: "View vehicle_damage_image-annotated.jpg",
+    }),
+  );
   expect(
     within(await screen.findByRole("dialog")).getByRole("img", {
       name: "vehicle_damage_image-annotated.jpg",
@@ -1159,7 +1363,9 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
   const damageTable = screen.getByRole("table", {
     name: "Vehicle damage findings",
   });
-  expect(within(damageTable).getByRole("columnheader", { name: "Part" })).toBeVisible();
+  expect(
+    within(damageTable).getByRole("columnheader", { name: "Part" }),
+  ).toBeVisible();
   expect(
     within(damageTable).getByRole("columnheader", { name: "Damage type" }),
   ).toBeVisible();
@@ -1197,6 +1403,7 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
     status: "APPROVED",
     comment: "Evidence checked against the submitted documents.",
   });
+  expect(await screen.findByText("AI review approved")).toBeVisible();
 });
 
 test("adjuster reviews persisted identity extraction without a confidence score", async () => {
@@ -1363,11 +1570,15 @@ test("adjuster reviews persisted identity extraction without a confidence score"
       "Full name does not match Claim Information.",
     ),
   ).toBeVisible();
-  expect(screen.getByRole("button", { name: "Save all fields" })).toBeDisabled();
+  expect(
+    screen.getByRole("button", { name: "Save all fields" }),
+  ).toBeDisabled();
   expect(screen.getByRole("button", { name: "Run AI review" })).toBeDisabled();
   await user.clear(input);
   await user.type(input, "Mai Nguyen");
-  expect(within(identitySection).queryByText("Mismatch")).not.toBeInTheDocument();
+  expect(
+    within(identitySection).queryByText("Mismatch"),
+  ).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Save all fields" })).toBeEnabled();
   await user.click(screen.getByRole("button", { name: "Save all fields" }));
 

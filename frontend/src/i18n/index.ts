@@ -16,6 +16,32 @@ const en = {
     tryAgain: "Try again.",
     notProvided: "Not provided",
   },
+  toast: {
+    claimInformationSaved: "Claim information saved",
+    claimInformationSaveFailed: "Claim information was not saved",
+    evidenceUploaded: "{{count}} evidence file(s) uploaded",
+    evidenceUploadFailed: "Evidence upload was not completed",
+    evidenceDeleted: "Evidence deleted",
+    evidenceDeleteFailed: "Evidence was not deleted",
+    analysisStarted: "Analysis started",
+    analysisStartedDescription:
+      "Processing continues in the background. You can leave this page.",
+    analysisStartFailed: "Analysis was not started",
+    analysisCompleted: "Analysis completed",
+    analysisPartial: "Analysis completed with items to review",
+    analysisFailed: "Analysis failed",
+    documentFieldsSaved: "Document fields saved",
+    documentFieldsSaveFailed: "Document fields were not saved",
+    documentFieldSaved: "{{field}} saved",
+    documentFieldSaveFailed: "{{field}} was not saved",
+    aiReviewGenerated: "AI review generated",
+    aiReviewFailed: "AI review was not generated",
+    humanReviewApproved: "AI review approved",
+    humanReviewRejected: "AI review rejected",
+    humanReviewFailed: "Human review was not saved",
+    humanReviewReverted: "Human review reverted",
+    humanReviewRevertFailed: "Human review was not reverted",
+  },
   navigation: {
     dashboard: "Dashboard",
     claims: "Claims",
@@ -212,13 +238,15 @@ const en = {
     blockReasons: {
       SNAPSHOT_MISSING: "Save all confirmed document values before AI review.",
       SNAPSHOT_STALE: "The confirmed analysis is stale. Save all fields again.",
-      INPUTS_CHANGED: "Claim information or evidence changed. Run analysis again.",
+      INPUTS_CHANGED:
+        "Claim information or evidence changed. Run analysis again.",
       DAMAGE_ANALYSIS_UNAVAILABLE: "Vehicle damage analysis is unavailable.",
       DOCUMENT_CATEGORY_MISSING: "{{category}} is missing.",
       DOCUMENT_CATEGORY_FAILED: "{{category}} did not complete successfully.",
       REQUIRED_VALUE_MISSING: "{{field}} requires a confirmed value.",
       COMPARISON_MISMATCH: "{{field}} does not match Claim Information.",
-      COMPARISON_UNAVAILABLE: "{{field}} cannot be compared with Claim Information.",
+      COMPARISON_UNAVAILABLE:
+        "{{field}} cannot be compared with Claim Information.",
       EXPIRY_DATE_INVALID: "{{field}} must use DD/MM/YYYY or YYYY-MM-DD.",
       EXPIRY_DATE_NOT_FUTURE: "{{field}} must be later than today.",
     },
@@ -363,6 +391,45 @@ const en = {
 };
 
 const vi = {
+  toast: {
+    claimInformationSaved:
+      "\u0110\u00e3 l\u01b0u th\u00f4ng tin h\u1ed3 s\u01a1",
+    claimInformationSaveFailed:
+      "Ch\u01b0a th\u1ec3 l\u01b0u th\u00f4ng tin h\u1ed3 s\u01a1",
+    evidenceUploaded:
+      "\u0110\u00e3 t\u1ea3i l\u00ean {{count}} t\u1ec7p b\u1eb1ng ch\u1ee9ng",
+    evidenceUploadFailed:
+      "Ch\u01b0a th\u1ec3 t\u1ea3i l\u00ean b\u1eb1ng ch\u1ee9ng",
+    evidenceDeleted: "\u0110\u00e3 x\u00f3a b\u1eb1ng ch\u1ee9ng",
+    evidenceDeleteFailed: "Ch\u01b0a th\u1ec3 x\u00f3a b\u1eb1ng ch\u1ee9ng",
+    analysisStarted: "\u0110\u00e3 b\u1eaft \u0111\u1ea7u ph\u00e2n t\u00edch",
+    analysisStartedDescription:
+      "Qu\u00e1 tr\u00ecnh x\u1eed l\u00fd ti\u1ebfp di\u1ec5n \u1edf n\u1ec1n. B\u1ea1n c\u00f3 th\u1ec3 r\u1eddi kh\u1ecfi trang n\u00e0y.",
+    analysisStartFailed:
+      "Ch\u01b0a th\u1ec3 b\u1eaft \u0111\u1ea7u ph\u00e2n t\u00edch",
+    analysisCompleted: "\u0110\u00e3 ho\u00e0n t\u1ea5t ph\u00e2n t\u00edch",
+    analysisPartial:
+      "Ph\u00e2n t\u00edch ho\u00e0n t\u1ea5t, c\u1ea7n xem x\u00e9t m\u1ed9t s\u1ed1 m\u1ee5c",
+    analysisFailed: "Ph\u00e2n t\u00edch th\u1ea5t b\u1ea1i",
+    documentFieldsSaved:
+      "\u0110\u00e3 l\u01b0u c\u00e1c tr\u01b0\u1eddng gi\u1ea5y t\u1edd",
+    documentFieldsSaveFailed:
+      "Ch\u01b0a th\u1ec3 l\u01b0u c\u00e1c tr\u01b0\u1eddng gi\u1ea5y t\u1edd",
+    documentFieldSaved: "\u0110\u00e3 l\u01b0u {{field}}",
+    documentFieldSaveFailed: "Ch\u01b0a th\u1ec3 l\u01b0u {{field}}",
+    aiReviewGenerated: "\u0110\u00e3 t\u1ea1o \u0111\u00e1nh gi\u00e1 AI",
+    aiReviewFailed: "Ch\u01b0a th\u1ec3 t\u1ea1o \u0111\u00e1nh gi\u00e1 AI",
+    humanReviewApproved:
+      "\u0110\u00e3 ch\u1ea5p thu\u1eadn \u0111\u00e1nh gi\u00e1 AI",
+    humanReviewRejected:
+      "\u0110\u00e3 t\u1eeb ch\u1ed1i \u0111\u00e1nh gi\u00e1 AI",
+    humanReviewFailed:
+      "Ch\u01b0a th\u1ec3 l\u01b0u \u0111\u00e1nh gi\u00e1 th\u1ee7 c\u00f4ng",
+    humanReviewReverted:
+      "\u0110\u00e3 ho\u00e0n t\u00e1c \u0111\u00e1nh gi\u00e1 th\u1ee7 c\u00f4ng",
+    humanReviewRevertFailed:
+      "Ch\u01b0a th\u1ec3 ho\u00e0n t\u00e1c \u0111\u00e1nh gi\u00e1 th\u1ee7 c\u00f4ng",
+  },
   common: {
     backToTop: "L\u00ean \u0111\u1ea7u trang",
     edit: "Chỉnh sửa",
@@ -619,15 +686,19 @@ const vi = {
     saveAllFailed: "Không thể lưu các giá trị giấy tờ.",
     saveAllBlocked: "Khắc phục các vấn đề sau trước khi lưu phân tích",
     blockReasons: {
-      SNAPSHOT_MISSING: "Hãy lưu tất cả giá trị tài liệu đã xác nhận trước khi đánh giá AI.",
+      SNAPSHOT_MISSING:
+        "Hãy lưu tất cả giá trị tài liệu đã xác nhận trước khi đánh giá AI.",
       SNAPSHOT_STALE: "Kết quả xác nhận đã cũ. Hãy lưu lại tất cả trường.",
-      INPUTS_CHANGED: "Thông tin hồ sơ hoặc bằng chứng đã thay đổi. Hãy chạy lại phân tích.",
-      DAMAGE_ANALYSIS_UNAVAILABLE: "Kết quả phân tích hư hỏng xe chưa khả dụng.",
+      INPUTS_CHANGED:
+        "Thông tin hồ sơ hoặc bằng chứng đã thay đổi. Hãy chạy lại phân tích.",
+      DAMAGE_ANALYSIS_UNAVAILABLE:
+        "Kết quả phân tích hư hỏng xe chưa khả dụng.",
       DOCUMENT_CATEGORY_MISSING: "Thiếu {{category}}.",
       DOCUMENT_CATEGORY_FAILED: "{{category}} chưa được xử lý thành công.",
       REQUIRED_VALUE_MISSING: "{{field}} cần có giá trị xác nhận.",
       COMPARISON_MISMATCH: "{{field}} không khớp với Thông tin hồ sơ.",
-      COMPARISON_UNAVAILABLE: "Không thể đối chiếu {{field}} với Thông tin hồ sơ.",
+      COMPARISON_UNAVAILABLE:
+        "Không thể đối chiếu {{field}} với Thông tin hồ sơ.",
       EXPIRY_DATE_INVALID:
         "{{field}} ph\u1ea3i theo \u0111\u1ecbnh d\u1ea1ng DD/MM/YYYY ho\u1eb7c YYYY-MM-DD.",
       EXPIRY_DATE_NOT_FUTURE: "{{field}} ph\u1ea3i sau ng\u00e0y h\u00f4m nay.",

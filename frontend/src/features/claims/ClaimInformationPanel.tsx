@@ -10,6 +10,7 @@ import {
   ListBox,
   SearchField,
   TextField,
+  toast,
   useFilter,
 } from "@heroui/react";
 import { useEffect, useState, type FormEvent } from "react";
@@ -19,6 +20,7 @@ import { useVehicleMakes } from "../vehicleMakes/useVehicleMakes";
 import { ClaimsApiError } from "./claimsApi";
 import type { ClaimDetail } from "./types";
 import { useUpdateClaimInformation } from "./useClaims";
+import { showWorkflowActionError } from "./workflowToasts";
 
 export function ClaimInformationPanel({ claim }: { claim: ClaimDetail }) {
   const { t } = useTranslation();
@@ -38,22 +40,31 @@ export function ClaimInformationPanel({ claim }: { claim: ClaimDetail }) {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await update.mutateAsync({
-      claimant_name: values.claimantName,
-      vehicle: {
-        make: values.make,
-        model: values.model,
-        year: Number(values.year),
-        license_plate: values.licensePlate || null,
-        vin: values.vin || null,
-      },
-      incident: {
-        occurred_at: new Date(values.incidentAt).toISOString(),
-        location: values.location,
-        description: values.description,
-      },
-    });
-    setEditing(false);
+    try {
+      await update.mutateAsync({
+        claimant_name: values.claimantName,
+        vehicle: {
+          make: values.make,
+          model: values.model,
+          year: Number(values.year),
+          license_plate: values.licensePlate || null,
+          vin: values.vin || null,
+        },
+        incident: {
+          occurred_at: new Date(values.incidentAt).toISOString(),
+          location: values.location,
+          description: values.description,
+        },
+      });
+      setEditing(false);
+      toast.success(t("toast.claimInformationSaved"));
+    } catch (error) {
+      showWorkflowActionError(
+        t("toast.claimInformationSaveFailed"),
+        error,
+        t("common.tryAgain"),
+      );
+    }
   }
 
   return (

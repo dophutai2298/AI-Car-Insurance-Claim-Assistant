@@ -16,6 +16,7 @@ import {
   Label,
   Modal,
   TextField,
+  toast,
 } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -23,6 +24,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../auth/AuthProvider";
 import { ClaimsApiError, getEvidenceContent } from "./claimsApi";
 import { useDeleteEvidence, useUploadEvidence } from "./useClaims";
+import { showWorkflowActionError } from "./workflowToasts";
 import type { EvidenceCategory, EvidenceItem } from "./types";
 
 export const requiredEvidenceCategories: EvidenceCategory[] = [
@@ -66,11 +68,17 @@ export function EvidencePanel({
         setOtherLabel("");
         setOtherFiles([]);
       }
+      toast.success(t("toast.evidenceUploaded", { count: files.length }));
     } catch (caught) {
       setError(
         caught instanceof ClaimsApiError
           ? caught.message
           : t("evidence.uploadFailed"),
+      );
+      showWorkflowActionError(
+        t("toast.evidenceUploadFailed"),
+        caught,
+        t("evidence.uploadFailed"),
       );
     }
   }
@@ -81,11 +89,17 @@ export function EvidencePanel({
     try {
       await remove.mutateAsync(deleteTarget.id);
       setDeleteTarget(null);
+      toast.success(t("toast.evidenceDeleted"));
     } catch (caught) {
       setError(
         caught instanceof ClaimsApiError
           ? caught.message
           : t("evidence.deleteFailed"),
+      );
+      showWorkflowActionError(
+        t("toast.evidenceDeleteFailed"),
+        caught,
+        t("evidence.deleteFailed"),
       );
     }
   }
