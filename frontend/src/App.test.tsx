@@ -1454,8 +1454,9 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
     screen.getByText("Reference prices require adjuster verification."),
   ).toBeVisible();
   expect(screen.getByText("85%")).toBeVisible();
+  expect(screen.getByText("Analysis completeness score")).toBeVisible();
   expect(
-    screen.getByText(/not an automatic approval probability/i),
+    screen.getByText(/reflects non-blocking processing warnings/i),
   ).toBeVisible();
   await user.type(
     screen.getByLabelText("Review note"),
@@ -1658,12 +1659,20 @@ test("adjuster reviews persisted identity extraction without a confidence score"
 
 test("analysis gate messages are available in English and Vietnamese", async () => {
   await i18n.changeLanguage("en");
+  expect(i18n.t("aiReview.validity")).toBe("Analysis completeness score");
+  expect(i18n.t("aiReview.validityDisclaimer")).toMatch(
+    /does not indicate claim validity or approval likelihood/i,
+  );
   expect(
     i18n.t("documents.blockReasons.COMPARISON_MISMATCH", {
       field: "Full name",
     }),
   ).toBe("Full name does not match Claim Information.");
   await i18n.changeLanguage("vi");
+  expect(i18n.t("aiReview.validity")).toBe("Điểm hoàn thiện phân tích");
+  expect(i18n.t("aiReview.validityDisclaimer")).toMatch(
+    /không xác định tính hợp lệ hay khả năng được duyệt/i,
+  );
   expect(
     i18n.t("documents.blockReasons.COMPARISON_MISMATCH", {
       field: "Họ và tên",

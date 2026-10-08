@@ -172,6 +172,7 @@ class ClaimService:
             self.claims,
             self.analysis_runs,
             self.analysis_snapshots,
+            self.snapshots,
             self.claim_incidents,
             self.damage_analyses,
             self.workflow_ai_reviews,

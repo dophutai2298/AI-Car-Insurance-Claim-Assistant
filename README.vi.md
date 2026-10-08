@@ -127,19 +127,19 @@ Với chế độ `openai`, cần đặt `OPENAI_API_KEY` và `OPENAI_MODEL`. Mo
 
 Detector xử lý từng ảnh xe đã upload và lưu ảnh kết quả vào `UPLOAD_ROOT/<claim>/annotations/`. Có thể cấu hình `DAMAGE_PART_MODEL_PATH`, `DAMAGE_MODEL_PATH`, `DAMAGE_OUTPUT_DIR`, `DAMAGE_PART_CONF`, `DAMAGE_DAMAGE_CONF`, `DAMAGE_MIN_PERCENT`, `DAMAGE_IMAGE_SIZE`, và `DAMAGE_DEVICE` trong `.env`. Đường dẫn mặc định tính từ thư mục gốc dự án. Chạy thử độc lập bằng `python backend/scripts/test_car_damage_detector.py`.
 
-## Cách tính điểm hợp lệ hồ sơ ở Step 4
+## Cách tính điểm hoàn thiện phân tích ở Step 4
 
 Step 4 chỉ chạy sau khi Step 3 lưu được analysis snapshot ở trạng thái sẵn sàng. Step 3 chặn **Save All** nếu phân tích tài liệu bắt buộc bị lỗi, thiếu giá trị bắt buộc, hoặc giá trị có thể đối chiếu đang `MISMATCH` hay không thể kiểm tra. Cần sửa dữ liệu và hoàn thành lại Step 3 trước khi chạy AI Review. Vì vậy, mismatch là điều kiện chặn chứ không phải khoản trừ điểm: Step 4 không nên chạy khi còn mismatch.
 
-**Claim validity score** ở Step 4 là chỉ số xử lý tài liệu được tính theo quy tắc cố định. Điểm này không do LLM tạo ra và không phải xác suất claim được duyệt. Công thức hiện tại bắt đầu từ 85 điểm, trừ 15 điểm cho mỗi tài liệu có trạng thái phân tích `FAILED`, và trừ 5 điểm cho mỗi warning trong analysis snapshot đã lưu. Kết quả được giới hạn trong khoảng 0–100:
+**Analysis completeness score** ở Step 4 là chỉ số xử lý được tính theo quy tắc cố định. Điểm này không do LLM tạo ra và không phải xác suất claim hợp lệ hay được duyệt. Mỗi review đủ điều kiện bắt đầu từ 100 điểm và trừ 5 điểm cho mỗi warning trong analysis snapshot đã lưu. Kết quả không thể thấp hơn 0:
 
 ```text
-điểm = max(0, min(100, 85 - (số tài liệu FAILED × 15) - (số warning × 5)))
+điểm = max(0, 100 - (số warning × 5))
 ```
 
-Ví dụ: không có tài liệu lỗi và không có warning = 85 điểm; 2 warning và không có tài liệu lỗi = 75 điểm. Khoản trừ cho `FAILED` (ví dụ: 1 tài liệu lỗi thì còn 70 điểm trước khi trừ warning) là xử lý dự phòng cho snapshot cũ hoặc dữ liệu không nhất quán; quy trình Step 3 bình thường sẽ chặn không cho lưu snapshot như vậy. Nếu dữ liệu đó vừa có tài liệu lỗi vừa có warning thì cả hai khoản trừ đều áp dụng. Vì công thức bắt đầu ở 85 và chỉ trừ điểm, mức tối đa hiện tại là 85.
+Ví dụ: không có warning = 100 điểm; 1 warning = 95 điểm; 2 warning = 90 điểm; từ 20 warning trở lên = 0 điểm. Tài liệu bắt buộc có trạng thái `FAILED` không bị quy đổi thành khoản trừ điểm vì Step 3 chặn workflow trước khi điểm được tạo.
 
-Warning còn lại trong snapshot đã sẵn sàng có thể làm giảm điểm; hãy kiểm tra phần phân tích liên quan khi có warning. Điểm này không trực tiếp đánh giá các field trên giấy tờ match hay không, mức độ hư hại, nội dung review của LLM hay quyết định của adjuster. LLM tạo phần review riêng; việc LLM chạy fallback tự nó không làm thay đổi điểm. Đây chỉ là tín hiệu giới hạn về quá trình xử lý tài liệu, cần adjuster xem xét và không thay thế điều kiện match ở Step 3.
+Warning còn lại trong snapshot đã sẵn sàng làm giảm điểm; hãy kiểm tra phần phân tích liên quan khi có warning. Điểm này không trực tiếp đánh giá các field trên giấy tờ match hay không, mức độ hư hại, nội dung review của LLM hay quyết định của adjuster. LLM tạo phần review riêng; việc LLM chạy fallback tự nó không làm thay đổi điểm. Các review lịch sử vẫn giữ nguyên điểm đã lưu. Đây chỉ là tín hiệu giới hạn về quá trình xử lý tài liệu, cần adjuster xem xét và không thay thế điều kiện match ở Step 3.
 
 ## Quyền truy cập
 

@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 import json
 
@@ -9,7 +10,16 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import get_settings
 from app.main import create_app
-from app.models import Claim, Evidence, EvidenceCategory
+from app.models import (
+    AnalysisResultStatus,
+    Claim,
+    ConfirmedAnalysisSnapshot,
+    CopilotConclusionStatus,
+    DocumentAnalysis,
+    Evidence,
+    EvidenceCategory,
+    WorkflowAiReview,
+)
 from app.api import composition as claim_composition
 from app.services.document_ocr import (
     DocumentOcrError,
@@ -603,6 +613,7 @@ def test_legacy_annotation_category_remains_readable_but_hidden_from_uploads(cli
 def prepare_claim_for_workflow_analysis(
     client: TestClient,
     *,
+    damage_filename: str = "repair.jpg",
     driver_license_filename: str = "driver-license.jpg",
     policy_filename: str = "policy.pdf",
 ) -> dict[str, object]:
@@ -634,7 +645,14 @@ def prepare_claim_for_workflow_analysis(
             ]
         },
         files=[
-            ("files", ("repair.jpg", evidence_bytes("repair.jpg", b"damage"), "image/jpeg")),
+            (
+                "files",
+                (
+                    damage_filename,
+                    evidence_bytes(damage_filename, b"damage"),
+                    "image/jpeg",
+                ),
+            ),
             ("files", ("id-card.jpg", evidence_bytes("id-card.jpg", b"id-card"), "image/jpeg")),
             ("files", (policy_filename, evidence_bytes(policy_filename, b"policy"), "image/jpeg" if policy_filename.endswith(".jpg") else "application/pdf")),
             ("files", ("registration.jpg", evidence_bytes("registration.jpg", b"registration"), "image/jpeg")),
@@ -2168,7 +2186,7 @@ def test_adjuster_can_correct_document_fields_then_run_structured_ai_review(clie
 
     assert reviewed.status_code == 200
     conclusion = reviewed.json()["latest_damage_analysis"]["copilot_conclusion"]
-    assert 0 <= conclusion["validity_percentage"] <= 100
+    assert conclusion["validity_percentage"] == 100
     assert conclusion["review_status"] == "REVIEW_REQUIRED"
     assert len(conclusion["evidence_references"]) == 5
     assert conclusion["summary"]
@@ -2211,6 +2229,176 @@ def test_adjuster_can_correct_document_fields_then_run_structured_ai_review(clie
     assert persisted["structured_review"] == conclusion["structured_review"]
     assert persisted["prompt_version"] == "ai-review-v2"
     assert persisted["schema_version"] == "ai-review-schema-v2"
+
+
+def test_analysis_completeness_score_deducts_snapshot_warnings_and_ignores_llm_mode(
+    client: TestClient, monkeypatch
+):
+    claim = prepare_claim_for_workflow_analysis(
+        client,
+        damage_filename="no-damage.jpg",
+        policy_filename="policy.jpg",
+    )
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=admin_headers(client),
+    )
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=admin_headers(client)
+    ).json()["latest_analysis_run"]
+    assert save_ready_analysis_snapshot(client, claim, run).status_code == 200
+
+    fallback_response = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=admin_headers(client),
+    )
+
+    assert fallback_response.status_code == 200
+    fallback_conclusion = fallback_response.json()["latest_analysis_run"][
+        "damage_analysis"
+    ]["copilot_conclusion"]
+    assert fallback_conclusion["status"] == "FALLBACK"
+    assert fallback_conclusion["validity_percentage"] == 95
+
+    original_generate = LlmCopilotService.generate
+
+    def generated_review(self, input_data):
+        result = original_generate(self, input_data)
+        return replace(
+            result,
+            status=CopilotConclusionStatus.GENERATED,
+            fallback_summary=None,
+        )
+
+    monkeypatch.setattr(LlmCopilotService, "generate", generated_review)
+    generated_response = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=admin_headers(client),
+    )
+
+    assert generated_response.status_code == 200
+    generated_conclusion = generated_response.json()["latest_analysis_run"][
+        "damage_analysis"
+    ]["copilot_conclusion"]
+    assert generated_conclusion["status"] == "GENERATED"
+    assert generated_conclusion["validity_percentage"] == 95
+
+
+def test_analysis_completeness_score_is_clamped_at_zero(
+    client: TestClient,
+):
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=admin_headers(client),
+    )
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=admin_headers(client)
+    ).json()["latest_analysis_run"]
+    assert save_ready_analysis_snapshot(client, claim, run).status_code == 200
+
+    with client.app.state.session_factory() as session:
+        snapshot = session.scalar(
+            select(ConfirmedAnalysisSnapshot).where(
+                ConfirmedAnalysisSnapshot.analysis_run_id == run["id"]
+            )
+        )
+        payload = json.loads(snapshot.payload_json)
+        payload["warnings"] = [f"warning-{index}" for index in range(25)]
+        snapshot.payload_json = json.dumps(payload)
+        session.commit()
+
+    response = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=admin_headers(client),
+    )
+
+    assert response.status_code == 200
+    conclusion = response.json()["latest_analysis_run"]["damage_analysis"][
+        "copilot_conclusion"
+    ]
+    assert conclusion["validity_percentage"] == 0
+
+
+def test_ai_review_rechecks_step_three_gate_before_creating_a_score(
+    client: TestClient,
+):
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=admin_headers(client),
+    )
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=admin_headers(client)
+    ).json()["latest_analysis_run"]
+    assert save_ready_analysis_snapshot(client, claim, run).status_code == 200
+
+    with client.app.state.session_factory() as session:
+        document = session.scalar(
+            select(DocumentAnalysis).where(
+                DocumentAnalysis.analysis_run_id == run["id"],
+                DocumentAnalysis.document_type == EvidenceCategory.INSURANCE_POLICY,
+            )
+        )
+        document.status = AnalysisResultStatus.FAILED
+        session.commit()
+
+    response = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=admin_headers(client),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["blocked_reasons"][0]["code"] == (
+        "DOCUMENT_CATEGORY_FAILED"
+    )
+    with client.app.state.session_factory() as session:
+        assert session.scalar(
+            select(WorkflowAiReview).where(
+                WorkflowAiReview.analysis_run_id == run["id"]
+            )
+        ) is None
+
+
+def test_existing_analysis_completeness_score_is_not_recalculated_on_read(
+    client: TestClient,
+):
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
+    client.post(
+        f"/api/claims/{claim['id']}/analysis-runs",
+        headers=admin_headers(client),
+    )
+    run = client.get(
+        f"/api/claims/{claim['id']}", headers=admin_headers(client)
+    ).json()["latest_analysis_run"]
+    assert save_ready_analysis_snapshot(client, claim, run).status_code == 200
+    reviewed = client.post(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
+        headers=admin_headers(client),
+    )
+    assert reviewed.status_code == 200
+    conclusion_id = reviewed.json()["latest_analysis_run"]["damage_analysis"][
+        "copilot_conclusion"
+    ]["id"]
+
+    with client.app.state.session_factory() as session:
+        review = session.scalar(
+            select(WorkflowAiReview).where(
+                WorkflowAiReview.conclusion_id == conclusion_id
+            )
+        )
+        review.validity_percentage = 85
+        session.commit()
+
+    reloaded = client.get(
+        f"/api/claims/{claim['id']}", headers=admin_headers(client)
+    )
+
+    assert reloaded.status_code == 200
+    persisted = reloaded.json()["latest_analysis_run"]["damage_analysis"][
+        "copilot_conclusion"
+    ]
+    assert persisted["validity_percentage"] == 85
 
 
 def test_ai_review_rejects_analysis_run_after_claim_inputs_change(client: TestClient):
