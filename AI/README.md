@@ -46,30 +46,28 @@ AI/
 ### 1. 21 Bộ phận xe (`car_part.pt`)
 | ID | Tên bộ phận | Mô tả tiếng Việt | ID | Tên bộ phận | Mô tả tiếng Việt |
 |:--:|:---|:---|:--:|:---|:---|
-| **0** | `Quarter-panel` | Tấm ốp hông sau xe | **11** | `Back-wheel` | Bánh sau |
-| **1** | `Front-wheel` | Bánh trước | **12** | `Back-windshield`| Kính chắn gió sau |
-| **2** | `Back-window` | Cửa sổ kính sau | **13** | `Hood` | Nắp capo trước |
-| **3** | `Trunk` | Cốp xe sau | **14** | `Fender` | Ốp chắn bùn (tai xe) |
-| **4** | `Front-door` | Cửa trước | **15** | `Tail-light` | Đèn hậu sau |
-| **5** | `Rocker-panel` | Bệ bước / gầm viền sườn | **16** | `License-plate` | Biển số xe |
-| **6** | `Grille` | Lưới tản nhiệt | **17** | `Front-bumper` | Cản trước (Ba-đờ-sốc trước) |
-| **7** | `Windshield` | Kính chắn gió trước | **18** | `Back-bumper` | Cản sau (Ba-đờ-sốc sau) |
-| **8** | `Front-window` | Cửa sổ kính trước | **19** | `Mirror` | Gương chiếu hậu |
-| **9** | `Back-door` | Cửa sau | **20** | `Roof` | Mui xe / nóc xe |
-| **10**| `Headlight` | Đèn pha trước | | | |
+| **1** | `Quarter-panel` | Tấm ốp hông sau xe | **12** | `Back-wheel` | Bánh sau |
+| **2** | `Front-wheel` | Bánh trước | **13** | `Back-windshield` | Kính chắn gió sau |
+| **3** | `Back-window` | Cửa sổ kính sau | **14** | `Hood` | Nắp capo trước |
+| **4** | `Trunk` | Cốp xe sau | **15** | `Fender` | Ốp chắn bùn (tai xe) |
+| **5** | `Front-door` | Cửa trước | **16** | `Tail-light` | Đèn hậu sau |
+| **6** | `Rocker-panel` | Bệ bước / gầm viền sườn | **17** | `License-plate` | Biển số xe |
+| **7** | `Grille` | Lưới tản nhiệt | **18** | `Front-bumper` | Cản trước (Ba-đờ-sốc trước) |
+| **8** | `Windshield` | Kính chắn gió trước | **19** | `Back-bumper` | Cản sau (Ba-đờ-sốc sau) |
+| **9** | `Front-window` | Cửa sổ kính trước | **20** | `Mirror` | Gương chiếu hậu |
+| **10** | `Back-door` | Cửa sau | **21** | `Roof` | Mui xe / nóc xe |
+| **11** | `Headlight` | Đèn pha trước |  |  |  |
 
 ### 2. 7 Dạng hư hại (`car_damage.pt`)
 | ID | Tên hư hại | Mô tả |
 |:--:|:---|:---|
-| **0** | `corrosion` | Rỉ sét / Ăn mòn kim loại |
-| **1** | `crack` | Vết nứt vỡ |
-| **2** | `dent` | Vết móp / Lõm kim loại |
-| **3** | `glass shatter` | Vỡ kính rạn nứt |
-| **4** | `lamp broken` | Bể / Vỡ đèn xe |
-| **5** | `scratch` | Vết cào / Trầy xước sơn |
-| **6** | `tire flat` | Xẹp lốp / Thủng lốp |
-
----
+| **1** | `corrosion` | Rỉ sét / Ăn mòn kim loại |
+| **2** | `crack` | Vết nứt vỡ |
+| **3** | `dent` | Vết móp / Lõm kim loại |
+| **4** | `glass shatter` | Vỡ kính rạn nứt |
+| **5** | `lamp broken` | Bể / Vỡ đèn xe |
+| **6** | `scratch` | Vết cào / Trầy xước sơn |
+| **7** | `tire flat` | Xẹp lốp / Thủng lốp |
 
 ## 🛠️ Cài đặt & Chuẩn bị môi trường
 
