@@ -13,6 +13,7 @@ from app.db import (
     create_database_engine,
     create_session_factory,
     ping_database,
+    remove_legacy_confidence_threshold_columns,
     upgrade_legacy_ai_review_constraints,
 )
 from app.services.auth import seed_demo_users
@@ -34,6 +35,7 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI):
         engine = create_database_engine(settings)
         Base.metadata.create_all(engine)
+        remove_legacy_confidence_threshold_columns(engine)
         upgrade_legacy_ai_review_constraints(engine)
         app.state.session_factory = create_session_factory(engine)
         with app.state.session_factory() as session:

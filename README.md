@@ -127,6 +127,14 @@ For the `openai` mode, set `OPENAI_API_KEY` and `OPENAI_MODEL`. The selected mod
 
 The detector reads each uploaded vehicle image and stores its annotated result under `UPLOAD_ROOT/<claim>/annotations/`. Configure `DAMAGE_PART_MODEL_PATH`, `DAMAGE_MODEL_PATH`, `DAMAGE_OUTPUT_DIR`, `DAMAGE_PART_CONF`, `DAMAGE_DAMAGE_CONF`, `DAMAGE_MIN_PERCENT`, `DAMAGE_IMAGE_SIZE`, and `DAMAGE_DEVICE` in `.env` as needed. The default paths resolve from the repository root. The standalone smoke test is `python backend/scripts/test_car_damage_detector.py`.
 
+## Damage assessment thresholds
+
+The Admin **Assessment rules** page controls how model detections are interpreted. These thresholds apply to each detected vehicle part; they do not describe the percentage of the whole vehicle that is damaged. Defaults are `40%` repair maximum, and `60%` replacement minimum.
+- **Repair maximum (`40%`)**: if every detected part has damage at or below this percentage, the result is **Repair likely**.
+- **Replacement minimum (`60%`)**: if any detected part reaches or exceeds this percentage, the result is **Replacement likely**. Damage types `broken_component` and `severe_deformation` also trigger this result regardless of percentage.
+
+Damage between the repair maximum and replacement minimum results in **Manual inspection required**. For example, with the defaults, a part at `35%` can support **Repair likely**, a part at `50%` needs manual inspection, and a part at `65%` supports **Replacement likely**. Admins can change these global values; each analysis stores the values used at the time it was run. These are decision-support rules, not a final insurance decision.
+
 ## Step 4 analysis completeness score
 
 Step 4 can run only after Step 3 has saved a ready analysis snapshot. Step 3 blocks **Save All** when a required document analysis failed, a required value is missing, or a comparable document value is `MISMATCH` or cannot be checked. Correct the data and pass Step 3 again before running AI Review. A mismatch is therefore a gate, not a score deduction: it should prevent Step 4 from running.

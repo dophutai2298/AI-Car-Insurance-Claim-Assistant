@@ -21,8 +21,6 @@ class DamageAssessmentService:
     ) -> AssessmentResult:
         if not detections:
             return AssessmentResult(DamageAssessment.NO_DAMAGE, "No significant vehicle damage was detected in the submitted images. Review manually or request another image; this does not guarantee the vehicle is undamaged.")
-        if any(item.confidence < rules.confidence_threshold for item in detections):
-            return AssessmentResult(DamageAssessment.MANUAL_INSPECTION_REQUIRED, "At least one detection is below the configured confidence threshold. Manual inspection is required.")
         if any(item.damage_type in REPLACEMENT_DAMAGE_TYPES or item.damage_percentage >= rules.replacement_min_percentage for item in detections):
             return AssessmentResult(DamageAssessment.REPLACEMENT_LIKELY)
         if all(item.damage_percentage <= rules.repair_max_percentage for item in detections):

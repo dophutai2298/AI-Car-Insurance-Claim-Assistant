@@ -2660,7 +2660,6 @@ def test_admin_can_update_persisted_assessment_rules_with_an_audit_record(client
 
     assert initial_response.status_code == 200
     assert initial_response.json()["values"] == {
-        "confidence_threshold": 0.7,
         "repair_max_percentage": 40.0,
         "replacement_min_percentage": 60.0,
     }
@@ -2669,14 +2668,16 @@ def test_admin_can_update_persisted_assessment_rules_with_an_audit_record(client
         "/api/admin/assessment-rules",
         headers=admin_headers(client),
         json={
-            "confidence_threshold": 0.8,
             "repair_max_percentage": 35,
             "replacement_min_percentage": 70,
         },
     )
 
     assert update_response.status_code == 200
-    assert update_response.json()["values"]["confidence_threshold"] == 0.8
+    assert update_response.json()["values"] == {
+        "repair_max_percentage": 35.0,
+        "replacement_min_percentage": 70.0,
+    }
     assert update_response.json()["updated_by"] == "admin@example.com"
     history_response = client.get("/api/admin/assessment-rules/history", headers=admin_headers(client))
     assert history_response.status_code == 200
@@ -2690,7 +2691,6 @@ def test_adjuster_cannot_update_assessment_rules(client: TestClient):
         "/api/admin/assessment-rules",
         headers=adjuster_headers(client),
         json={
-            "confidence_threshold": 0.8,
             "repair_max_percentage": 35,
             "replacement_min_percentage": 70,
         },
@@ -2705,7 +2705,6 @@ def test_invalid_assessment_rule_combinations_are_rejected(client: TestClient):
         "/api/admin/assessment-rules",
         headers=admin_headers(client),
         json={
-            "confidence_threshold": 0.8,
             "repair_max_percentage": 70,
             "replacement_min_percentage": 60,
         },
@@ -2720,7 +2719,6 @@ def test_damage_analyses_preserve_the_active_rules_used_at_runtime(client: TestC
         "/api/admin/assessment-rules",
         headers=admin_headers(client),
         json={
-            "confidence_threshold": 0.8,
             "repair_max_percentage": 20,
             "replacement_min_percentage": 60,
         },
@@ -2739,7 +2737,6 @@ def test_damage_analyses_preserve_the_active_rules_used_at_runtime(client: TestC
         "/api/admin/assessment-rules",
         headers=admin_headers(client),
         json={
-            "confidence_threshold": 0.8,
             "repair_max_percentage": 40,
             "replacement_min_percentage": 60,
         },

@@ -148,7 +148,6 @@ class AssessmentRuleConfiguration(Base):
     __table_args__ = (CheckConstraint("id = 1", name="assessment_rule_configurations_singleton"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    confidence_threshold: Mapped[float] = mapped_column(Float)
     repair_max_percentage: Mapped[float] = mapped_column(Float)
     replacement_min_percentage: Mapped[float] = mapped_column(Float)
     updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
@@ -164,10 +163,8 @@ class AssessmentRuleChange(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     changed_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    old_confidence_threshold: Mapped[float] = mapped_column(Float)
     old_repair_max_percentage: Mapped[float] = mapped_column(Float)
     old_replacement_min_percentage: Mapped[float] = mapped_column(Float)
-    new_confidence_threshold: Mapped[float] = mapped_column(Float)
     new_repair_max_percentage: Mapped[float] = mapped_column(Float)
     new_replacement_min_percentage: Mapped[float] = mapped_column(Float)
     changed_at: Mapped[datetime] = mapped_column(
@@ -507,7 +504,6 @@ class DamageAnalysisRuleSnapshot(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     analysis_id: Mapped[int] = mapped_column(ForeignKey("damage_analyses.id"), unique=True, index=True)
-    confidence_threshold: Mapped[float] = mapped_column(Float)
     repair_max_percentage: Mapped[float] = mapped_column(Float)
     replacement_min_percentage: Mapped[float] = mapped_column(Float)
 

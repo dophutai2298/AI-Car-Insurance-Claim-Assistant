@@ -251,7 +251,6 @@ export type DamageAnalysis = {
   detections: DamageDetection[];
   model_output?: DamageModelOutput | null;
   rules: {
-    confidence_threshold: number;
     repair_max_percentage: number;
     replacement_min_percentage: number;
   } | null;

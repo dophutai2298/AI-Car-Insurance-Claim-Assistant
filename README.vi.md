@@ -127,6 +127,14 @@ Với chế độ `openai`, cần đặt `OPENAI_API_KEY` và `OPENAI_MODEL`. Mo
 
 Detector xử lý từng ảnh xe đã upload và lưu ảnh kết quả vào `UPLOAD_ROOT/<claim>/annotations/`. Có thể cấu hình `DAMAGE_PART_MODEL_PATH`, `DAMAGE_MODEL_PATH`, `DAMAGE_OUTPUT_DIR`, `DAMAGE_PART_CONF`, `DAMAGE_DAMAGE_CONF`, `DAMAGE_MIN_PERCENT`, `DAMAGE_IMAGE_SIZE`, và `DAMAGE_DEVICE` trong `.env`. Đường dẫn mặc định tính từ thư mục gốc dự án. Chạy thử độc lập bằng `python backend/scripts/test_car_damage_detector.py`.
 
+## Các ngưỡng đánh giá hư hỏng
+
+Trang **Assessment rules** dành cho Admin cấu hình cách diễn giải kết quả model. Các ngưỡng này áp dụng cho từng bộ phận xe được phát hiện, không phải tỷ lệ hư hỏng của toàn bộ chiếc xe. Giá trị mặc định là ngưỡng sửa chữa tối đa `40%` và ngưỡng thay thế tối thiểu `60%`.
+- **Repair maximum (`40%`)**: nếu mọi bộ phận được phát hiện có tỷ lệ hư hỏng bằng hoặc thấp hơn ngưỡng này, kết quả là **Có khả năng sửa chữa**.
+- **Replacement minimum (`60%`)**: nếu bất kỳ bộ phận nào có tỷ lệ hư hỏng bằng hoặc cao hơn ngưỡng này, kết quả là **Có khả năng cần thay thế**. Các dạng hư hỏng `broken_component` và `severe_deformation` cũng dẫn đến kết quả này bất kể phần trăm.
+
+Mức hư hỏng nằm giữa ngưỡng sửa chữa tối đa và ngưỡng thay thế tối thiểu sẽ cần **kiểm tra thủ công**. Ví dụ với giá trị mặc định, bộ phận hư hỏng `35%` có thể được xếp **Có khả năng sửa chữa**, `50%` cần kiểm tra thủ công, còn `65%` có thể được xếp **Có khả năng cần thay thế**. Admin có thể đổi các giá trị toàn cục này; mỗi lần phân tích lưu lại các ngưỡng đã dùng. Đây là quy tắc hỗ trợ đánh giá, không phải quyết định bảo hiểm cuối cùng.
+
 ## Cách tính điểm hoàn thiện phân tích ở Step 4
 
 Step 4 chỉ chạy sau khi Step 3 lưu được analysis snapshot ở trạng thái sẵn sàng. Step 3 chặn **Save All** nếu phân tích tài liệu bắt buộc bị lỗi, thiếu giá trị bắt buộc, hoặc giá trị có thể đối chiếu đang `MISMATCH` hay không thể kiểm tra. Cần sửa dữ liệu và hoàn thành lại Step 3 trước khi chạy AI Review. Vì vậy, mismatch là điều kiện chặn chứ không phải khoản trừ điểm: Step 4 không nên chạy khi còn mismatch.
