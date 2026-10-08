@@ -20,7 +20,6 @@ import {
 import { VehicleManufacturerPanel } from "./VehicleManufacturerPanel";
 
 type RuleForm = {
-  confidenceThreshold: string;
   repairMaxPercentage: string;
   replacementMinPercentage: string;
 };
@@ -30,7 +29,6 @@ export function AdminConfigPage() {
   const history = useAssessmentRuleHistory();
   const updateRules = useUpdateAssessmentRules();
   const [form, setForm] = useState<RuleForm>({
-    confidenceThreshold: "",
     repairMaxPercentage: "",
     replacementMinPercentage: "",
   });
@@ -39,7 +37,6 @@ export function AdminConfigPage() {
   useEffect(() => {
     if (!rules.data) return;
     setForm({
-      confidenceThreshold: String(rules.data.values.confidence_threshold),
       repairMaxPercentage: String(rules.data.values.repair_max_percentage),
       replacementMinPercentage: String(
         rules.data.values.replacement_min_percentage,
@@ -51,18 +48,9 @@ export function AdminConfigPage() {
     event.preventDefault();
     setError("");
     const values = {
-      confidence_threshold: Number(form.confidenceThreshold),
       repair_max_percentage: Number(form.repairMaxPercentage),
       replacement_min_percentage: Number(form.replacementMinPercentage),
     };
-    if (
-      !Number.isFinite(values.confidence_threshold) ||
-      values.confidence_threshold < 0 ||
-      values.confidence_threshold > 1
-    ) {
-      setError("Confidence threshold must be between 0 and 1.");
-      return;
-    }
     if (
       !Number.isFinite(values.repair_max_percentage) ||
       !Number.isFinite(values.replacement_min_percentage) ||
@@ -138,16 +126,7 @@ export function AdminConfigPage() {
                   <Alert.Description>{error}</Alert.Description>
                 </Alert>
               ) : null}
-              <div className="grid gap-5 md:grid-cols-3">
-                <RuleField
-                  label="Confidence threshold"
-                  name="confidence-threshold"
-                  hint="0 to 1"
-                  value={form.confidenceThreshold}
-                  onChange={(confidenceThreshold) =>
-                    setForm((current) => ({ ...current, confidenceThreshold }))
-                  }
-                />
+              <div className="grid gap-5 md:grid-cols-2">
                 <RuleField
                   label="Repair maximum"
                   name="repair-maximum"
@@ -267,12 +246,10 @@ function HistoryRow({
     changed_by: string;
     changed_at: string;
     old_values: {
-      confidence_threshold: number;
       repair_max_percentage: number;
       replacement_min_percentage: number;
     };
     new_values: {
-      confidence_threshold: number;
       repair_max_percentage: number;
       replacement_min_percentage: number;
     };
@@ -285,9 +262,7 @@ function HistoryRow({
           {change.changed_by}
         </p>
         <p className="mt-1 text-xs text-slate-500">
-          Confidence {change.old_values.confidence_threshold} to{" "}
-          {change.new_values.confidence_threshold}; repair{" "}
-          {change.old_values.repair_max_percentage}% to{" "}
+          Repair {change.old_values.repair_max_percentage}% to{" "}
           {change.new_values.repair_max_percentage}%; replacement{" "}
           {change.old_values.replacement_min_percentage}% to{" "}
           {change.new_values.replacement_min_percentage}%.
@@ -303,8 +278,7 @@ function HistoryRow({
 function RuleFormSkeleton() {
   return (
     <div className="grid gap-5">
-      <div className="grid gap-5 md:grid-cols-3">
-        <Skeleton className="h-16 rounded-lg" />
+      <div className="grid gap-5 md:grid-cols-2">
         <Skeleton className="h-16 rounded-lg" />
         <Skeleton className="h-16 rounded-lg" />
       </div>

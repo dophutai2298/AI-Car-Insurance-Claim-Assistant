@@ -1,6 +1,6 @@
 import json
 
-from app.models import AnalysisResultStatus, AnalysisRunStatus, AnalysisSnapshotStatus, Claim, ClaimStatus, CopilotConclusionStatus, User
+from app.models import AnalysisRunStatus, AnalysisSnapshotStatus, Claim, ClaimStatus, CopilotConclusionStatus, User
 from app.repositories.analysis_runs import AnalysisRunRepository
 from app.repositories.analysis_snapshots import AnalysisSnapshotRepository
 from app.repositories.claims import ClaimRepository
@@ -11,6 +11,7 @@ from app.repositories.copilot_conclusion_reviews import CopilotConclusionAlready
 from app.repositories.workflow_ai_reviews import WorkflowAiReviewRepository
 from app.schemas.claims import AnalysisBlockedReasonResponse, CopilotConclusionReviewRequest, CopilotConclusionReviewRevertRequest
 from app.services.analysis_errors import AnalysisConfirmationBlockedError
+from app.services.analysis_snapshots import AnalysisSnapshotOperations
 from app.services.claim_errors import ClaimConflictError, ClaimResourceNotFoundError, ClaimValidationError
 from app.services.llm_copilot import (
     AiReviewClaimFacts,
@@ -33,6 +34,7 @@ class ClaimReviewOperations:
         claims: ClaimRepository,
         analysis_runs: AnalysisRunRepository,
         analysis_snapshots: AnalysisSnapshotRepository,
+        snapshot_operations: AnalysisSnapshotOperations,
         claim_incidents: ClaimIncidentRepository,
         damage_analyses: DamageAnalysisRepository,
         workflow_ai_reviews: WorkflowAiReviewRepository,
@@ -44,6 +46,7 @@ class ClaimReviewOperations:
         self.claims = claims
         self.analysis_runs = analysis_runs
         self.analysis_snapshots = analysis_snapshots
+        self.snapshot_operations = snapshot_operations
         self.claim_incidents = claim_incidents
         self.damage_analyses = damage_analyses
         self.workflow_ai_reviews = workflow_ai_reviews
@@ -85,6 +88,14 @@ class ClaimReviewOperations:
                     )
                 ]
             )
+        current_values = {
+            field.id: (field.confirmed_value or "")
+            for field in self.analysis_runs.extracted_fields(run.id)
+        }
+        if blocked_reasons := self.snapshot_operations.blocked_reasons(
+            claim, run, current_values
+        ):
+            raise AnalysisConfirmationBlockedError(blocked_reasons)
         damage = self.analysis_runs.damage_analysis(run.id)
         if damage is None:
             raise AnalysisConfirmationBlockedError(
@@ -103,11 +114,7 @@ class ClaimReviewOperations:
         result = self.llm_copilot.generate(input_data)
         provider_model = self.llm_model if result.status is CopilotConclusionStatus.GENERATED else None
         conclusion = self.copilot_conclusions.create(damage, result, provider_model)
-        failed_documents = sum(
-            document["status"] == AnalysisResultStatus.FAILED.value
-            for document in payload.get("documents", [])
-        )
-        validity_percentage = max(0, min(100, 85 - failed_documents * 15 - len(warnings) * 5))
+        validity_percentage = max(0, min(100, 100 - len(warnings) * 5))
         self.workflow_ai_reviews.create(
             run.id,
             conclusion,

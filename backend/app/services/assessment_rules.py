@@ -29,7 +29,6 @@ class AssessmentRuleService:
 
     def default_values(self) -> AssessmentRuleValues:
         return AssessmentRuleValues(
-            confidence_threshold=self.settings.damage_confidence_threshold,
             repair_max_percentage=self.settings.damage_repair_max_percentage,
             replacement_min_percentage=self.settings.damage_replacement_min_percentage,
         )
@@ -70,12 +69,10 @@ class AssessmentRuleService:
             changed_by=self.repository.user_email(change.changed_by_user_id) or "Unknown user",
             changed_at=change.changed_at,
             old_values=AssessmentRuleValuesSchema(
-                confidence_threshold=change.old_confidence_threshold,
                 repair_max_percentage=change.old_repair_max_percentage,
                 replacement_min_percentage=change.old_replacement_min_percentage,
             ),
             new_values=AssessmentRuleValuesSchema(
-                confidence_threshold=change.new_confidence_threshold,
                 repair_max_percentage=change.new_repair_max_percentage,
                 replacement_min_percentage=change.new_replacement_min_percentage,
             ),

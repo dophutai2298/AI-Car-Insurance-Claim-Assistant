@@ -34,9 +34,6 @@ class Settings(BaseSettings):
     damage_min_percent: float = Field(default=3.0, ge=0, le=100, validation_alias="DAMAGE_MIN_PERCENT")
     damage_image_size: int = Field(default=640, ge=32, validation_alias="DAMAGE_IMAGE_SIZE")
     damage_device: str = Field(default="cpu", validation_alias="DAMAGE_DEVICE")
-    damage_confidence_threshold: float = Field(
-        default=0.70, ge=0, le=1, validation_alias="DAMAGE_CONFIDENCE_THRESHOLD"
-    )
     damage_repair_max_percentage: float = Field(
         default=40, ge=0, le=100, validation_alias="DAMAGE_REPAIR_MAX_PERCENTAGE"
     )
@@ -71,7 +68,6 @@ class Settings(BaseSettings):
     def public_runtime(self) -> dict[str, str]:
         return {
             "damage_model_mode": self.damage_model_mode,
-            "damage_confidence_threshold": str(self.damage_confidence_threshold),
             "part_search_mode": self.part_search_mode,
             "document_ocr_mode": self.document_ocr_mode,
             "llm_mode": self.llm_mode,

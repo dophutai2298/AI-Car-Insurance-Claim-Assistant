@@ -43,15 +43,12 @@ class AssessmentRuleRepository:
         self.session.add(
             AssessmentRuleChange(
                 changed_by_user_id=changed_by.id,
-                old_confidence_threshold=previous_values.confidence_threshold,
                 old_repair_max_percentage=previous_values.repair_max_percentage,
                 old_replacement_min_percentage=previous_values.replacement_min_percentage,
-                new_confidence_threshold=values.confidence_threshold,
                 new_repair_max_percentage=values.repair_max_percentage,
                 new_replacement_min_percentage=values.replacement_min_percentage,
             )
         )
-        configuration.confidence_threshold = values.confidence_threshold
         configuration.repair_max_percentage = values.repair_max_percentage
         configuration.replacement_min_percentage = values.replacement_min_percentage
         configuration.updated_by_user_id = changed_by.id
@@ -69,7 +66,6 @@ class AssessmentRuleRepository:
     @staticmethod
     def values_from_configuration(configuration: AssessmentRuleConfiguration) -> AssessmentRuleValues:
         return AssessmentRuleValues(
-            confidence_threshold=configuration.confidence_threshold,
             repair_max_percentage=configuration.repair_max_percentage,
             replacement_min_percentage=configuration.replacement_min_percentage,
         )

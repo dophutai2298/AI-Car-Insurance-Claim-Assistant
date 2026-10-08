@@ -158,7 +158,6 @@ class DamageAnalysisRepository:
         self.session.add(
             DamageAnalysisRuleSnapshot(
                 analysis_id=analysis_id,
-                confidence_threshold=rules.confidence_threshold,
                 repair_max_percentage=rules.repair_max_percentage,
                 replacement_min_percentage=rules.replacement_min_percentage,
             )

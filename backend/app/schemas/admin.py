@@ -4,7 +4,6 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class AssessmentRuleValuesSchema(BaseModel):
-    confidence_threshold: float = Field(ge=0, le=1)
     repair_max_percentage: float = Field(ge=0, le=100)
     replacement_min_percentage: float = Field(ge=0, le=100)
 

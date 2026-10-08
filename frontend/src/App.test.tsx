@@ -1018,7 +1018,6 @@ test("legacy claim data remains readable and requests the missing workflow infor
           warning:
             "No significant vehicle damage was detected. This does not guarantee the vehicle is undamaged.",
           rules: {
-            confidence_threshold: 0.7,
             repair_max_percentage: 40,
             replacement_min_percentage: 60,
           },
@@ -1168,7 +1167,6 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
     },
     warning: null,
     rules: {
-      confidence_threshold: 0.7,
       repair_max_percentage: 40,
       replacement_min_percentage: 60,
     },
@@ -1454,8 +1452,9 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
     screen.getByText("Reference prices require adjuster verification."),
   ).toBeVisible();
   expect(screen.getByText("85%")).toBeVisible();
+  expect(screen.getByText("Analysis completeness score")).toBeVisible();
   expect(
-    screen.getByText(/not an automatic approval probability/i),
+    screen.getByText(/reflects non-blocking processing warnings/i),
   ).toBeVisible();
   await user.type(
     screen.getByLabelText("Review note"),
@@ -1507,7 +1506,6 @@ test("adjuster reviews persisted identity extraction without a confidence score"
     detections: [],
     warning: null,
     rules: {
-      confidence_threshold: 0.7,
       repair_max_percentage: 40,
       replacement_min_percentage: 60,
     },
@@ -1658,12 +1656,20 @@ test("adjuster reviews persisted identity extraction without a confidence score"
 
 test("analysis gate messages are available in English and Vietnamese", async () => {
   await i18n.changeLanguage("en");
+  expect(i18n.t("aiReview.validity")).toBe("Analysis completeness score");
+  expect(i18n.t("aiReview.validityDisclaimer")).toMatch(
+    /does not indicate claim validity or approval likelihood/i,
+  );
   expect(
     i18n.t("documents.blockReasons.COMPARISON_MISMATCH", {
       field: "Full name",
     }),
   ).toBe("Full name does not match Claim Information.");
   await i18n.changeLanguage("vi");
+  expect(i18n.t("aiReview.validity")).toBe("Điểm hoàn thiện phân tích");
+  expect(i18n.t("aiReview.validityDisclaimer")).toMatch(
+    /không xác định tính hợp lệ hay khả năng được duyệt/i,
+  );
   expect(
     i18n.t("documents.blockReasons.COMPARISON_MISMATCH", {
       field: "Họ và tên",
@@ -1892,7 +1898,6 @@ test("adjuster reviews registration and driver license extraction fields", async
 test("admin can update global assessment rules from the configuration page", async () => {
   let configuration: AssessmentRuleConfiguration = {
     values: {
-      confidence_threshold: 0.7,
       repair_max_percentage: 40,
       replacement_min_percentage: 60,
     },
@@ -1927,13 +1932,12 @@ test("admin can update global assessment rules from the configuration page", asy
   const user = userEvent.setup();
   renderRoute("/admin");
 
-  await user.clear(await screen.findByLabelText(/confidence threshold/i));
-  await user.type(screen.getByLabelText(/confidence threshold/i), "0.8");
+  await user.clear(await screen.findByLabelText(/repair maximum/i));
+  await user.type(screen.getByLabelText(/repair maximum/i), "35");
   await user.click(screen.getByRole("button", { name: /save rules/i }));
 
   expect(savedValues).toEqual({
-    confidence_threshold: 0.8,
-    repair_max_percentage: 40,
+    repair_max_percentage: 35,
     replacement_min_percentage: 60,
   });
   expect(
@@ -1944,7 +1948,6 @@ test("admin can update global assessment rules from the configuration page", asy
 test("admin can create, disable, and re-enable a vehicle manufacturer", async () => {
   const configuration: AssessmentRuleConfiguration = {
     values: {
-      confidence_threshold: 0.7,
       repair_max_percentage: 40,
       replacement_min_percentage: 60,
     },

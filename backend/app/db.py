@@ -67,6 +67,33 @@ def upgrade_legacy_ai_review_constraints(engine: Engine) -> None:
                 )
 
 
+def remove_legacy_confidence_threshold_columns(engine: Engine) -> None:
+    """Drop obsolete configurable confidence thresholds from existing databases."""
+    inspector = inspect(engine)
+    tables = {
+        "assessment_rule_configurations": ("confidence_threshold",),
+        "assessment_rule_changes": (
+            "old_confidence_threshold",
+            "new_confidence_threshold",
+        ),
+        "damage_analysis_rule_snapshots": ("confidence_threshold",),
+    }
+    existing_tables = set(inspector.get_table_names())
+    quote = engine.dialect.identifier_preparer.quote
+
+    with engine.begin() as connection:
+        for table_name, obsolete_columns in tables.items():
+            if table_name not in existing_tables:
+                continue
+            columns = {column["name"] for column in inspector.get_columns(table_name)}
+            for column_name in obsolete_columns:
+                if column_name not in columns:
+                    continue
+                connection.exec_driver_sql(
+                    f"ALTER TABLE {quote(table_name)} DROP COLUMN {quote(column_name)}"
+                )
+
+
 def get_db(request: Request) -> Iterator[Session]:
     with request.app.state.session_factory() as session:
         yield session

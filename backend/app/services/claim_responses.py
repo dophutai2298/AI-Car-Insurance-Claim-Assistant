@@ -490,7 +490,6 @@ class ClaimResponseAssembler:
         if snapshot is None:
             return None
         return AssessmentRuleValuesSchema(
-            confidence_threshold=snapshot.confidence_threshold,
             repair_max_percentage=snapshot.repair_max_percentage,
             replacement_min_percentage=snapshot.replacement_min_percentage,
         )
