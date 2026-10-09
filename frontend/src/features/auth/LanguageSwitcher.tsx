@@ -1,8 +1,9 @@
-import { Translate } from "@carbon/icons-react";
 import { Switch } from "@heroui/react";
 import { useTranslation } from "react-i18next";
 
 import { languageStorageKey } from "../../i18n";
+import ukFlag from "../../i18n/icon/uk.png";
+import vietnamFlag from "../../i18n/icon/vietnam.png";
 
 export function LanguageSwitcher() {
   const { i18n, t } = useTranslation();
@@ -22,32 +23,26 @@ export function LanguageSwitcher() {
       onChange={(selected) => void changeLanguage(selected)}
       size="sm"
     >
-      <Switch.Content className="flex w-full items-center gap-2">
-        <Translate
+      <Switch.Content className="flex w-full items-center justify-center gap-2">
+        <img
+          alt=""
           aria-hidden="true"
-          className="shrink-0 text-slate-300"
-          size={17}
+          className={`h-4 w-6 rounded-sm object-cover ring-1 ring-white/10 transition-opacity ${
+            isVietnamese ? "opacity-45" : "opacity-100"
+          }`}
+          src={ukFlag}
         />
-        <span
-          className={
-            isVietnamese ? "text-slate-400" : "font-semibold text-white"
-          }
-        >
-          EN
-        </span>
-        <Switch.Control className="mx-1 bg-slate-600 data-[selected=true]:bg-blue-500">
+        <Switch.Control className="bg-slate-600 data-[selected=true]:bg-blue-500">
           <Switch.Thumb />
         </Switch.Control>
-        <span
-          className={
-            isVietnamese ? "font-semibold text-white" : "text-slate-400"
-          }
-        >
-          VI
-        </span>
-        <span className="ml-auto hidden text-xs text-slate-300 lg:inline">
-          {isVietnamese ? t("language.vietnamese") : t("language.english")}
-        </span>
+        <img
+          alt=""
+          aria-hidden="true"
+          className={`h-4 w-6 rounded-sm object-cover ring-1 ring-white/10 transition-opacity ${
+            isVietnamese ? "opacity-100" : "opacity-45"
+          }`}
+          src={vietnamFlag}
+        />
       </Switch.Content>
     </Switch>
   );
