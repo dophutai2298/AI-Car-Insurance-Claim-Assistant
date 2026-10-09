@@ -338,6 +338,15 @@ class AiReviewStructuredResponse(BaseModel):
     human_review_required: bool
 
 
+class AiReviewTranslationResponse(BaseModel):
+    conclusion_id: int
+    locale: Literal["vi"]
+    structured_review: AiReviewStructuredResponse
+    prompt_version: str
+    schema_version: str
+    provider_model: str | None
+
+
 class CopilotConclusionResponse(BaseModel):
     id: int
     revision: int = Field(ge=1)

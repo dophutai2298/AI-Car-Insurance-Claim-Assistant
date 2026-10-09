@@ -34,7 +34,8 @@ from app.services.document_extraction import (
 from app.services.evidence_storage import LocalEvidenceStorage
 from app.services.damage_model import DamageModelAnalysisResult, DamageModelImageResult, DamagePart, DamageType
 from app.services.damage_assessment import DamageAssessmentService
-from app.services.llm_copilot import LlmCopilotService
+from app.services.llm_copilot import AiReviewStructuredResult, LlmCopilotService
+from app.services.ai_review_translation import AiReviewTranslationError
 from app.repositories.claim_deletion import ClaimDeletionRepository
 
 
@@ -2858,6 +2859,91 @@ def create_reviewable_conclusion(client: TestClient) -> tuple[dict[str, object],
         f"/api/claims/{claim['id']}/damage-analysis", headers=admin_headers(client)
     ).json()
     return claim, analysis["copilot_conclusion"]
+
+
+def test_vietnamese_ai_review_translation_is_cached_without_changing_canonical_review(
+    client: TestClient, monkeypatch
+):
+    calls: list[AiReviewStructuredResult] = []
+    translated = AiReviewStructuredResult(
+        summary="Hồ sơ cần chuyên viên thẩm định xem xét.",
+        assessment_interpretation="Kết quả xác định xe có khả năng cần sửa chữa.",
+        damaged_parts_summary="Cản sau bị móp trên 32,5% diện tích bộ phận.",
+        document_consistency_summary="Các trường đã đối chiếu đều khớp.",
+        warnings=["Chưa có giá phụ tùng tham khảo."],
+        recommended_next_step="Kiểm tra trực tiếp cản sau trước khi quyết định.",
+        human_review_required=True,
+    )
+
+    class FakeTranslationAdapter:
+        def translate(self, review: AiReviewStructuredResult) -> AiReviewStructuredResult:
+            calls.append(review)
+            return translated
+
+    monkeypatch.setattr(
+        claim_composition,
+        "get_ai_review_translation_adapter",
+        lambda _settings: FakeTranslationAdapter(),
+    )
+    claim, conclusion = create_reviewable_conclusion(client)
+    original_summary = conclusion["summary"]
+    original_validity = conclusion["validity_percentage"]
+    path = (
+        f"/api/claims/{claim['id']}/copilot-conclusions/"
+        f"{conclusion['id']}/translations/vi"
+    )
+
+    first = client.post(path, headers=adjuster_headers(client))
+    second = client.post(path, headers=adjuster_headers(client))
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json() == second.json()
+    assert first.json()["locale"] == "vi"
+    assert first.json()["structured_review"] == translated.model_dump(mode="json")
+    assert first.json()["prompt_version"] == "ai-review-translation-vi-v1"
+    assert len(calls) == 1
+    assert calls[0].summary == original_summary
+
+    reloaded = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_damage_analysis"]["copilot_conclusion"]
+    assert reloaded["summary"] == original_summary
+    assert reloaded["validity_percentage"] == original_validity
+    assert reloaded["review_history"] == []
+
+
+def test_vietnamese_ai_review_translation_failure_preserves_canonical_review(
+    client: TestClient, monkeypatch
+):
+    class FailingTranslationAdapter:
+        def translate(self, _review: AiReviewStructuredResult) -> AiReviewStructuredResult:
+            raise AiReviewTranslationError("Provider request failed")
+
+    monkeypatch.setattr(
+        claim_composition,
+        "get_ai_review_translation_adapter",
+        lambda _settings: FailingTranslationAdapter(),
+    )
+    claim, conclusion = create_reviewable_conclusion(client)
+    original_summary = conclusion["summary"]
+    original_history = conclusion["review_history"]
+
+    response = client.post(
+        f"/api/claims/{claim['id']}/copilot-conclusions/"
+        f"{conclusion['id']}/translations/vi",
+        headers=adjuster_headers(client),
+    )
+
+    assert response.status_code == 502
+    assert response.json() == {
+        "detail": "Vietnamese AI Review translation is unavailable"
+    }
+    reloaded = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_damage_analysis"]["copilot_conclusion"]
+    assert reloaded["summary"] == original_summary
+    assert reloaded["review_history"] == original_history
 
 
 def test_admin_can_approve_an_ai_conclusion_and_view_persisted_review_history(client: TestClient):

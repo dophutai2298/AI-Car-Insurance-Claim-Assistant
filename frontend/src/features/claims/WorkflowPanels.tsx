@@ -45,6 +45,7 @@ import {
 import { ClaimsApiError } from "./claimsApi";
 import { DocumentAnalysisResults } from "./DocumentAnalysisResults";
 import {
+  useAiReviewTranslation,
   useRevertCopilotReview,
   useReviewCopilotConclusion,
   useWorkflowAiReview,
@@ -367,9 +368,7 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
           ) : null}
           <div className="grid min-w-0 gap-4">
             <DataTableToolbar
-              clearLabel={t("common.clearFilters", {
-                defaultValue: "Clear filters",
-              })}
+              clearLabel={t("common.clearFilters")}
               isFiltered={isFiltered}
               onClear={() => {
                 setGlobalFilter("");
@@ -378,17 +377,19 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
               onSearchChange={setGlobalFilter}
               resultCount={rows.length}
               resultLabel={
-                rows.length === 1 ? "finding shown" : "findings shown"
+                rows.length === 1
+                  ? t("analysis.findingShown")
+                  : t("analysis.findingsShown")
               }
-              searchLabel="Search findings"
-              searchPlaceholder="Part or damage type"
+              searchLabel={t("analysis.searchFindings")}
+              searchPlaceholder={t("analysis.searchFindingsPlaceholder")}
               searchValue={globalFilter}
             >
               <TableFilterSelect
                 label={t("analysis.damageType")}
                 onChange={setDamageTypeFilter}
                 options={[
-                  { label: "All damage types", value: "ALL" },
+                  { label: t("analysis.allDamageTypes"), value: "ALL" },
                   ...damageTypes.map((damageType) => ({
                     label: damageType,
                     value: damageType,
@@ -446,7 +447,7 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
                         colSpan={3}
                       >
                         {damageRows.length
-                          ? "No damage findings match the selected filters."
+                          ? t("analysis.noDamageMatches")
                           : t("analysis.noDamage")}
                       </td>
                     </tr>
@@ -475,6 +476,7 @@ function DamageSortHeader({
   column: LegacyColumn<DamageFindingRow>;
   label: string;
 }) {
+  const { t } = useTranslation();
   const direction = column.getIsSorted();
   const Icon =
     direction === "asc"
@@ -484,7 +486,10 @@ function DamageSortHeader({
         : ChevronSort;
   return (
     <button
-      aria-label={`Sort ${label} ${direction === "asc" ? "descending" : "ascending"}`}
+      aria-label={t(
+        direction === "asc" ? "common.sortDescending" : "common.sortAscending",
+        { column: label },
+      )}
       className={`inline-flex items-center gap-1 hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-500 ${align === "right" ? "justify-end" : ""}`}
       onClick={column.getToggleSortingHandler()}
       type="button"
@@ -586,7 +591,7 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
           </Alert>
         ) : null}
         {conclusion ? (
-          <AiReviewResult conclusion={conclusion} />
+          <AiReviewResult claimId={claim.id} conclusion={conclusion} />
         ) : (
           <div className="grid gap-2 text-sm text-slate-500">
             <p>
@@ -622,13 +627,22 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
   );
 }
 
-function AiReviewResult({ conclusion }: { conclusion: CopilotConclusion }) {
-  const { t } = useTranslation();
+function AiReviewResult({
+  claimId,
+  conclusion,
+}: {
+  claimId: string;
+  conclusion: CopilotConclusion;
+}) {
+  const { i18n, t } = useTranslation();
+  const locale = i18n.resolvedLanguage?.startsWith("vi") ? "vi" : undefined;
+  const translation = useAiReviewTranslation(claimId, conclusion.id, locale);
+  const structuredReview =
+    locale && translation.data
+      ? translation.data.structured_review
+      : conclusion.structured_review;
   const warnings = Array.from(
-    new Set([
-      ...conclusion.warnings,
-      ...(conclusion.structured_review?.warnings ?? []),
-    ]),
+    new Set([...conclusion.warnings, ...(structuredReview?.warnings ?? [])]),
   );
 
   return (
@@ -651,7 +665,11 @@ function AiReviewResult({ conclusion }: { conclusion: CopilotConclusion }) {
         <div>
           <div className="flex flex-wrap gap-2">
             <Chip color="warning" variant="soft">
-              {conclusion.review_status ?? t("aiReview.reviewRequired")}
+              {conclusion.review_status
+                ? t(`claim.status.${conclusion.review_status}`, {
+                    defaultValue: conclusion.review_status,
+                  })
+                : t("aiReview.reviewRequired")}
             </Chip>
             <Chip
               color={
@@ -671,10 +689,28 @@ function AiReviewResult({ conclusion }: { conclusion: CopilotConclusion }) {
             </Chip>
           </div>
           <p className="mt-4 text-sm leading-6 text-slate-700">
-            {conclusion.summary}
+            {structuredReview?.summary ?? conclusion.summary}
           </p>
         </div>
       </div>
+      {locale && translation.isPending ? (
+        <div
+          aria-live="polite"
+          className="flex items-center gap-3 border-l-2 border-blue-500 bg-blue-50 px-4 py-3 text-sm text-blue-950"
+          role="status"
+        >
+          <Spinner aria-label={t("aiReview.translationLoading")} size="sm" />
+          {t("aiReview.translationLoading")}
+        </div>
+      ) : null}
+      {locale && translation.error ? (
+        <Alert status="warning">
+          <Alert.Title>{t("aiReview.translationUnavailable")}</Alert.Title>
+          <Alert.Description>
+            {t("aiReview.translationFallback")}
+          </Alert.Description>
+        </Alert>
+      ) : null}
       {conclusion.status === "LLM_UNAVAILABLE" ? (
         <Alert status="danger">
           <Alert.Title>{t("aiReview.unavailable")}</Alert.Title>
@@ -683,25 +719,25 @@ function AiReviewResult({ conclusion }: { conclusion: CopilotConclusion }) {
           </Alert.Description>
         </Alert>
       ) : null}
-      {conclusion.structured_review ? (
+      {structuredReview ? (
         <div className="grid gap-3">
           <dl className="divide-y divide-slate-200 border-y border-slate-200">
             {[
               [
                 t("aiReview.assessmentInterpretation"),
-                conclusion.structured_review.assessment_interpretation,
+                structuredReview.assessment_interpretation,
               ],
               [
                 t("aiReview.damagedPartsSummary"),
-                conclusion.structured_review.damaged_parts_summary,
+                structuredReview.damaged_parts_summary,
               ],
               [
                 t("aiReview.documentConsistency"),
-                conclusion.structured_review.document_consistency_summary,
+                structuredReview.document_consistency_summary,
               ],
               [
                 t("aiReview.recommendedNextStep"),
-                conclusion.structured_review.recommended_next_step,
+                structuredReview.recommended_next_step,
               ],
             ].map(([label, value]) => (
               <div
@@ -715,7 +751,7 @@ function AiReviewResult({ conclusion }: { conclusion: CopilotConclusion }) {
               </div>
             ))}
           </dl>
-          {conclusion.structured_review.human_review_required ? (
+          {structuredReview.human_review_required ? (
             <p className="border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-950">
               {t("aiReview.humanReviewRequired")}
             </p>
@@ -724,7 +760,9 @@ function AiReviewResult({ conclusion }: { conclusion: CopilotConclusion }) {
       ) : null}
       {warnings.length ? (
         <Alert status="warning">
-          <WarningAlt size={18} />
+          <Alert.Indicator className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-700">
+            <WarningAlt aria-hidden="true" size={20} />
+          </Alert.Indicator>
           <Alert.Title>{t("aiReview.warnings")}</Alert.Title>
           <Alert.Description>{warnings.join(" ")}</Alert.Description>
         </Alert>

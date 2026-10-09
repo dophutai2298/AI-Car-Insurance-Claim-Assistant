@@ -559,6 +559,28 @@ class CopilotReviewOutput(Base):
     )
 
 
+class CopilotReviewTranslation(Base):
+    __tablename__ = "copilot_review_translations"
+    __table_args__ = (
+        UniqueConstraint(
+            "conclusion_id", "locale", name="uq_copilot_review_translation_locale"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conclusion_id: Mapped[int] = mapped_column(
+        ForeignKey("copilot_conclusions.id"), index=True
+    )
+    locale: Mapped[str] = mapped_column(String(10))
+    translation_json: Mapped[str] = mapped_column(Text)
+    prompt_version: Mapped[str] = mapped_column(String(80))
+    schema_version: Mapped[str] = mapped_column(String(80))
+    provider_model: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
 class CopilotConclusionReview(Base):
     __tablename__ = "copilot_conclusion_reviews"
 

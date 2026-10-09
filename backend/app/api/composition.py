@@ -4,6 +4,7 @@ from app.core.config import Settings
 from app.repositories.assessment_rules import AssessmentRuleRepository
 from app.repositories.vehicle_manufacturers import VehicleManufacturerRepository
 from app.services.assessment_rules import AssessmentRuleService
+from app.services.ai_review_translation import get_ai_review_translation_adapter
 from app.services.claims import ClaimService
 from app.services.damage_assessment import DamageAssessmentService
 from app.services.damage_model import get_damage_model_adapter
@@ -29,6 +30,7 @@ def build_claim_service(session: Session, settings: Settings) -> ClaimService:
         PartSearchService(get_part_price_provider(settings)),
         LlmCopilotService(get_llm_copilot_adapter(settings)),
         settings.openai_model,
+        get_ai_review_translation_adapter(settings),
         VehicleManufacturerService(VehicleManufacturerRepository(session)),
         MockDocumentAnalysisAdapter(),
         get_document_ocr_adapter(settings.document_ocr_mode),

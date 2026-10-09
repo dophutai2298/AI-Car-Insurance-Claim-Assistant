@@ -1,4 +1,5 @@
 import type {
+  AiReviewTranslation,
   ClaimCreateInput,
   AnalysisBlockedReason,
   ClaimDetail,
@@ -127,7 +128,11 @@ export const runDamageAnalysis = (claimId: string, accessToken: string) =>
     accessToken,
     { method: "POST" },
   );
-export const startWorkflowAnalysis = (claimId: string, accessToken: string, force = false) =>
+export const startWorkflowAnalysis = (
+  claimId: string,
+  accessToken: string,
+  force = false,
+) =>
   request<WorkflowAnalysisRun>(
     `/api/claims/${claimId}/analysis-runs${force ? "?force=true" : ""}`,
     accessToken,
@@ -199,6 +204,17 @@ export const runWorkflowAiReview = (
 ) =>
   request<ClaimDetail>(
     `/api/claims/${claimId}/analysis-runs/${runId}/ai-review`,
+    accessToken,
+    { method: "POST" },
+  );
+export const translateAiReview = (
+  claimId: string,
+  conclusionId: number,
+  locale: "vi",
+  accessToken: string,
+) =>
+  request<AiReviewTranslation>(
+    `/api/claims/${claimId}/copilot-conclusions/${conclusionId}/translations/${locale}`,
     accessToken,
     { method: "POST" },
   );

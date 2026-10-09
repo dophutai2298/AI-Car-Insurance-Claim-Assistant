@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, Response
@@ -15,6 +15,7 @@ from app.schemas.claims import (
     ClaimInformationUpdateRequest,
     ClaimListItem,
     ClaimResponse,
+    AiReviewTranslationResponse,
     ClaimStatusUpdateRequest,
     CopilotConclusionReviewRequest,
     CopilotConclusionReviewRevertRequest,
@@ -30,6 +31,7 @@ from app.services.claims import (
     EvidencePersistenceError,
 )
 from app.services.analysis_errors import AnalysisConfirmationBlockedError
+from app.services.ai_review_translation import AiReviewTranslationError
 from app.services.claim_errors import ClaimConflictError, ClaimResourceNotFoundError, ClaimValidationError
 from app.services.damage_model import DamageModelUnavailableError
 from app.services.evidence_storage import EvidenceStorageError, EvidenceValidationError, detect_safe_media_type
@@ -404,6 +406,35 @@ def run_workflow_ai_review(
     if claim is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
     return claim
+
+
+@router.post(
+    "/{claim_number}/copilot-conclusions/{conclusion_id}/translations/{locale}",
+    response_model=AiReviewTranslationResponse,
+)
+def translate_copilot_conclusion(
+    claim_number: str,
+    conclusion_id: int,
+    locale: Literal["vi"],
+    _current_user: AiReviewUser,
+    service: ClaimServiceDependency,
+) -> AiReviewTranslationResponse:
+    try:
+        translation = service.translate_copilot_conclusion(
+            claim_number, conclusion_id, locale
+        )
+    except ClaimResourceNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(error)
+        ) from error
+    except AiReviewTranslationError as error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Vietnamese AI Review translation is unavailable",
+        ) from error
+    if translation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
+    return translation
 
 
 @router.post(

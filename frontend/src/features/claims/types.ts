@@ -309,6 +309,15 @@ export type AiReviewStructuredResult = {
   human_review_required: boolean;
 };
 
+export type AiReviewTranslation = {
+  conclusion_id: number;
+  locale: "vi";
+  structured_review: AiReviewStructuredResult;
+  prompt_version: string;
+  schema_version: string;
+  provider_model: string | null;
+};
+
 export type CopilotConclusionReviewStatus = "APPROVED" | "REJECTED";
 export type CopilotConclusionRejectionCategory =
   | "DOCUMENT_INFORMATION_INCOMPLETE"

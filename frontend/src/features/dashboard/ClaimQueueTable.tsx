@@ -20,13 +20,14 @@ import {
   useLegacyTable,
 } from "@tanstack/react-table/legacy";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 
 import {
   DataTableToolbar,
   TableFilterSelect,
 } from "../../components/DataTableToolbar";
-import { statusLabel, statusTone } from "../claims/statusPresentation";
+import { statusTone } from "../claims/statusPresentation";
 import type { ClaimStatus } from "../claims/types";
 import type { ClaimQueueItem } from "./types";
 
@@ -37,15 +38,11 @@ type ClaimQueueTableProps = {
 
 type DateRange = "ALL" | "TODAY" | "LAST_7_DAYS" | "LAST_30_DAYS";
 
-const dateFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-
 export function ClaimQueueTable({
   claims,
-  emptyMessage = "No claims match the selected filters.",
+  emptyMessage,
 }: ClaimQueueTableProps) {
+  const { i18n, t } = useTranslation();
   const [globalFilter, setGlobalFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<ClaimStatus | "ALL">("ALL");
   const [dateRange, setDateRange] = useState<DateRange>("ALL");
@@ -63,7 +60,7 @@ export function ClaimQueueTable({
     () => [
       {
         accessorKey: "id",
-        header: "Claim",
+        header: t("queue.claim"),
         cell: ({ row }) => (
           <div>
             <Link
@@ -80,28 +77,29 @@ export function ClaimQueueTable({
       },
       {
         accessorKey: "vehicle",
-        header: "Vehicle",
+        header: t("queue.vehicle"),
       },
       {
         accessorKey: "status",
-        header: "Review status",
+        header: t("queue.reviewStatus"),
         cell: ({ row }) => (
           <Chip
             color={statusTone[row.original.status]}
             size="sm"
             variant="soft"
           >
-            {statusLabel[row.original.status]}
+            {t(`claim.status.${row.original.status}`)}
           </Chip>
         ),
       },
       {
         accessorKey: "updatedAt",
-        header: "Last updated",
-        cell: ({ row }) => formatDateTime(row.original.updatedAt),
+        header: t("queue.lastUpdated"),
+        cell: ({ row }) =>
+          formatDateTime(row.original.updatedAt, i18n.language),
       },
     ],
-    [],
+    [i18n.language, t],
   );
   const table = useLegacyTable({
     data: dateFilteredClaims,
@@ -144,7 +142,7 @@ export function ClaimQueueTable({
   return (
     <div className="grid gap-4">
       <DataTableToolbar
-        clearLabel="Clear filters"
+        clearLabel={t("queue.clearFilters")}
         isFiltered={isFiltered}
         onClear={() => {
           setGlobalFilter("");
@@ -153,31 +151,33 @@ export function ClaimQueueTable({
         }}
         onSearchChange={setGlobalFilter}
         resultCount={rows.length}
-        resultLabel={rows.length === 1 ? "claim shown" : "claims shown"}
-        searchLabel="Search claims"
-        searchPlaceholder="Claim number, claimant, or vehicle"
+        resultLabel={
+          rows.length === 1 ? t("queue.claimShown") : t("queue.claimsShown")
+        }
+        searchLabel={t("queue.searchLabel")}
+        searchPlaceholder={t("queue.searchPlaceholder")}
         searchValue={globalFilter}
       >
         <TableFilterSelect
-          label="Status"
+          label={t("queue.status")}
           onChange={(value) => setStatusFilter(value as ClaimStatus | "ALL")}
           options={[
-            { label: "All statuses", value: "ALL" },
-            ...Object.entries(statusLabel).map(([value, label]) => ({
-              label,
+            { label: t("queue.allStatuses"), value: "ALL" },
+            ...(Object.keys(statusTone) as ClaimStatus[]).map((value) => ({
+              label: t(`claim.status.${value}`),
               value,
             })),
           ]}
           value={statusFilter}
         />
         <TableFilterSelect
-          label="Updated"
+          label={t("queue.updated")}
           onChange={(value) => setDateRange(value as DateRange)}
           options={[
-            { label: "All dates", value: "ALL" },
-            { label: "Today", value: "TODAY" },
-            { label: "Last 7 days", value: "LAST_7_DAYS" },
-            { label: "Last 30 days", value: "LAST_30_DAYS" },
+            { label: t("queue.allDates"), value: "ALL" },
+            { label: t("queue.today"), value: "TODAY" },
+            { label: t("queue.last7Days"), value: "LAST_7_DAYS" },
+            { label: t("queue.last30Days"), value: "LAST_30_DAYS" },
           ]}
           value={dateRange}
         />
@@ -216,7 +216,12 @@ export function ClaimQueueTable({
                     >
                       {header.isPlaceholder ? null : (
                         <button
-                          aria-label={`Sort ${label} ${direction === "asc" ? "descending" : "ascending"}`}
+                          aria-label={t(
+                            direction === "asc"
+                              ? "queue.sortDescending"
+                              : "queue.sortAscending",
+                            { column: label },
+                          )}
                           className="inline-flex items-center gap-1 text-left hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                           onClick={header.column.getToggleSortingHandler()}
                           type="button"
@@ -250,7 +255,7 @@ export function ClaimQueueTable({
                   className="px-4 py-10 text-center text-sm text-slate-500"
                   colSpan={columns.length}
                 >
-                  {emptyMessage}
+                  {emptyMessage ?? t("queue.empty")}
                 </td>
               </tr>
             ) : null}
@@ -261,12 +266,16 @@ export function ClaimQueueTable({
       <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-end sm:justify-between">
         <p className="text-sm tabular-nums text-slate-600">
           {totalRows
-            ? `Showing ${firstVisibleRow}-${lastVisibleRow} of ${totalRows} claims`
-            : "No claims to show"}
+            ? t("queue.showing", {
+                first: firstVisibleRow,
+                last: lastVisibleRow,
+                total: totalRows,
+              })
+            : t("queue.none")}
         </p>
         <div className="flex flex-wrap items-end gap-2">
           <TableFilterSelect
-            label="Rows per page"
+            label={t("queue.rowsPerPage")}
             onChange={(value) =>
               setPagination({ pageIndex: 0, pageSize: Number(value) })
             }
@@ -278,7 +287,7 @@ export function ClaimQueueTable({
           />
           <div className="flex items-center gap-1 pb-0.5">
             <Button
-              aria-label="Previous page"
+              aria-label={t("queue.previousPage")}
               isDisabled={!canGoToPreviousPage}
               onPress={() =>
                 setPagination((current) => ({
@@ -292,10 +301,13 @@ export function ClaimQueueTable({
               <ChevronLeft size={18} />
             </Button>
             <span className="min-w-24 px-2 text-center text-sm font-medium tabular-nums text-slate-700">
-              Page {totalRows ? pagination.pageIndex + 1 : 0} of {pageCount}
+              {t("queue.page", {
+                current: totalRows ? pagination.pageIndex + 1 : 0,
+                total: pageCount,
+              })}
             </span>
             <Button
-              aria-label="Next page"
+              aria-label={t("queue.nextPage")}
               isDisabled={!canGoToNextPage}
               onPress={() =>
                 setPagination((current) => ({
@@ -315,9 +327,13 @@ export function ClaimQueueTable({
   );
 }
 
-function formatDateTime(value: string) {
+function formatDateTime(value: string, locale: string) {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : dateFormatter.format(date);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
 }
 
 function isWithinDateRange(value: string, range: DateRange) {
