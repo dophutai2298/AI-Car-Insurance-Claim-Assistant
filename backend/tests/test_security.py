@@ -89,6 +89,7 @@ PROTECTED_ROUTES = [
     ("PATCH", "/api/claims/CLM-999999/analysis-runs/1/extraction-fields/1", True),
     ("PUT", "/api/claims/CLM-999999/analysis-runs/1/extraction-fields", True),
     ("POST", "/api/claims/CLM-999999/analysis-runs/1/ai-review", True),
+    ("POST", "/api/claims/CLM-999999/copilot-conclusions/1/translations/vi", True),
     ("POST", "/api/claims/CLM-999999/copilot-conclusions/1/review", True),
     ("POST", "/api/claims/CLM-999999/copilot-conclusions/1/review/revert", True),
 ]

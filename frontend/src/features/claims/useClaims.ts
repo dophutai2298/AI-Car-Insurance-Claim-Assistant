@@ -12,6 +12,7 @@ import {
   runDamageAnalysis,
   runWorkflowAiReview,
   startWorkflowAnalysis,
+  translateAiReview,
   transitionClaimStatus,
   updateClaimInformation,
   updateDocumentExtractedField,
@@ -152,7 +153,8 @@ export function useWorkflowAnalysis(claimId: string | undefined) {
   const { session } = useAuth();
   const queryClient = useQueryClient();
   return useMutation<WorkflowAnalysisRun, Error, boolean>({
-    mutationFn: (force) => startWorkflowAnalysis(claimId!, session!.access_token, force),
+    mutationFn: (force) =>
+      startWorkflowAnalysis(claimId!, session!.access_token, force),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: [...claimsQueryKey, claimId] }),
   });
@@ -262,6 +264,27 @@ export function useWorkflowAiReview(
     mutationFn: () =>
       runWorkflowAiReview(claimId!, runId!, session!.access_token),
     onSuccess: cache,
+  });
+}
+
+export function useAiReviewTranslation(
+  claimId: string | undefined,
+  conclusionId: number | undefined,
+  locale: "vi" | undefined,
+) {
+  const { session } = useAuth();
+  return useQuery({
+    queryKey: ["ai-review-translation", conclusionId, locale],
+    queryFn: () =>
+      translateAiReview(
+        claimId!,
+        conclusionId!,
+        locale!,
+        session!.access_token,
+      ),
+    enabled: Boolean(session && claimId && conclusionId && locale),
+    retry: false,
+    staleTime: Infinity,
   });
 }
 

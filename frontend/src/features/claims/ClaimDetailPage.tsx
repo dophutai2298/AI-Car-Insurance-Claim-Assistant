@@ -24,6 +24,14 @@ import { ClaimsApiError } from "./claimsApi";
 import { useClaim, useDeleteClaim } from "./useClaims";
 import { showWorkflowActionError } from "./workflowToasts";
 
+const claimWorkflowLayoutStorageKey = "app.claimWorkflowLayout";
+
+function storedWorkflowLayout(): "page" | "tabs" {
+  return window.localStorage.getItem(claimWorkflowLayoutStorageKey) === "tabs"
+    ? "tabs"
+    : "page";
+}
+
 export function ClaimDetailPage() {
   const { claimId } = useParams();
   const { t } = useTranslation();
@@ -33,9 +41,9 @@ export function ClaimDetailPage() {
   const remove = useDeleteClaim(claimId);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [mode, setMode] = useState<"page" | "tabs">(storedWorkflowLayout);
   const [view, setView] = useState<{
     claimId: string;
-    mode: "page" | "tabs";
     step: ClaimStepId;
   } | null>(null);
 
@@ -77,7 +85,6 @@ export function ClaimDetailPage() {
     analysisLocked || Boolean(reviewed && !reviewed.reverted_at);
   const canDelete = session?.user.role === "ADMIN";
   const currentClaimId = claim.id;
-  const mode = view?.claimId === claim.id ? view.mode : "page";
   const selectedStep =
     view?.claimId === claim.id ? view.step : workflow.current;
   const panels: { id: ClaimStepId; content: ReactNode }[] = [
@@ -126,12 +133,17 @@ export function ClaimDetailPage() {
   }
 
   function navigateToStep(step: ClaimStepId) {
-    setView({ claimId: currentClaimId, mode, step });
+    setView({ claimId: currentClaimId, step });
     if (mode === "page") {
       document
         .getElementById(step)
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
+  }
+
+  function changeLayout(nextMode: "page" | "tabs") {
+    setMode(nextMode);
+    window.localStorage.setItem(claimWorkflowLayoutStorageKey, nextMode);
   }
 
   return (
@@ -185,9 +197,7 @@ export function ClaimDetailPage() {
         >
           <Button
             aria-pressed={mode === "page"}
-            onPress={() =>
-              setView({ claimId: claim.id, mode: "page", step: selectedStep })
-            }
+            onPress={() => changeLayout("page")}
             size="sm"
             variant={mode === "page" ? "primary" : "ghost"}
           >
@@ -195,9 +205,7 @@ export function ClaimDetailPage() {
           </Button>
           <Button
             aria-pressed={mode === "tabs"}
-            onPress={() =>
-              setView({ claimId: claim.id, mode: "tabs", step: selectedStep })
-            }
+            onPress={() => changeLayout("tabs")}
             size="sm"
             variant={mode === "tabs" ? "primary" : "ghost"}
           >

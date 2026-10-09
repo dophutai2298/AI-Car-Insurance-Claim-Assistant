@@ -1,6 +1,7 @@
 import json
 import logging
 from pathlib import Path
+from typing import Literal
 
 from fastapi import UploadFile
 from sqlalchemy.exc import SQLAlchemyError
@@ -20,6 +21,7 @@ from app.models import (
 )
 from app.repositories.analysis_runs import AnalysisRunRepository
 from app.repositories.analysis_snapshots import AnalysisSnapshotRepository
+from app.repositories.ai_review_translations import AiReviewTranslationRepository
 from app.repositories.claims import ClaimRepository
 from app.repositories.claim_deletion import ClaimDeletionRepository
 from app.repositories.claim_incidents import ClaimIncidentRepository
@@ -44,7 +46,10 @@ from app.schemas.claims import (
     DocumentFieldValidationUpdateRequest,
     WorkflowAnalysisRunResponse,
     AnalysisBlockedReasonResponse,
+    AiReviewTranslationResponse,
+    AiReviewStructuredResponse,
 )
+from app.services.ai_review_translation import AiReviewTranslationAdapter
 from app.services.assessment_rules import AssessmentRuleService
 from app.services.analysis_errors import AnalysisConfirmationBlockedError
 from app.services.claim_errors import ClaimConflictError, ClaimResourceNotFoundError, ClaimValidationError
@@ -57,6 +62,7 @@ from app.services.damage_assessment import DamageAssessmentService
 from app.services.damage_model import DamageModelAdapter, DamageModelDetection
 from app.services.part_search import PartSearchService, ReferencePartPriceResult
 from app.services.llm_copilot import (
+    AiReviewStructuredResult,
     AiReviewClaimFacts,
     AiReviewContext,
     AiReviewDamage,
@@ -111,6 +117,7 @@ class ClaimService:
         part_search: PartSearchService,
         llm_copilot: LlmCopilotService,
         llm_model: str | None,
+        ai_review_translation: AiReviewTranslationAdapter,
         vehicle_manufacturers: VehicleManufacturerService,
         document_analysis: DocumentAnalysisAdapter,
         document_ocr: DocumentOcrAdapter,
@@ -134,6 +141,8 @@ class ClaimService:
         self.part_search = part_search
         self.llm_copilot = llm_copilot
         self.llm_model = llm_model
+        self.ai_review_translation = ai_review_translation
+        self.ai_review_translations = AiReviewTranslationRepository(session)
         self.vehicle_manufacturers = vehicle_manufacturers
         self.claim_consistency = claim_consistency
         self.analysis_runs = AnalysisRunRepository(session)
@@ -402,6 +411,41 @@ class ClaimService:
     def run_workflow_ai_review(self, claim_number: str, run_id: int) -> ClaimResponse | None:
         claim = self.reviews.run_workflow_ai_review(claim_number, run_id)
         return self._to_response(claim) if claim else None
+
+    def translate_copilot_conclusion(
+        self, claim_number: str, conclusion_id: int, locale: Literal["vi"]
+    ) -> AiReviewTranslationResponse | None:
+        claim = self.claims.find_by_claim_number(claim_number)
+        if claim is None:
+            return None
+        conclusion = self.copilot_conclusions.find_for_claim(claim.id, conclusion_id)
+        if conclusion is None:
+            raise ClaimResourceNotFoundError("AI conclusion not found")
+        cached = self.ai_review_translations.find(conclusion.id, locale)
+        if cached is None:
+            review_output = self.copilot_conclusions.review_output(conclusion.id)
+            if review_output is None:
+                raise ClaimResourceNotFoundError("AI Review structured output not found")
+            original = AiReviewStructuredResult.model_validate_json(
+                review_output.review_json
+            )
+            translated = self.ai_review_translation.translate(original)
+            cached = self.ai_review_translations.create(
+                conclusion,
+                locale,
+                translated,
+                self.llm_model,
+            )
+        return AiReviewTranslationResponse(
+            conclusion_id=conclusion.id,
+            locale=locale,
+            structured_review=AiReviewStructuredResponse.model_validate_json(
+                cached.translation_json
+            ),
+            prompt_version=cached.prompt_version,
+            schema_version=cached.schema_version,
+            provider_model=cached.provider_model,
+        )
 
     def review_copilot_conclusion(
         self,

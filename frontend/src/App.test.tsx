@@ -65,8 +65,12 @@ test("admin can log in and land on dashboard with admin navigation", async () =>
   const user = userEvent.setup();
   renderRoute("/login");
 
-  await user.type(screen.getByLabelText(/email/i), "admin@example.com");
-  await user.type(screen.getByLabelText(/password/i), "Admin123!");
+  const email = screen.getByLabelText(/email/i);
+  const password = screen.getByLabelText(/password/i);
+  await user.clear(email);
+  await user.type(email, "admin@example.com");
+  await user.clear(password);
+  await user.type(password, "Admin123!");
   await user.click(screen.getByRole("button", { name: /sign in/i }));
 
   expect(
@@ -127,8 +131,12 @@ test("invalid credentials display the safe API error", async () => {
   const user = userEvent.setup();
   renderRoute("/login");
 
-  await user.type(screen.getByLabelText(/email/i), "admin@example.com");
-  await user.type(screen.getByLabelText(/password/i), "incorrect");
+  const email = screen.getByLabelText(/email/i);
+  const password = screen.getByLabelText(/password/i);
+  await user.clear(email);
+  await user.type(email, "admin@example.com");
+  await user.clear(password);
+  await user.type(password, "incorrect");
   await user.click(screen.getByRole("button", { name: /sign in/i }));
 
   expect(await screen.findByText("Invalid email or password")).toBeVisible();
@@ -346,9 +354,12 @@ test("claim information uses a vehicle-make autocomplete and persists the select
   expect(screen.getByText("Current")).toBeVisible();
   await user.click(screen.getByLabelText("Vehicle make"));
   await user.click(await screen.findByRole("option", { name: "Toyota" }));
-  await user.click(screen.getByRole("button", { name: "Tiếng Việt" }));
+  const languageSwitch = screen.getByRole("switch", { name: "Language" });
+  expect(languageSwitch).not.toBeChecked();
+  await user.click(languageSwitch);
 
   expect(await screen.findByText("Thông tin hồ sơ")).toBeVisible();
+  expect(languageSwitch).toBeChecked();
   expect(localStorage.getItem("app.language")).toBe("vi");
   await user.type(
     document.querySelector('input[name="incident_at"]')!,
@@ -498,7 +509,8 @@ test("claim workflow tabs preserve unsaved information when switching layouts", 
     JSON.stringify(adjusterSession),
   );
   const user = userEvent.setup();
-  const { queryClient } = renderRoute(`/claims/${claim.id}`);
+  const rendered = renderRoute(`/claims/${claim.id}`);
+  const { queryClient } = rendered;
 
   expect(await screen.findByText("Vehicle damage images")).toBeVisible();
   expect(screen.getByRole("button", { name: "Single page" })).toHaveAttribute(
@@ -506,6 +518,7 @@ test("claim workflow tabs preserve unsaved information when switching layouts", 
     "true",
   );
   await user.click(screen.getByRole("button", { name: "Tabs" }));
+  expect(localStorage.getItem("app.claimWorkflowLayout")).toBe("tabs");
 
   const tabs = screen.getByRole("tablist", { name: "Claim workflow" });
   expect(
@@ -565,6 +578,13 @@ test("claim workflow tabs preserve unsaved information when switching layouts", 
   await i18n.changeLanguage("vi");
   expect(screen.getByRole("button", { name: "Một trang" })).toBeVisible();
   expect(screen.getByRole("tab", { name: /Thông tin hồ sơ/i })).toBeVisible();
+
+  rendered.unmount();
+  await i18n.changeLanguage("en");
+  renderRoute(`/claims/${claim.id}`);
+  expect(
+    await screen.findByRole("tablist", { name: "Claim workflow" }),
+  ).toBeVisible();
 });
 
 test("claim information keeps its inline error and shows workflow toast feedback", async () => {
@@ -1355,11 +1375,40 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
     createObjectURL: () => "blob:evidence-preview",
     revokeObjectURL: () => undefined,
   });
+  let translationRequests = 0;
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     if (String(input).endsWith("/api/auth/me"))
       return new Response(JSON.stringify(adjusterSession.user));
     if (String(input).endsWith("/content"))
       return new Response(new Blob(["image"], { type: "image/jpeg" }));
+    if (
+      String(input).includes("/copilot-conclusions/8/translations/vi") &&
+      init?.method === "POST"
+    ) {
+      translationRequests += 1;
+      return new Response(
+        JSON.stringify({
+          conclusion_id: 8,
+          locale: "vi",
+          structured_review: {
+            summary: "Hồ sơ đã xác nhận vẫn cần chuyên viên xem xét.",
+            assessment_interpretation:
+              "Kết quả xác định xe có khả năng cần sửa chữa.",
+            damaged_parts_summary:
+              "Cản sau bị móp trên 32,5% diện tích bộ phận.",
+            document_consistency_summary:
+              "Các giá trị giấy tờ đã xác nhận cần được kiểm tra.",
+            warnings: ["Cần kiểm tra giá phụ tùng tham khảo."],
+            recommended_next_step:
+              "Kiểm tra bằng chứng hư hỏng trước khi quyết định.",
+            human_review_required: true,
+          },
+          prompt_version: "ai-review-translation-vi-v1",
+          schema_version: "ai-review-translation-schema-v1",
+          provider_model: "gpt-test",
+        }),
+      );
+    }
     if (
       String(input).includes("/copilot-conclusions/8/review") &&
       init?.method === "POST"
@@ -1456,6 +1505,23 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
   expect(
     screen.getByText(/reflects non-blocking processing warnings/i),
   ).toBeVisible();
+
+  await i18n.changeLanguage("vi");
+  expect(
+    await screen.findByText("Hồ sơ đã xác nhận vẫn cần chuyên viên xem xét."),
+  ).toBeVisible();
+  expect(
+    screen.getByText("Cản sau bị móp trên 32,5% diện tích bộ phận."),
+  ).toBeVisible();
+  expect(
+    screen.getByText("Cần kiểm tra giá phụ tùng tham khảo."),
+  ).toBeVisible();
+  expect(translationRequests).toBe(1);
+
+  await i18n.changeLanguage("en");
+  expect(
+    await screen.findByText("The deterministic assessment is repair likely."),
+  ).toBeVisible();
   await user.type(
     screen.getByLabelText("Review note"),
     "Evidence checked against the submitted documents.",
@@ -1468,6 +1534,103 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
     comment: "Evidence checked against the submitted documents.",
   });
   expect(await screen.findByText("AI review approved")).toBeVisible();
+}, 10_000);
+
+test("Vietnamese translation failure keeps the canonical English AI review visible", async () => {
+  const claim: ClaimDetail = {
+    id: "CLM-000084",
+    claimant_name: "Mai Nguyen",
+    vehicle: {
+      make: "Toyota",
+      model: "Camry",
+      year: 2022,
+      license_plate: "51H-123.45",
+      vin: null,
+    },
+    incident: {
+      occurred_at: "2026-09-08T00:00:00Z",
+      location: "District 1",
+      description: "Rear impact.",
+    },
+    status: "REVIEW_REQUIRED",
+    created_at: "2026-09-08T00:00:00Z",
+    updated_at: "2026-09-08T00:01:00Z",
+    evidence: [],
+    latest_analysis_run: null,
+    latest_damage_analysis: {
+      id: "DA-000084",
+      assessment: "REPAIR_LIKELY",
+      detections: [],
+      model_output: null,
+      warning: null,
+      rules: {
+        repair_max_percentage: 40,
+        replacement_min_percentage: 60,
+      },
+      reference_price_status: "NOT_REQUESTED",
+      reference_prices: [],
+      copilot_conclusion: {
+        id: 84,
+        status: "GENERATED",
+        recommendation: "MANUAL_ADJUSTER_REVIEW",
+        summary: "Canonical English summary.",
+        fallback_summary: null,
+        failure_reason: null,
+        provider_model: "gpt-test",
+        findings: [],
+        warnings: [],
+        reference_prices: [],
+        review_history: [],
+        validity_percentage: 100,
+        review_status: "REVIEW_REQUIRED",
+        evidence_references: [],
+        structured_review: {
+          summary: "Canonical English summary.",
+          assessment_interpretation: "Canonical assessment interpretation.",
+          damaged_parts_summary: "Canonical damaged parts summary.",
+          document_consistency_summary: "Canonical document consistency.",
+          warnings: ["Canonical generated warning."],
+          recommended_next_step: "Canonical recommended next step.",
+          human_review_required: true,
+        },
+        prompt_version: "ai-review-v2",
+        schema_version: "ai-review-schema-v2",
+      },
+      created_at: "2026-09-08T00:01:00Z",
+    },
+    copilot_review_history: [],
+  };
+  let translationRequests = 0;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const path = String(input);
+    if (path.endsWith("/api/auth/me"))
+      return new Response(JSON.stringify(adjusterSession.user));
+    if (
+      path.includes("/copilot-conclusions/84/translations/vi") &&
+      init?.method === "POST"
+    ) {
+      translationRequests += 1;
+      return new Response(
+        JSON.stringify({ detail: "Translation provider unavailable" }),
+        { status: 502 },
+      );
+    }
+    return new Response(JSON.stringify(claim));
+  });
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  await i18n.changeLanguage("vi");
+  renderRoute(`/claims/${claim.id}`);
+
+  expect(await screen.findByText("Canonical English summary.")).toBeVisible();
+  expect(await screen.findByText("Không thể tạo bản tiếng Việt")).toBeVisible();
+  expect(
+    screen.getByText(/Đang hiển thị bản đánh giá AI tiếng Anh gốc/i),
+  ).toBeVisible();
+  expect(screen.getByText("Canonical generated warning.")).toBeVisible();
+  expect(translationRequests).toBe(1);
 });
 
 test("adjuster reviews persisted identity extraction without a confidence score", async () => {
