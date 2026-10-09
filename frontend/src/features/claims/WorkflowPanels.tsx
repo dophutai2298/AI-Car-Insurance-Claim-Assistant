@@ -760,7 +760,9 @@ function AiReviewResult({
       ) : null}
       {warnings.length ? (
         <Alert status="warning">
-          <WarningAlt size={18} />
+          <Alert.Indicator className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-700">
+            <WarningAlt aria-hidden="true" size={20} />
+          </Alert.Indicator>
           <Alert.Title>{t("aiReview.warnings")}</Alert.Title>
           <Alert.Description>{warnings.join(" ")}</Alert.Description>
         </Alert>
