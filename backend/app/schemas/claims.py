@@ -11,7 +11,6 @@ from app.models import (
     DamageAssessment,
     DamageDetectionStatus,
     EvidenceCategory,
-    DocumentFieldStatus,
     FieldValidationStatus,
     CopilotConclusionStatus,
     CopilotConclusionRejectionCategory,
@@ -141,20 +140,6 @@ class DamageAnalysisResponse(BaseModel):
     created_at: datetime
 
 
-class DocumentAnalysisFieldResponse(BaseModel):
-    id: int
-    key: str
-    label: str
-    original_ai_value: str
-    reviewed_value: str
-    confidence: float
-    status: DocumentFieldStatus
-
-
-class DocumentAnalysisFieldUpdateRequest(BaseModel):
-    reviewed_value: str = Field(min_length=1, max_length=2000)
-
-
 class DocumentFieldValidationUpdateRequest(BaseModel):
     reviewed_value: str = Field(min_length=1, max_length=2000)
 
@@ -190,7 +175,6 @@ class DocumentAnalysisResponse(BaseModel):
     id: int
     document_type: EvidenceCategory
     status: AnalysisResultStatus
-    fields: list[DocumentAnalysisFieldResponse]
     warnings: list[str]
 
 

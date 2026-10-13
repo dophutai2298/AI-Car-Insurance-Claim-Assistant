@@ -196,6 +196,19 @@ npm run build
 
 `check_database.py` requires a reachable PostgreSQL instance configured by `DATABASE_URL`.
 
+## Legacy document field migration
+
+Stop all backend processes, deploy the updated code, then retire the old mock document field table before starting the new backend. Check the row count in each database and replace `0` below with the count reported by `--check`:
+
+```powershell
+cd backend
+python scripts/migrate_legacy_document_analysis_fields.py --check
+python scripts/migrate_legacy_document_analysis_fields.py --apply --expected-legacy-rows 0
+python scripts/migrate_legacy_document_analysis_fields.py --check
+```
+
+The migration checks the expected row count and drops `document_analysis_fields` in one PostgreSQL transaction. When rows exist, it first copies them into `legacy_document_analysis_fields_archive` and verifies the copy; an empty table needs no archive. The archive is not read by the application and its rows are deleted automatically with the parent document analysis when a claim is deleted. To restore the old schema and the remaining archived rows, run `python scripts/migrate_legacy_document_analysis_fields.py --rollback`. Claims deleted after migration cannot be restored by this rollback. Application startup and `create_all` do not drop the old table automatically.
+
 ## Local files and data
 
 - Uploaded evidence is stored under `UPLOAD_ROOT` (default: `uploads` at the repository root).

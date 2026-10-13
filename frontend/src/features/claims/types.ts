@@ -147,21 +147,10 @@ export type ClaimConsistencyCheck = {
   explanation: string;
 };
 
-export type DocumentAnalysisField = {
-  id: number;
-  key: string;
-  label: string;
-  original_ai_value: string;
-  reviewed_value: string;
-  confidence: number;
-  status: "VALID" | "WARNING";
-};
-
 export type DocumentAnalysis = {
   id: number;
   document_type: EvidenceCategory;
   status: AnalysisResultStatus;
-  fields: DocumentAnalysisField[];
   warnings: string[];
 };
 
