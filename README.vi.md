@@ -196,6 +196,19 @@ npm run build
 
 `check_database.py` cần PostgreSQL truy cập được theo cấu hình `DATABASE_URL`.
 
+## Migration field tài liệu cũ
+
+Dừng toàn bộ backend, triển khai code mới, rồi chạy migration trước khi khởi động backend mới. Kiểm tra số dòng ở từng database và thay `0` bên dưới bằng số dòng do `--check` trả về:
+
+```powershell
+cd backend
+python scripts/migrate_legacy_document_analysis_fields.py --check
+python scripts/migrate_legacy_document_analysis_fields.py --apply --expected-legacy-rows 0
+python scripts/migrate_legacy_document_analysis_fields.py --check
+```
+
+Migration kiểm tra số dòng đã audit rồi xóa bảng `document_analysis_fields` trong cùng transaction PostgreSQL. Nếu có dữ liệu lịch sử, migration sao lưu và xác minh bản sao trong `legacy_document_analysis_fields_archive` trước khi xóa; bảng rỗng không cần archive. Ứng dụng không đọc archive; khi xóa claim, database tự xóa các dòng archive thuộc document analysis của claim đó. Chạy `python scripts/migrate_legacy_document_analysis_fields.py --rollback` để phục hồi schema và các dòng archive còn lại. Rollback không thể khôi phục claim đã bị xóa sau migration. Ứng dụng không tự xóa bảng cũ khi khởi động.
+
 ## File và dữ liệu local
 
 - Chứng cứ tải lên được lưu trong `UPLOAD_ROOT` (mặc định: `uploads` tại thư mục gốc repository).

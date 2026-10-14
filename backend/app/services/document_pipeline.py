@@ -3,7 +3,6 @@ from pathlib import Path
 
 from app.models import AnalysisResultStatus, Claim, DocumentFieldValidation, DocumentOcrResult, Evidence, EvidenceCategory, WorkflowAnalysisRun
 from app.repositories.analysis_runs import AnalysisRunRepository
-from app.services.document_analysis import DocumentAnalysisAdapter, DocumentAnalysisResult
 from app.services.document_consistency import ClaimConsistencyService, ClaimFacts
 from app.services.document_extraction import DocumentExtractionService
 from app.services.document_extraction import schema_version_for_category
@@ -20,18 +19,14 @@ class DocumentAnalysisPipeline:
         self,
         analysis_runs: AnalysisRunRepository,
         storage: EvidenceStorage,
-        document_analysis: DocumentAnalysisAdapter,
         document_ocr: DocumentOcrAdapter,
-        use_mock_document_fields: bool,
         document_extraction: DocumentExtractionService,
         document_field_validation: DocumentFieldValidationService,
         claim_consistency: ClaimConsistencyService,
     ) -> None:
         self.analysis_runs = analysis_runs
         self.storage = storage
-        self.document_analysis = document_analysis
         self.document_ocr = document_ocr
-        self.use_mock_document_fields = use_mock_document_fields
         self.document_extraction = document_extraction
         self.document_field_validation = document_field_validation
         self.claim_consistency = claim_consistency
@@ -230,19 +225,10 @@ class DocumentAnalysisPipeline:
                 statuses.append(AnalysisResultStatus.FAILED)
 
         category_status = self._document_category_status(statuses)
-        fallback_result: DocumentAnalysisResult | None = None
-        if self.use_mock_document_fields and category_status is not AnalysisResultStatus.FAILED:
-            try:
-                fallback_result = self.document_analysis.analyze(category, evidence_items)
-            except Exception:
-                logger.exception("Mock document analysis failed for run %s", run.id)
-                warnings.append("Mock document analysis failed.")
-
         self.analysis_runs.save_document_result(
             run,
             category,
             category_status,
-            result=fallback_result,
             warning="; ".join(warnings) if warnings else None,
         )
         return [record for _, record in ocr_records]

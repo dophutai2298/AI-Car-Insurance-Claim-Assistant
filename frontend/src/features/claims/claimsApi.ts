@@ -138,21 +138,6 @@ export const startWorkflowAnalysis = (
     accessToken,
     { method: "POST" },
   );
-export const updateDocumentField = (
-  claimId: string,
-  documentId: number,
-  fieldId: number,
-  reviewedValue: string,
-  accessToken: string,
-) =>
-  request<ClaimDetail>(
-    `/api/claims/${claimId}/document-analyses/${documentId}/fields/${fieldId}`,
-    accessToken,
-    {
-      method: "PATCH",
-      body: JSON.stringify({ reviewed_value: reviewedValue }),
-    },
-  );
 export const updateDocumentFieldValidation = (
   claimId: string,
   runId: number,

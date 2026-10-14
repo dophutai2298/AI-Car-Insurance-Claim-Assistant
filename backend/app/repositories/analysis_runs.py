@@ -15,7 +15,6 @@ from app.models import (
     ClaimStatus,
     DamageAnalysis,
     DocumentAnalysis,
-    DocumentAnalysisField,
     DocumentExtractedField,
     DocumentExtractionResult,
     DocumentFieldValidation,
@@ -25,7 +24,6 @@ from app.models import (
     WorkflowAnalysisDamage,
     WorkflowAnalysisRun,
 )
-from app.services.document_analysis import DocumentAnalysisResult
 
 if TYPE_CHECKING:
     from app.services.document_consistency import ConsistencyResult
@@ -116,33 +114,15 @@ class AnalysisRunRepository:
         run: WorkflowAnalysisRun,
         category: EvidenceCategory,
         status: AnalysisResultStatus,
-        result: DocumentAnalysisResult | None = None,
         warning: str | None = None,
     ) -> DocumentAnalysis:
-        warnings = result.warnings if result else ([warning] if warning else [])
         analysis = DocumentAnalysis(
             analysis_run_id=run.id,
             document_type=category,
             status=status,
-            warnings_json=json.dumps(warnings),
+            warnings_json=json.dumps([warning] if warning else []),
         )
         self.session.add(analysis)
-        self.session.flush()
-        if result:
-            self.session.add_all(
-                [
-                    DocumentAnalysisField(
-                        document_analysis_id=analysis.id,
-                        key=field.key,
-                        label=field.label,
-                        original_ai_value=field.value,
-                        reviewed_value=field.value,
-                        confidence=field.confidence,
-                        status=field.status,
-                    )
-                    for field in result.fields
-                ]
-            )
         self.session.commit()
         self.session.refresh(analysis)
         return analysis
@@ -604,44 +584,3 @@ class AnalysisRunRepository:
                 .order_by(ClaimConsistencyCheck.id)
             )
         )
-
-    def fields(self, document_analysis_id: int) -> list[DocumentAnalysisField]:
-        return list(
-            self.session.scalars(
-                select(DocumentAnalysisField)
-                .where(DocumentAnalysisField.document_analysis_id == document_analysis_id)
-                .order_by(DocumentAnalysisField.id)
-            )
-        )
-
-    def find_document_for_claim(
-        self, claim_id: int, document_analysis_id: int
-    ) -> DocumentAnalysis | None:
-        statement = (
-            select(DocumentAnalysis)
-            .join(WorkflowAnalysisRun, WorkflowAnalysisRun.id == DocumentAnalysis.analysis_run_id)
-            .where(
-                WorkflowAnalysisRun.claim_id == claim_id,
-                DocumentAnalysis.id == document_analysis_id,
-            )
-        )
-        return self.session.scalar(statement)
-
-    def update_field(
-        self,
-        document_analysis: DocumentAnalysis,
-        field_id: int,
-        reviewed_value: str,
-    ) -> DocumentAnalysisField | None:
-        field = self.session.scalar(
-            select(DocumentAnalysisField).where(
-                DocumentAnalysisField.document_analysis_id == document_analysis.id,
-                DocumentAnalysisField.id == field_id,
-            )
-        )
-        if field is None:
-            return None
-        field.reviewed_value = reviewed_value.strip()
-        self.session.commit()
-        self.session.refresh(field)
-        return field

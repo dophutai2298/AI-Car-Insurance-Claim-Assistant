@@ -109,11 +109,6 @@ class AnalysisResultStatus(str, Enum):
     FAILED = "FAILED"
 
 
-class DocumentFieldStatus(str, Enum):
-    VALID = "VALID"
-    WARNING = "WARNING"
-
-
 class FieldValidationStatus(str, Enum):
     VALID = "VALID"
     INVALID = "INVALID"
@@ -329,21 +324,6 @@ class DocumentAnalysis(Base):
         SqlEnum(AnalysisResultStatus, native_enum=False)
     )
     warnings_json: Mapped[str] = mapped_column(Text, default="[]")
-
-
-class DocumentAnalysisField(Base):
-    __tablename__ = "document_analysis_fields"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    document_analysis_id: Mapped[int] = mapped_column(ForeignKey("document_analyses.id"), index=True)
-    key: Mapped[str] = mapped_column(String(80))
-    label: Mapped[str] = mapped_column(String(120))
-    original_ai_value: Mapped[str] = mapped_column(Text)
-    reviewed_value: Mapped[str] = mapped_column(Text)
-    confidence: Mapped[float] = mapped_column(Float)
-    status: Mapped[DocumentFieldStatus] = mapped_column(
-        SqlEnum(DocumentFieldStatus, native_enum=False)
-    )
 
 
 class DocumentOcrResult(Base):

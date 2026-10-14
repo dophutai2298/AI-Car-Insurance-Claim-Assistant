@@ -20,7 +20,6 @@ from app.schemas.claims import (
     CopilotConclusionReviewRequest,
     CopilotConclusionReviewRevertRequest,
     DamageAnalysisResponse,
-    DocumentAnalysisFieldUpdateRequest,
     DocumentExtractedFieldUpdateRequest,
     DocumentExtractedFieldsBatchUpdateRequest,
     DocumentFieldValidationUpdateRequest,
@@ -277,31 +276,6 @@ def start_workflow_analysis(
         force,
     )
     return run
-
-
-@router.patch(
-    "/{claim_number}/document-analyses/{document_analysis_id}/fields/{field_id}",
-    response_model=ClaimResponse,
-)
-def update_document_analysis_field(
-    claim_number: str,
-    document_analysis_id: int,
-    field_id: int,
-    request: DocumentAnalysisFieldUpdateRequest,
-    _current_user: AnalysisUser,
-    service: ClaimServiceDependency,
-) -> ClaimResponse:
-    try:
-        claim = service.update_document_analysis_field(
-            claim_number, document_analysis_id, field_id, request
-        )
-    except ClaimResourceNotFoundError as error:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
-    except ClaimValidationError as error:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
-    if claim is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
-    return claim
 
 
 @router.patch(

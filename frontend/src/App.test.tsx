@@ -1261,17 +1261,6 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
           document_type: "ID_CARD",
           status: "COMPLETED",
           warnings: [],
-          fields: [
-            {
-              id: 11,
-              key: "full_name",
-              label: "Full name",
-              original_ai_value: "Nguyen Van A",
-              reviewed_value: "Nguyen Van A",
-              confidence: 0.97,
-              status: "VALID",
-            },
-          ],
         },
       ],
       document_ocr_results: [

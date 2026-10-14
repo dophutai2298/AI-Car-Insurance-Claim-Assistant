@@ -19,7 +19,7 @@ from app.services.analysis_snapshots import AnalysisSnapshotOperations
 from app.schemas.claims import (
     ClaimResponse,
     VehicleMetadata, EvidenceResponse, EvidenceReferenceResponse, WorkflowAnalysisRunResponse,
-    DocumentAnalysisResponse, DocumentAnalysisFieldResponse,
+    DocumentAnalysisResponse,
     DocumentOcrResultResponse, DocumentFieldValidationResponse,
     DocumentExtractionResultResponse, DocumentExtractedFieldResponse,
     ClaimConsistencyCheckResponse,
@@ -144,18 +144,6 @@ class ClaimResponseAssembler:
                     id=document.id,
                     document_type=document.document_type,
                     status=document.status,
-                    fields=[
-                        DocumentAnalysisFieldResponse(
-                            id=field.id,
-                            key=field.key,
-                            label=field.label,
-                            original_ai_value=field.original_ai_value,
-                            reviewed_value=field.reviewed_value,
-                            confidence=field.confidence,
-                            status=field.status,
-                        )
-                        for field in self.analysis_runs.fields(document.id)
-                    ],
                     warnings=json.loads(document.warnings_json),
                 )
                 for document in self.analysis_runs.documents(run.id)

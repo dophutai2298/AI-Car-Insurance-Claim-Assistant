@@ -40,7 +40,6 @@ from app.schemas.claims import (
     DamageAnalysisResponse,
     ClaimListItem,
     ClaimResponse,
-    DocumentAnalysisFieldUpdateRequest,
     DocumentExtractedFieldsBatchUpdateRequest,
     DocumentExtractedFieldUpdateRequest,
     DocumentFieldValidationUpdateRequest,
@@ -73,7 +72,6 @@ from app.services.llm_copilot import (
     LlmCopilotService,
 )
 from app.services.vehicle_manufacturers import VehicleManufacturerService
-from app.services.document_analysis import DocumentAnalysisAdapter
 from app.services.document_ocr import DocumentOcrAdapter
 from app.services.document_consistency import (
     ClaimConsistencyService,
@@ -119,9 +117,7 @@ class ClaimService:
         llm_model: str | None,
         ai_review_translation: AiReviewTranslationAdapter,
         vehicle_manufacturers: VehicleManufacturerService,
-        document_analysis: DocumentAnalysisAdapter,
         document_ocr: DocumentOcrAdapter,
-        use_mock_document_fields: bool,
         document_extraction: DocumentExtractionService,
         document_field_validation: DocumentFieldValidationService,
         claim_consistency: ClaimConsistencyService,
@@ -150,9 +146,7 @@ class ClaimService:
         self.document_pipeline = DocumentAnalysisPipeline(
             self.analysis_runs,
             storage,
-            document_analysis,
             document_ocr,
-            use_mock_document_fields,
             document_extraction,
             document_field_validation,
             claim_consistency,
@@ -278,26 +272,6 @@ class ClaimService:
 
     def process_workflow_analysis(self, run_id: int, *, force: bool = False) -> None:
         self.workflow.process_workflow_analysis(run_id, force=force)
-
-    def update_document_analysis_field(
-        self,
-        claim_number: str,
-        document_analysis_id: int,
-        field_id: int,
-        request: DocumentAnalysisFieldUpdateRequest,
-    ) -> ClaimResponse | None:
-        claim = self.claims.find_by_claim_number(claim_number)
-        if claim is None:
-            return None
-        document = self.analysis_runs.find_document_for_claim(claim.id, document_analysis_id)
-        if document is None:
-            raise ClaimResourceNotFoundError("Document analysis not found")
-        if self.workflow_ai_reviews.find_for_run(document.analysis_run_id):
-            raise ClaimValidationError("Re-run analysis before changing fields after AI review")
-        if self.analysis_runs.update_field(document, field_id, request.reviewed_value) is None:
-            raise ClaimResourceNotFoundError("Document analysis field not found")
-        self.analysis_snapshots.mark_stale(document.analysis_run_id)
-        return self._to_response(claim)
 
     def update_document_field_validation(
         self,

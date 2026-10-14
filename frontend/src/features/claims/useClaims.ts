@@ -17,7 +17,6 @@ import {
   updateClaimInformation,
   updateDocumentExtractedField,
   updateDocumentExtractedFields,
-  updateDocumentField,
   updateDocumentFieldValidation,
   uploadEvidence,
 } from "./claimsApi";
@@ -157,30 +156,6 @@ export function useWorkflowAnalysis(claimId: string | undefined) {
       startWorkflowAnalysis(claimId!, session!.access_token, force),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: [...claimsQueryKey, claimId] }),
-  });
-}
-
-export function useUpdateDocumentField(claimId: string | undefined) {
-  const { session } = useAuth();
-  const cache = useClaimCache();
-  return useMutation({
-    mutationFn: ({
-      documentId,
-      fieldId,
-      reviewedValue,
-    }: {
-      documentId: number;
-      fieldId: number;
-      reviewedValue: string;
-    }) =>
-      updateDocumentField(
-        claimId!,
-        documentId,
-        fieldId,
-        reviewedValue,
-        session!.access_token,
-      ),
-    onSuccess: cache,
   });
 }
 
