@@ -147,21 +147,10 @@ export type ClaimConsistencyCheck = {
   explanation: string;
 };
 
-export type DocumentAnalysisField = {
-  id: number;
-  key: string;
-  label: string;
-  original_ai_value: string;
-  reviewed_value: string;
-  confidence: number;
-  status: "VALID" | "WARNING";
-};
-
 export type DocumentAnalysis = {
   id: number;
   document_type: EvidenceCategory;
   status: AnalysisResultStatus;
-  fields: DocumentAnalysisField[];
   warnings: string[];
 };
 
@@ -307,6 +296,15 @@ export type AiReviewStructuredResult = {
   warnings: string[];
   recommended_next_step: string;
   human_review_required: boolean;
+};
+
+export type AiReviewTranslation = {
+  conclusion_id: number;
+  locale: "vi";
+  structured_review: AiReviewStructuredResult;
+  prompt_version: string;
+  schema_version: string;
+  provider_model: string | null;
 };
 
 export type CopilotConclusionReviewStatus = "APPROVED" | "REJECTED";

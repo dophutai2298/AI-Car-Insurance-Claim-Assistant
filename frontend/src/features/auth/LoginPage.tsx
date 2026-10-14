@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { ArrowRight, CarFront, Locked, Security } from "@carbon/icons-react";
 import { Alert, Button, Card, Input, Label, TextField } from "@heroui/react";
 import { Navigate, useLocation, useNavigate } from "react-router";
+import { useTranslation } from "react-i18next";
 
 import { AuthApiError } from "./authApi";
 import { useAuth } from "./AuthProvider";
@@ -10,6 +11,7 @@ export function LoginPage() {
   const { login, session } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [email, setEmail] = useState("admin@example.com");
   const [password, setPassword] = useState("Admin123!");
   const [error, setError] = useState("");
@@ -36,7 +38,7 @@ export function LoginPage() {
       setError(
         caughtError instanceof AuthApiError
           ? caughtError.message
-          : "Unable to sign in",
+          : t("auth.unableToSignIn"),
       );
     } finally {
       setIsPending(false);
@@ -61,20 +63,17 @@ export function LoginPage() {
             <Security size={24} />
           </div>
           <p className="text-sm font-semibold text-blue-300">
-            Secure adjuster workspace
+            {t("auth.workspace")}
           </p>
           <h2 className="mt-3 text-3xl font-semibold leading-tight tracking-normal xl:text-4xl">
-            Review evidence with clear human control.
+            {t("auth.headline")}
           </h2>
           <p className="mt-5 max-w-md text-sm leading-6 text-slate-400">
-            Vehicle damage findings, supporting documents and AI conclusions
-            stay organized in one operational workspace.
+            {t("auth.description")}
           </p>
         </div>
 
-        <p className="text-xs text-slate-500">
-          Authorized local demonstration access only
-        </p>
+        <p className="text-xs text-slate-500">{t("auth.authorizedOnly")}</p>
       </section>
 
       <section className="flex min-h-dvh items-center justify-center px-5 py-10 sm:px-8 lg:min-h-0">
@@ -96,10 +95,10 @@ export function LoginPage() {
               </div>
               <div className="mt-4">
                 <Card.Title className="text-2xl text-slate-950">
-                  Sign in to Claim Assistant
+                  {t("auth.signInTitle")}
                 </Card.Title>
                 <Card.Description className="mt-2 text-sm text-slate-500">
-                  Use your Admin or Adjuster account to continue.
+                  {t("auth.signInDescription")}
                 </Card.Description>
               </div>
             </Card.Header>
@@ -107,22 +106,22 @@ export function LoginPage() {
               <form className="grid gap-5" onSubmit={handleSubmit}>
                 {error ? (
                   <Alert status="danger">
-                    <Alert.Title>Sign-in failed</Alert.Title>
+                    <Alert.Title>{t("auth.signInFailed")}</Alert.Title>
                     <Alert.Description>{error}</Alert.Description>
                   </Alert>
                 ) : null}
 
                 <TextField fullWidth isRequired name="email" type="email">
-                  <Label>Email</Label>
+                  <Label>{t("auth.email")}</Label>
                   <Input
                     autoComplete="email"
                     onChange={(event) => setEmail(event.target.value)}
-                    placeholder="name@company.com"
+                    placeholder={t("auth.emailPlaceholder")}
                     value={email}
                   />
                 </TextField>
                 <TextField fullWidth isRequired name="password" type="password">
-                  <Label>Password</Label>
+                  <Label>{t("auth.password")}</Label>
                   <Input
                     autoComplete="current-password"
                     onChange={(event) => setPassword(event.target.value)}
@@ -135,7 +134,7 @@ export function LoginPage() {
                   type="submit"
                   variant="primary"
                 >
-                  Sign in
+                  {t("auth.signIn")}
                   <ArrowRight size={18} />
                 </Button>
               </form>

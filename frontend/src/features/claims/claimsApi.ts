@@ -1,4 +1,5 @@
 import type {
+  AiReviewTranslation,
   ClaimCreateInput,
   AnalysisBlockedReason,
   ClaimDetail,
@@ -127,26 +128,15 @@ export const runDamageAnalysis = (claimId: string, accessToken: string) =>
     accessToken,
     { method: "POST" },
   );
-export const startWorkflowAnalysis = (claimId: string, accessToken: string, force = false) =>
+export const startWorkflowAnalysis = (
+  claimId: string,
+  accessToken: string,
+  force = false,
+) =>
   request<WorkflowAnalysisRun>(
     `/api/claims/${claimId}/analysis-runs${force ? "?force=true" : ""}`,
     accessToken,
     { method: "POST" },
-  );
-export const updateDocumentField = (
-  claimId: string,
-  documentId: number,
-  fieldId: number,
-  reviewedValue: string,
-  accessToken: string,
-) =>
-  request<ClaimDetail>(
-    `/api/claims/${claimId}/document-analyses/${documentId}/fields/${fieldId}`,
-    accessToken,
-    {
-      method: "PATCH",
-      body: JSON.stringify({ reviewed_value: reviewedValue }),
-    },
   );
 export const updateDocumentFieldValidation = (
   claimId: string,
@@ -199,6 +189,17 @@ export const runWorkflowAiReview = (
 ) =>
   request<ClaimDetail>(
     `/api/claims/${claimId}/analysis-runs/${runId}/ai-review`,
+    accessToken,
+    { method: "POST" },
+  );
+export const translateAiReview = (
+  claimId: string,
+  conclusionId: number,
+  locale: "vi",
+  accessToken: string,
+) =>
+  request<AiReviewTranslation>(
+    `/api/claims/${claimId}/copilot-conclusions/${conclusionId}/translations/${locale}`,
     accessToken,
     { method: "POST" },
   );

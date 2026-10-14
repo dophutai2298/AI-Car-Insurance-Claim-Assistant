@@ -153,9 +153,7 @@ export function VehicleManufacturerPanel() {
         {manufacturers.data?.length ? (
           <div className="grid gap-4">
             <DataTableToolbar
-              clearLabel={t("common.clearFilters", {
-                defaultValue: "Clear filters",
-              })}
+              clearLabel={t("common.clearFilters")}
               isFiltered={isFiltered}
               onClear={() => {
                 setGlobalFilter("");
@@ -163,19 +161,13 @@ export function VehicleManufacturerPanel() {
               }}
               onSearchChange={setGlobalFilter}
               resultCount={rows.length}
-              resultLabel={t("manufacturers.shown", {
-                count: rows.length,
-                defaultValue:
-                  rows.length === 1
-                    ? "manufacturer shown"
-                    : "manufacturers shown",
-              })}
-              searchLabel={t("manufacturers.search", {
-                defaultValue: "Search manufacturers",
-              })}
-              searchPlaceholder={t("manufacturers.searchPlaceholder", {
-                defaultValue: "Search by name",
-              })}
+              resultLabel={t(
+                rows.length === 1
+                  ? "manufacturers.shownOne"
+                  : "manufacturers.shownMany",
+              )}
+              searchLabel={t("manufacturers.search")}
+              searchPlaceholder={t("manufacturers.searchPlaceholder")}
               searchValue={globalFilter}
             >
               <TableFilterSelect
@@ -183,9 +175,7 @@ export function VehicleManufacturerPanel() {
                 onChange={setStatusFilter}
                 options={[
                   {
-                    label: t("manufacturers.allStatuses", {
-                      defaultValue: "All statuses",
-                    }),
+                    label: t("manufacturers.allStatuses"),
                     value: "ALL",
                   },
                   { label: t("manufacturers.active"), value: "ACTIVE" },
@@ -228,10 +218,7 @@ export function VehicleManufacturerPanel() {
                         className="px-4 py-10 text-center text-sm text-slate-500"
                         colSpan={3}
                       >
-                        {t("manufacturers.noMatches", {
-                          defaultValue:
-                            "No manufacturers match the selected filters.",
-                        })}
+                        {t("manufacturers.noMatches")}
                       </td>
                     </tr>
                   ) : null}
@@ -252,6 +239,7 @@ function SortHeader({
   column: LegacyColumn<VehicleManufacturer>;
   label: string;
 }) {
+  const { t } = useTranslation();
   const direction = column?.getIsSorted();
   const Icon =
     direction === "asc"
@@ -261,7 +249,10 @@ function SortHeader({
         : ChevronSort;
   return (
     <button
-      aria-label={`Sort ${label} ${direction === "asc" ? "descending" : "ascending"}`}
+      aria-label={t(
+        direction === "asc" ? "common.sortDescending" : "common.sortAscending",
+        { column: label },
+      )}
       className="inline-flex items-center gap-1 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
       onClick={column?.getToggleSortingHandler()}
       type="button"

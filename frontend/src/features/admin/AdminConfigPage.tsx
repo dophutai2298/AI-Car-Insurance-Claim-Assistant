@@ -10,6 +10,7 @@ import {
   TextField,
 } from "@heroui/react";
 import { useEffect, useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 
 import { AdminApiError } from "./adminApi";
 import {
@@ -28,6 +29,7 @@ export function AdminConfigPage() {
   const rules = useAssessmentRules();
   const history = useAssessmentRuleHistory();
   const updateRules = useUpdateAssessmentRules();
+  const { i18n, t } = useTranslation();
   const [form, setForm] = useState<RuleForm>({
     repairMaxPercentage: "",
     replacementMinPercentage: "",
@@ -59,11 +61,11 @@ export function AdminConfigPage() {
       values.replacement_min_percentage < 0 ||
       values.replacement_min_percentage > 100
     ) {
-      setError("Damage thresholds must be between 0 and 100.");
+      setError(t("admin.thresholdRangeError"));
       return;
     }
     if (values.repair_max_percentage >= values.replacement_min_percentage) {
-      setError("Repair maximum must be lower than the replacement minimum.");
+      setError(t("admin.thresholdOrderError"));
       return;
     }
     try {
@@ -72,7 +74,7 @@ export function AdminConfigPage() {
       setError(
         caughtError instanceof AdminApiError
           ? caughtError.message
-          : "Unable to update assessment rules.",
+          : t("admin.updateFailed"),
       );
     }
   }
@@ -81,30 +83,32 @@ export function AdminConfigPage() {
     <div className="mx-auto grid max-w-[1440px] gap-6">
       <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-semibold text-slate-500">Administration</p>
+          <p className="text-sm font-semibold text-slate-500">
+            {t("admin.eyebrow")}
+          </p>
           <h1 className="mt-2 text-3xl font-semibold text-slate-950">
-            Assessment rules
+            {t("admin.title")}
           </h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Global PoC rules applied to new vehicle damage analyses.
+            {t("admin.description")}
           </p>
         </div>
         <Chip color="default" variant="soft">
-          Global configuration
+          {t("admin.globalConfiguration")}
         </Chip>
       </header>
 
       <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <Card.Header className="flex items-center gap-3 border-b border-slate-100 px-6 py-5">
-          <div className="flex size-10 items-center justify-center rounded-lg bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+        <Card.Header className="flex items-left gap-3 border-b border-slate-100 px-6 py-5">
+          {/* <div className="flex size-10 items-center justify-center rounded-lg bg-blue-50 text-blue-700 ring-1 ring-blue-100">
             <SettingsAdjust size={20} />
-          </div>
+          </div> */}
           <div>
             <Card.Title className="text-lg text-slate-950">
-              Active thresholds
+              {t("admin.activeThresholds")}
             </Card.Title>
             <Card.Description className="text-sm text-slate-500">
-              Changes apply only to analyses started after the update.
+              {t("admin.thresholdDescription")}
             </Card.Description>
           </div>
         </Card.Header>
@@ -112,9 +116,9 @@ export function AdminConfigPage() {
           {rules.isPending ? <RuleFormSkeleton /> : null}
           {rules.error ? (
             <Alert status="danger">
-              <Alert.Title>Configuration unavailable</Alert.Title>
+              <Alert.Title>{t("admin.configurationUnavailable")}</Alert.Title>
               <Alert.Description>
-                Assessment rules could not be loaded.
+                {t("admin.configurationLoadFailed")}
               </Alert.Description>
             </Alert>
           ) : null}
@@ -122,24 +126,24 @@ export function AdminConfigPage() {
             <form className="grid gap-5" onSubmit={submit}>
               {error ? (
                 <Alert status="danger">
-                  <Alert.Title>Rules were not saved</Alert.Title>
+                  <Alert.Title>{t("admin.rulesNotSaved")}</Alert.Title>
                   <Alert.Description>{error}</Alert.Description>
                 </Alert>
               ) : null}
               <div className="grid gap-5 md:grid-cols-2">
                 <RuleField
-                  label="Repair maximum"
+                  label={t("admin.repairMaximum")}
                   name="repair-maximum"
-                  hint="Damage percentage"
+                  hint={t("admin.damagePercentage")}
                   value={form.repairMaxPercentage}
                   onChange={(repairMaxPercentage) =>
                     setForm((current) => ({ ...current, repairMaxPercentage }))
                   }
                 />
                 <RuleField
-                  label="Replacement minimum"
+                  label={t("admin.replacementMinimum")}
                   name="replacement-minimum"
-                  hint="Damage percentage"
+                  hint={t("admin.damagePercentage")}
                   value={form.replacementMinPercentage}
                   onChange={(replacementMinPercentage) =>
                     setForm((current) => ({
@@ -151,8 +155,10 @@ export function AdminConfigPage() {
               </div>
               <div className="flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-slate-500">
-                  Last changed by {rules.data.updated_by ?? "system defaults"}{" "}
-                  on {formatDate(rules.data.updated_at)}
+                  {t("admin.lastChanged", {
+                    user: rules.data.updated_by ?? t("admin.systemDefaults"),
+                    date: formatDate(rules.data.updated_at, i18n.language),
+                  })}
                 </p>
                 <Button
                   isPending={updateRules.isPending}
@@ -160,7 +166,7 @@ export function AdminConfigPage() {
                   variant="primary"
                 >
                   <CheckmarkOutline size={18} />
-                  Save rules
+                  {t("admin.saveRules")}
                 </Button>
               </div>
             </form>
@@ -175,10 +181,10 @@ export function AdminConfigPage() {
           <Time className="text-slate-600" size={20} />
           <div>
             <Card.Title className="text-lg text-slate-950">
-              Change history
+              {t("admin.changeHistory")}
             </Card.Title>
             <Card.Description className="text-sm text-slate-500">
-              Persisted audit trail for assessment-rule updates.
+              {t("admin.historyDescription")}
             </Card.Description>
           </div>
         </Card.Header>
@@ -186,9 +192,9 @@ export function AdminConfigPage() {
           {history.isPending ? <Skeleton className="h-20 rounded-lg" /> : null}
           {history.error ? (
             <Alert status="warning">
-              <Alert.Title>History unavailable</Alert.Title>
+              <Alert.Title>{t("admin.historyUnavailable")}</Alert.Title>
               <Alert.Description>
-                The active rules are unaffected.
+                {t("admin.activeRulesUnaffected")}
               </Alert.Description>
             </Alert>
           ) : null}
@@ -203,9 +209,7 @@ export function AdminConfigPage() {
             </div>
           ) : null}
           {history.data && history.data.length === 0 ? (
-            <p className="text-sm text-slate-500">
-              No administrator changes have been recorded.
-            </p>
+            <p className="text-sm text-slate-500">{t("admin.noHistory")}</p>
           ) : null}
         </Card.Content>
       </Card>
@@ -255,6 +259,8 @@ function HistoryRow({
     };
   };
 }) {
+  const { i18n, t } = useTranslation();
+
   return (
     <article className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <div>
@@ -262,14 +268,16 @@ function HistoryRow({
           {change.changed_by}
         </p>
         <p className="mt-1 text-xs text-slate-500">
-          Repair {change.old_values.repair_max_percentage}% to{" "}
-          {change.new_values.repair_max_percentage}%; replacement{" "}
-          {change.old_values.replacement_min_percentage}% to{" "}
-          {change.new_values.replacement_min_percentage}%.
+          {t("admin.historyChange", {
+            oldRepair: change.old_values.repair_max_percentage,
+            newRepair: change.new_values.repair_max_percentage,
+            oldReplacement: change.old_values.replacement_min_percentage,
+            newReplacement: change.new_values.replacement_min_percentage,
+          })}
         </p>
       </div>
       <time className="text-xs text-slate-500">
-        {formatDate(change.changed_at)}
+        {formatDate(change.changed_at, i18n.language)}
       </time>
     </article>
   );
@@ -287,6 +295,6 @@ function RuleFormSkeleton() {
   );
 }
 
-function formatDate(value: string) {
-  return new Date(value).toLocaleString();
+function formatDate(value: string, locale: string) {
+  return new Date(value).toLocaleString(locale);
 }

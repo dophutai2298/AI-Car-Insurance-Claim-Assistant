@@ -51,7 +51,7 @@ import { ProtectedRoute, RoleRoute } from "./features/auth/ProtectedRoute";
 import { ClaimCreatePage } from "./features/claims/ClaimCreatePage";
 import { ClaimDetailPage } from "./features/claims/ClaimDetailPage";
 import { AdminConfigPage } from "./features/admin/AdminConfigPage";
-import { statusLabel, statusTone } from "./features/claims/statusPresentation";
+import { statusTone } from "./features/claims/statusPresentation";
 import type { ClaimStatus } from "./features/claims/types";
 
 const claimStatusChartColor: Record<ClaimStatus, string> = {
@@ -117,7 +117,7 @@ function AppShell() {
 
             <nav
               className="grid grid-cols-3 gap-2 lg:grid-cols-1"
-              aria-label="Primary navigation"
+              aria-label={t("navigation.primary")}
             >
               {visibleNavigation.map((item) => {
                 const Icon = item.icon;
@@ -143,7 +143,7 @@ function AppShell() {
             </nav>
 
             <div className="mt-auto border-t border-white/10 pt-4">
-              {/* <LanguageSwitcher /> */}
+              <LanguageSwitcher />
               <div className="mb-3 mt-4 hidden min-w-0 lg:block">
                 <div className="truncate text-sm font-semibold text-white">
                   {session?.user.full_name}
@@ -204,11 +204,12 @@ function DashboardPage() {
   const { data, error, isPending } = useDashboardOverview();
   const { session } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const reviewQueue =
     data?.claims.filter((claim) => claim.status === "REVIEW_REQUIRED") ?? [];
   const chartData =
     data?.queueMix.map((point) => ({
-      name: statusLabel[point.status],
+      name: t(`claim.status.${point.status}`),
       status: point.status,
       value: point.value,
     })) ?? [];
@@ -219,14 +220,13 @@ function DashboardPage() {
       <header className="flex flex-col gap-4 border-b border-slate-200 pb-6 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <p className="mb-2 text-sm font-semibold text-slate-500">
-            Claims operations
+            {t("dashboard.eyebrow")}
           </p>
           <h1 className="max-w-3xl text-3xl font-semibold text-slate-950 sm:text-4xl">
-            Claim review workspace
+            {t("dashboard.title")}
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-            Monitor incoming claim files, focus the review queue, and open the
-            evidence record that needs attention.
+            {t("dashboard.description")}
           </p>
         </div>
         {canCreateClaim ? (
@@ -236,7 +236,7 @@ function DashboardPage() {
             variant="primary"
           >
             <CloudUpload size={18} />
-            New claim
+            {t("dashboard.newClaim")}
           </Button>
         ) : null}
       </header>
@@ -244,27 +244,27 @@ function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           icon={Document}
-          label="Total claims"
+          label={t("dashboard.totalClaims")}
           loading={isPending}
           value={data?.metrics.totalClaims}
         />
         <MetricCard
           icon={WarningAlt}
-          label="Pending reviews"
+          label={t("dashboard.pendingReviews")}
           loading={isPending}
           tone="warning"
           value={data?.metrics.pendingReviews}
         />
         <MetricCard
           icon={CheckmarkOutline}
-          label="AI review approved"
+          label={t("dashboard.aiApproved")}
           loading={isPending}
           tone="success"
           value={data?.metrics.aiApproved}
         />
         <MetricCard
           icon={ErrorOutline}
-          label="AI review rejected"
+          label={t("dashboard.aiRejected")}
           loading={isPending}
           tone="danger"
           value={data?.metrics.aiRejected}
@@ -276,18 +276,15 @@ function DashboardPage() {
           <Card.Header className="border-b border-slate-100 px-5 py-4">
             <Card.Title className="flex items-center gap-2 text-lg text-slate-950">
               <ChartColumn size={20} />
-              Claim status overview
+              {t("dashboard.statusOverview")}
             </Card.Title>
             <Card.Description className="text-sm text-slate-500">
-              Current volume by workflow status. AI outcomes are not final
-              insurer decisions.
+              {t("dashboard.statusOverviewDescription")}
             </Card.Description>
           </Card.Header>
           <Card.Content className="h-72 p-5">
             {isPending ? <Skeleton className="h-full rounded-lg" /> : null}
-            {error ? (
-              <InlineError message="Dashboard data could not be loaded." />
-            ) : null}
+            {error ? <InlineError message={t("dashboard.loadError")} /> : null}
             {data && chartData.length > 0 ? (
               <ResponsiveContainer height="100%" width="100%">
                 <BarChart
@@ -330,10 +327,10 @@ function DashboardPage() {
             {data && chartData.length === 0 ? (
               <EmptyState>
                 <div className="text-sm font-semibold text-slate-950">
-                  No claim activity yet
+                  {t("dashboard.noActivity")}
                 </div>
                 <p className="mt-1 text-sm text-slate-500">
-                  Status counts will appear once a claim is created.
+                  {t("dashboard.noActivityDescription")}
                 </p>
               </EmptyState>
             ) : null}
@@ -344,45 +341,45 @@ function DashboardPage() {
           <Card className="h-full rounded-lg border border-slate-200 bg-white shadow-sm">
             <Card.Header className="border-b border-slate-100 px-5 py-4">
               <Card.Title className="text-lg text-slate-950">
-                Needs review
+                {t("dashboard.needsReview")}
               </Card.Title>
               <Card.Description className="text-sm text-slate-500">
-                Cases waiting for an adjuster decision.
+                {t("dashboard.needsReviewDescription")}
               </Card.Description>
             </Card.Header>
             <Card.Content className="grid gap-2 p-3">
               {isPending ? <QueueSkeleton /> : null}
               {data && reviewQueue.length
                 ? reviewQueue.slice(0, 5).map((claim) => (
-                  <Link
-                    className="grid gap-1 rounded-lg px-3 py-3 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    key={claim.id}
-                    to={`/claims/${claim.id}`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-semibold text-blue-700">
-                        {claim.id}
+                    <Link
+                      className="grid gap-1 rounded-lg px-3 py-3 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      key={claim.id}
+                      to={`/claims/${claim.id}`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-semibold text-blue-700">
+                          {claim.id}
+                        </span>
+                        <Chip
+                          color={statusTone[claim.status]}
+                          size="sm"
+                          variant="soft"
+                        >
+                          {t(`claim.status.${claim.status}`)}
+                        </Chip>
+                      </div>
+                      <span className="truncate text-sm text-slate-700">
+                        {claim.claimant}
                       </span>
-                      <Chip
-                        color={statusTone[claim.status]}
-                        size="sm"
-                        variant="soft"
-                      >
-                        {statusLabel[claim.status]}
-                      </Chip>
-                    </div>
-                    <span className="truncate text-sm text-slate-700">
-                      {claim.claimant}
-                    </span>
-                    <span className="text-xs text-slate-500">
-                      {claim.vehicle}
-                    </span>
-                  </Link>
-                ))
+                      <span className="text-xs text-slate-500">
+                        {claim.vehicle}
+                      </span>
+                    </Link>
+                  ))
                 : null}
               {data && reviewQueue.length === 0 ? (
                 <p className="px-2 py-8 text-center text-sm text-slate-500">
-                  No claims currently require adjuster review.
+                  {t("dashboard.noReviewQueue")}
                 </p>
               ) : null}
             </Card.Content>
@@ -393,28 +390,25 @@ function DashboardPage() {
       <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
         <Card.Header className="border-b border-slate-100 px-5 py-4">
           <Card.Title className="text-lg text-slate-950">
-            Recent claims
+            {t("dashboard.recentClaims")}
           </Card.Title>
           <Card.Description className="text-sm text-slate-500">
-            Latest activity first. Search by case details, then narrow the queue
-            by status or update date.
+            {t("dashboard.recentDescription")}
           </Card.Description>
         </Card.Header>
         <Card.Content className="p-5">
           {isPending ? <QueueSkeleton /> : null}
-          {error ? (
-            <InlineError message="Dashboard data could not be loaded." />
-          ) : null}
+          {error ? <InlineError message={t("dashboard.loadError")} /> : null}
           {data && data.claims.length > 0 ? (
             <ClaimQueueTable claims={data.claims} />
           ) : null}
           {data && data.claims.length === 0 ? (
             <EmptyState>
               <div className="text-sm font-semibold text-slate-950">
-                No claims yet
+                {t("dashboard.noClaims")}
               </div>
               <p className="mt-1 text-sm text-slate-500">
-                Create a claim to begin evidence intake.
+                {t("dashboard.noClaimsDescription")}
               </p>
             </EmptyState>
           ) : null}
@@ -454,18 +448,21 @@ function ClaimsPage() {
   const { data, error, isPending } = useDashboardOverview();
   const { session } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const canCreateClaim = session?.user.role === "ADMIN";
 
   return (
     <div className="mx-auto grid max-w-[1440px] gap-6">
       <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-semibold text-slate-500">Claims</p>
+          <p className="text-sm font-semibold text-slate-500">
+            {t("claimsList.eyebrow")}
+          </p>
           <h1 className="mt-2 text-3xl font-semibold text-slate-950">
-            Claim cases
+            {t("claimsList.title")}
           </h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Review active intake cases and open their evidence records.
+            {t("claimsList.description")}
           </p>
         </div>
         {canCreateClaim ? (
@@ -475,33 +472,33 @@ function ClaimsPage() {
             variant="primary"
           >
             <CloudUpload size={18} />
-            New claim
+            {t("dashboard.newClaim")}
           </Button>
         ) : null}
       </header>
 
       <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
         <Card.Header className="border-b border-slate-100 px-5 py-4">
-          <Card.Title className="text-lg text-slate-950">All claims</Card.Title>
+          <Card.Title className="text-lg text-slate-950">
+            {t("claimsList.allClaims")}
+          </Card.Title>
           <Card.Description className="text-sm text-slate-500">
-            Current cases ordered by their latest update.
+            {t("claimsList.allClaimsDescription")}
           </Card.Description>
         </Card.Header>
         <Card.Content className="p-5">
           {isPending ? <QueueSkeleton /> : null}
-          {error ? (
-            <InlineError message="Claim cases could not be loaded." />
-          ) : null}
+          {error ? <InlineError message={t("claimsList.loadError")} /> : null}
           {data && data.claims.length > 0 ? (
             <ClaimQueueTable claims={data.claims} />
           ) : null}
           {data && data.claims.length === 0 ? (
             <EmptyState>
               <div className="text-sm font-semibold text-slate-950">
-                No claims yet
+                {t("dashboard.noClaims")}
               </div>
               <p className="mt-1 text-sm text-slate-500">
-                Create a claim to begin evidence intake.
+                {t("dashboard.noClaimsDescription")}
               </p>
             </EmptyState>
           ) : null}
@@ -513,23 +510,24 @@ function ClaimsPage() {
 
 function AccessRestricted() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   return (
     <div className="flex min-h-full items-center justify-center px-5">
       <Card className="w-full max-w-lg rounded-lg border border-slate-200 bg-white shadow-sm">
         <Card.Content className="p-8">
           <h1 className="text-2xl font-semibold text-slate-950">
-            Access restricted
+            {t("access.title")}
           </h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Admin configuration is available only to users with the Admin role.
+            {t("access.description")}
           </p>
           <Button
             className="mt-6"
             onPress={() => navigate("/dashboard")}
             variant="primary"
           >
-            Return to dashboard
+            {t("access.returnToDashboard")}
           </Button>
         </Card.Content>
       </Card>
@@ -635,11 +633,13 @@ function QueueSkeleton() {
 }
 
 function InlineError({ message }: { message: string }) {
+  const { t } = useTranslation();
+
   return (
     <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-red-900">
       <ErrorOutline className="mt-0.5 shrink-0" size={18} />
       <div>
-        <div className="text-sm font-semibold">Unable to load queue</div>
+        <div className="text-sm font-semibold">{t("queue.loadFailed")}</div>
         <p className="mt-1 text-sm">{message}</p>
       </div>
     </div>

@@ -34,7 +34,8 @@ from app.services.document_extraction import (
 from app.services.evidence_storage import LocalEvidenceStorage
 from app.services.damage_model import DamageModelAnalysisResult, DamageModelImageResult, DamagePart, DamageType
 from app.services.damage_assessment import DamageAssessmentService
-from app.services.llm_copilot import LlmCopilotService
+from app.services.llm_copilot import AiReviewStructuredResult, LlmCopilotService
+from app.services.ai_review_translation import AiReviewTranslationError
 from app.repositories.claim_deletion import ClaimDeletionRepository
 
 
@@ -1053,8 +1054,13 @@ def test_workflow_analysis_returns_pending_then_persists_grouped_results(client:
         item for item in run["document_analyses"] if item["document_type"] == "VEHICLE_REGISTRATION"
     )
     assert registration["status"] == "COMPLETED"
-    assert {field["key"] for field in registration["fields"]} >= {"owner_name", "license_plate"}
-    assert all(field["original_ai_value"] == field["reviewed_value"] for field in registration["fields"])
+    assert "fields" not in registration
+    registration_ocr = next(
+        item for item in run["document_ocr_results"] if item["document_type"] == "VEHICLE_REGISTRATION"
+    )
+    extracted_fields = registration_ocr["extraction"]["fields"]
+    assert {field["field_key"] for field in extracted_fields} >= {"vehicle_owner", "license_plate"}
+    assert all(field["ai_extracted_value"] == field["confirmed_value"] for field in extracted_fields)
     policy = next(
         item for item in run["document_ocr_results"] if item["document_type"] == "INSURANCE_POLICY"
     )
@@ -2136,10 +2142,16 @@ def test_workflow_analysis_preserves_successful_results_when_one_document_fails(
     )
     assert failed["status"] == "FAILED"
     assert failed["warnings"] == ["analysis-fail.jpg: Mock OCR failed for this evidence image."]
+    assert "fields" not in failed
     assert any(item["status"] == "COMPLETED" for item in run["document_analyses"])
+    assert client.patch(
+        f"/api/claims/{claim['id']}/document-analyses/{failed['id']}/fields/1",
+        headers=adjuster_headers(client),
+        json={"reviewed_value": "obsolete"},
+    ).status_code == 404
 
 
-def test_adjuster_can_correct_document_fields_then_run_structured_ai_review(client: TestClient, monkeypatch):
+def test_adjuster_can_confirm_extracted_fields_then_run_structured_ai_review(client: TestClient, monkeypatch):
     claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
     client.post(
         f"/api/claims/{claim['id']}/analysis-runs",
@@ -2148,26 +2160,28 @@ def test_adjuster_can_correct_document_fields_then_run_structured_ai_review(clie
     detail = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()
     run = detail["latest_analysis_run"]
     registration = next(
-        item for item in run["document_analyses"] if item["document_type"] == "VEHICLE_REGISTRATION"
+        item for item in run["document_ocr_results"] if item["document_type"] == "VEHICLE_REGISTRATION"
     )
-    plate = next(field for field in registration["fields"] if field["key"] == "license_plate")
+    plate = next(
+        field for field in registration["extraction"]["fields"] if field["field_key"] == "license_plate"
+    )
 
     corrected = client.patch(
-        f"/api/claims/{claim['id']}/document-analyses/{registration['id']}/fields/{plate['id']}",
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields/{plate['id']}",
         headers=adjuster_headers(client),
-        json={"reviewed_value": "51H-999.99"},
+        json={"confirmed_value": "51h-123.45"},
     )
 
     assert corrected.status_code == 200
     corrected_plate = next(
         field
-        for document in corrected.json()["latest_analysis_run"]["document_analyses"]
+        for document in corrected.json()["latest_analysis_run"]["document_ocr_results"]
         if document["id"] == registration["id"]
-        for field in document["fields"]
+        for field in document["extraction"]["fields"]
         if field["id"] == plate["id"]
     )
-    assert corrected_plate["original_ai_value"] == "51H-123.45"
-    assert corrected_plate["reviewed_value"] == "51H-999.99"
+    assert corrected_plate["ai_extracted_value"] == "51H-123.45"
+    assert corrected_plate["confirmed_value"] == "51h-123.45"
 
     captured_context: dict[str, object] = {}
     original_generate = LlmCopilotService.generate
@@ -2177,7 +2191,13 @@ def test_adjuster_can_correct_document_fields_then_run_structured_ai_review(clie
         return original_generate(self, input_data)
 
     monkeypatch.setattr(LlmCopilotService, "generate", capture_normalized_input)
-    assert save_ready_analysis_snapshot(client, claim, run, as_adjuster=True).status_code == 200
+    confirmed_fields = ready_confirmed_fields(run, claim)
+    next(item for item in confirmed_fields if item["id"] == plate["id"])["confirmed_value"] = "51h-123.45"
+    assert client.put(
+        f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/extraction-fields",
+        headers=adjuster_headers(client),
+        json={"fields": confirmed_fields},
+    ).status_code == 200
 
     reviewed = client.post(
         f"/api/claims/{claim['id']}/analysis-runs/{run['id']}/ai-review",
@@ -2198,7 +2218,7 @@ def test_adjuster_can_correct_document_fields_then_run_structured_ai_review(clie
     assert captured_context["incident"]["location"] == "District 1, Ho Chi Minh City"
     assert captured_context["documents"]["VEHICLE_REGISTRATION"]["fields"][
         "license_plate"
-    ] == {"value": "51H-123.45", "consistency": "MATCH"}
+    ] == {"value": "51h-123.45", "consistency": "MATCH"}
     assert [finding["part"] for finding in captured_context["damage"]["findings"]] == [
         "rear_bumper",
         "rear_left_door",
@@ -2858,6 +2878,91 @@ def create_reviewable_conclusion(client: TestClient) -> tuple[dict[str, object],
         f"/api/claims/{claim['id']}/damage-analysis", headers=admin_headers(client)
     ).json()
     return claim, analysis["copilot_conclusion"]
+
+
+def test_vietnamese_ai_review_translation_is_cached_without_changing_canonical_review(
+    client: TestClient, monkeypatch
+):
+    calls: list[AiReviewStructuredResult] = []
+    translated = AiReviewStructuredResult(
+        summary="Hồ sơ cần chuyên viên thẩm định xem xét.",
+        assessment_interpretation="Kết quả xác định xe có khả năng cần sửa chữa.",
+        damaged_parts_summary="Cản sau bị móp trên 32,5% diện tích bộ phận.",
+        document_consistency_summary="Các trường đã đối chiếu đều khớp.",
+        warnings=["Chưa có giá phụ tùng tham khảo."],
+        recommended_next_step="Kiểm tra trực tiếp cản sau trước khi quyết định.",
+        human_review_required=True,
+    )
+
+    class FakeTranslationAdapter:
+        def translate(self, review: AiReviewStructuredResult) -> AiReviewStructuredResult:
+            calls.append(review)
+            return translated
+
+    monkeypatch.setattr(
+        claim_composition,
+        "get_ai_review_translation_adapter",
+        lambda _settings: FakeTranslationAdapter(),
+    )
+    claim, conclusion = create_reviewable_conclusion(client)
+    original_summary = conclusion["summary"]
+    original_validity = conclusion["validity_percentage"]
+    path = (
+        f"/api/claims/{claim['id']}/copilot-conclusions/"
+        f"{conclusion['id']}/translations/vi"
+    )
+
+    first = client.post(path, headers=adjuster_headers(client))
+    second = client.post(path, headers=adjuster_headers(client))
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json() == second.json()
+    assert first.json()["locale"] == "vi"
+    assert first.json()["structured_review"] == translated.model_dump(mode="json")
+    assert first.json()["prompt_version"] == "ai-review-translation-vi-v1"
+    assert len(calls) == 1
+    assert calls[0].summary == original_summary
+
+    reloaded = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_damage_analysis"]["copilot_conclusion"]
+    assert reloaded["summary"] == original_summary
+    assert reloaded["validity_percentage"] == original_validity
+    assert reloaded["review_history"] == []
+
+
+def test_vietnamese_ai_review_translation_failure_preserves_canonical_review(
+    client: TestClient, monkeypatch
+):
+    class FailingTranslationAdapter:
+        def translate(self, _review: AiReviewStructuredResult) -> AiReviewStructuredResult:
+            raise AiReviewTranslationError("Provider request failed")
+
+    monkeypatch.setattr(
+        claim_composition,
+        "get_ai_review_translation_adapter",
+        lambda _settings: FailingTranslationAdapter(),
+    )
+    claim, conclusion = create_reviewable_conclusion(client)
+    original_summary = conclusion["summary"]
+    original_history = conclusion["review_history"]
+
+    response = client.post(
+        f"/api/claims/{claim['id']}/copilot-conclusions/"
+        f"{conclusion['id']}/translations/vi",
+        headers=adjuster_headers(client),
+    )
+
+    assert response.status_code == 502
+    assert response.json() == {
+        "detail": "Vietnamese AI Review translation is unavailable"
+    }
+    reloaded = client.get(
+        f"/api/claims/{claim['id']}", headers=adjuster_headers(client)
+    ).json()["latest_damage_analysis"]["copilot_conclusion"]
+    assert reloaded["summary"] == original_summary
+    assert reloaded["review_history"] == original_history
 
 
 def test_admin_can_approve_an_ai_conclusion_and_view_persisted_review_history(client: TestClient):

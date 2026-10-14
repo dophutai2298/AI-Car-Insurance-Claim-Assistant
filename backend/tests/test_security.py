@@ -84,11 +84,11 @@ PROTECTED_ROUTES = [
     ("PATCH", "/api/claims/CLM-999999/information", False),
     ("POST", "/api/claims/CLM-999999/damage-analysis", True),
     ("POST", "/api/claims/CLM-999999/analysis-runs", True),
-    ("PATCH", "/api/claims/CLM-999999/document-analyses/1/fields/1", True),
     ("PATCH", "/api/claims/CLM-999999/analysis-runs/1/field-validations/1", True),
     ("PATCH", "/api/claims/CLM-999999/analysis-runs/1/extraction-fields/1", True),
     ("PUT", "/api/claims/CLM-999999/analysis-runs/1/extraction-fields", True),
     ("POST", "/api/claims/CLM-999999/analysis-runs/1/ai-review", True),
+    ("POST", "/api/claims/CLM-999999/copilot-conclusions/1/translations/vi", True),
     ("POST", "/api/claims/CLM-999999/copilot-conclusions/1/review", True),
     ("POST", "/api/claims/CLM-999999/copilot-conclusions/1/review/revert", True),
 ]
@@ -310,12 +310,6 @@ def test_nested_resources_cannot_be_accessed_through_another_claim(client: TestC
         f"/api/claims/{second['id']}/analysis-runs/{run_id}/extraction-fields/{field_id}",
         headers=headers(client, "adjuster"), json={"confirmed_value": "unrelated"},
     ).status_code == 404
-    document = next(item for item in run["document_analyses"] if item["fields"])
-    assert client.patch(
-        f"/api/claims/{second['id']}/document-analyses/{document['id']}/fields/{document['fields'][0]['id']}",
-        headers=headers(client, "adjuster"), json={"reviewed_value": "unrelated"},
-    ).status_code == 404
-
     damage = client.post(f"/api/claims/{first['id']}/damage-analysis", headers=headers(client, "adjuster"))
     assert damage.status_code == 200
     conclusion_id = damage.json()["copilot_conclusion"]["id"]

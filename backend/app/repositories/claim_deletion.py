@@ -10,12 +10,12 @@ from app.models import (
     CopilotConclusionReview,
     CopilotConclusionReviewReversion,
     CopilotReviewOutput,
+    CopilotReviewTranslation,
     DamageAnalysis,
     DamageAnalysisRuleSnapshot,
     DamageDetection,
     DamageModelOutput,
     DocumentAnalysis,
-    DocumentAnalysisField,
     DocumentExtractedField,
     DocumentExtractionResult,
     DocumentFieldValidation,
@@ -71,6 +71,11 @@ class ClaimDeletionRepository:
         self.session.execute(
             delete(CopilotConclusionReviewReversion).where(
                 CopilotConclusionReviewReversion.review_id.in_(review_ids)
+            )
+        )
+        self.session.execute(
+            delete(CopilotReviewTranslation).where(
+                CopilotReviewTranslation.conclusion_id.in_(conclusion_ids)
             )
         )
         self.session.execute(
@@ -133,11 +138,6 @@ class ClaimDeletionRepository:
             )
         )
         self.session.execute(delete(DocumentOcrResult).where(DocumentOcrResult.id.in_(ocr_ids)))
-        self.session.execute(
-            delete(DocumentAnalysisField).where(
-                DocumentAnalysisField.document_analysis_id.in_(document_analysis_ids)
-            )
-        )
         self.session.execute(
             delete(DocumentAnalysis).where(DocumentAnalysis.id.in_(document_analysis_ids))
         )
