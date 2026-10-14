@@ -12,24 +12,36 @@ export function LoginPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const [email, setEmail] = useState("admin@example.com");
-  const [password, setPassword] = useState("Admin123!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isPending, setIsPending] = useState(false);
 
-  if (session) return <Navigate replace to="/dashboard" />;
+  if (session)
+    return (
+      <Navigate
+        replace
+        to={session.user.role === "USER" ? "/my-claims" : "/dashboard"}
+      />
+    );
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     setIsPending(true);
     try {
-      await login({ email, password });
+      const nextSession = await login({ email, password });
       const requestedPath = (location.state as { from?: string } | null)?.from;
       navigate(
-        requestedPath && requestedPath !== "/login"
+        requestedPath &&
+          requestedPath !== "/login" &&
+          (nextSession.user.role !== "USER" ||
+            requestedPath.startsWith("/my-claims") ||
+            requestedPath === "/claims/new")
           ? requestedPath
-          : "/dashboard",
+          : nextSession.user.role === "USER"
+            ? "/my-claims"
+            : "/dashboard",
         {
           replace: true,
         },

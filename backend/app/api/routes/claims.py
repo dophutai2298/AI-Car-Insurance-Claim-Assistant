@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse, Response
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import AdminUser, AiReviewUser, AnalysisSupportUser, AnalysisUser, HumanReviewUser
+from app.api.dependencies import AdminUser, AiReviewUser, AnalysisSupportUser, AnalysisUser, ClaimIntakeUser, CurrentUser, HumanReviewUser
 from app.api.composition import build_claim_service
 from app.core.config import Settings, get_settings
 from app.db import get_db
@@ -14,6 +14,7 @@ from app.schemas.claims import (
     ClaimCreateRequest,
     ClaimInformationUpdateRequest,
     ClaimListItem,
+    MyClaimItem,
     ClaimResponse,
     AiReviewTranslationResponse,
     ClaimStatusUpdateRequest,
@@ -56,7 +57,7 @@ ClaimServiceDependency = Annotated[ClaimService, Depends(get_claim_service)]
 @router.post("", response_model=ClaimResponse, status_code=status.HTTP_201_CREATED)
 def create_claim(
     request: ClaimCreateRequest,
-    current_user: AdminUser,
+    current_user: ClaimIntakeUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
     try:
@@ -73,16 +74,39 @@ def list_claims(
     return service.list_claims()
 
 
+@router.get("/mine", response_model=list[MyClaimItem])
+def list_my_claims(current_user: ClaimIntakeUser, service: ClaimServiceDependency) -> list[MyClaimItem]:
+    return service.list_my_claims(current_user.id)
+
+
+@router.get("/queue", response_model=list[ClaimListItem])
+def list_adjuster_queue(_current_user: AnalysisSupportUser, service: ClaimServiceDependency) -> list[ClaimListItem]:
+    return service.list_adjuster_queue()
+
+
 @router.get("/{claim_number}", response_model=ClaimResponse)
 def get_claim(
     claim_number: str,
-    _current_user: AnalysisSupportUser,
+    current_user: CurrentUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
-    claim = service.get_claim(claim_number)
+    claim = service.get_claim(claim_number, current_user)
     if claim is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
     return claim
+
+
+@router.post("/{claim_number}/submit", response_model=MyClaimItem)
+def submit_claim(claim_number: str, current_user: ClaimIntakeUser, service: ClaimServiceDependency) -> MyClaimItem:
+    try:
+        submitted = service.submit_claim(claim_number, current_user)
+    except ClaimConflictError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+    except ClaimValidationError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
+    if submitted is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found")
+    return submitted
 
 
 @router.delete("/{claim_number}", status_code=status.HTTP_204_NO_CONTENT)
@@ -131,12 +155,14 @@ def upload_evidence(
     claim_number: str,
     files: Annotated[list[UploadFile], File()],
     categories: Annotated[list[EvidenceCategory], Form()],
-    _current_user: AdminUser,
+    current_user: ClaimIntakeUser,
     service: ClaimServiceDependency,
     other_document_label: Annotated[str | None, Form()] = None,
 ) -> ClaimResponse:
     try:
-        claim = service.upload_evidence(claim_number, categories, files, other_document_label)
+        claim = service.upload_evidence(claim_number, categories, files, other_document_label, actor=current_user)
+    except ClaimConflictError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     except ClaimValidationError as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
     except EvidenceValidationError as error:
@@ -152,10 +178,10 @@ def upload_evidence(
 def get_evidence_content(
     claim_number: str,
     evidence_id: int,
-    _current_user: AnalysisSupportUser,
+    current_user: CurrentUser,
     service: ClaimServiceDependency,
 ) -> FileResponse:
-    evidence_with_path = service.evidence_content_path(claim_number, evidence_id)
+    evidence_with_path = service.evidence_content_path(claim_number, evidence_id, current_user)
     if evidence_with_path is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evidence not found")
 
@@ -216,11 +242,13 @@ def review_copilot_conclusion(
 def delete_evidence(
     claim_number: str,
     evidence_id: int,
-    _current_user: AdminUser,
+    current_user: ClaimIntakeUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
     try:
-        claim = service.delete_evidence(claim_number, evidence_id)
+        claim = service.delete_evidence(claim_number, evidence_id, current_user)
+    except ClaimConflictError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     except ClaimResourceNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
     except ClaimValidationError as error:
@@ -234,11 +262,13 @@ def delete_evidence(
 def update_claim_information(
     claim_number: str,
     request: ClaimInformationUpdateRequest,
-    _current_user: AdminUser,
+    current_user: ClaimIntakeUser,
     service: ClaimServiceDependency,
 ) -> ClaimResponse:
     try:
-        claim = service.update_claim_information(claim_number, request)
+        claim = service.update_claim_information(claim_number, request, current_user)
+    except ClaimConflictError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     except ClaimValidationError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     if claim is None:

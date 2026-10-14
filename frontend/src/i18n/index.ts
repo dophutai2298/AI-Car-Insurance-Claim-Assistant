@@ -8,6 +8,32 @@ const initialLanguage =
     : null;
 
 const en = {
+  myClaims: {
+    eyebrow: "Customer intake",
+    title: "My Claims",
+    description: "Track your claims and continue any draft before submission.",
+    newClaim: "New claim",
+    claim: "Claim",
+    created: "Created",
+    status: "Status",
+    action: "Action",
+    continue: "Continue draft",
+    submitted: "Tracking status",
+    empty: "You have no claims yet.",
+    loadFailed: "Your claims could not be loaded.",
+    evidenceCount: "{{count}} of {{total}} required evidence types uploaded",
+    submit: "Submit claim",
+    submitSuccess: "Claim submitted",
+    submitFailed: "Claim could not be submitted",
+  },
+  customerAccount: {
+    userAccounts: "Customer accounts",
+    userAccountsDescription: "Create a sign-in account for a claim customer.",
+    userFullName: "Full name",
+    createUser: "Create User account",
+    userCreated: "User account created",
+    userCreateFailed: "User account could not be created",
+  },
   common: {
     backToTop: "Back to top",
     edit: "Edit",
@@ -137,7 +163,7 @@ const en = {
       "Vehicle damage findings, supporting documents and AI conclusions stay organized in one operational workspace.",
     authorizedOnly: "Authorized local demonstration access only",
     signInTitle: "Sign in to Claim Assistant",
-    signInDescription: "Use your Admin or Adjuster account to continue.",
+    signInDescription: "Use your account to continue.",
     signInFailed: "Sign-in failed",
     unableToSignIn: "Unable to sign in",
     email: "Email",
@@ -237,6 +263,7 @@ const en = {
       "AI and human review statuses describe the evidence review only. They are not a final insurance claim decision.",
     status: {
       DRAFT: "Draft",
+      SUBMITTED: "Submitted",
       ANALYZING: "Analyzing",
       REVIEW_REQUIRED: "Review required",
       AI_APPROVED: "AI review approved",
@@ -533,6 +560,33 @@ const en = {
 };
 
 const vi = {
+  myClaims: {
+    eyebrow: "Tiếp nhận hồ sơ",
+    title: "Hồ sơ của tôi",
+    description:
+      "Theo dõi trạng thái hồ sơ và hoàn thiện bản nháp trước khi gửi.",
+    newClaim: "Tạo hồ sơ mới",
+    claim: "Hồ sơ",
+    created: "Ngày tạo",
+    status: "Trạng thái",
+    action: "Thao tác",
+    continue: "Tiếp tục bản nháp",
+    submitted: "Đang theo dõi",
+    empty: "Bạn chưa có hồ sơ nào.",
+    loadFailed: "Không thể tải hồ sơ của bạn.",
+    evidenceCount: "Đã tải {{count}}/{{total}} loại bằng chứng bắt buộc",
+    submit: "Gửi hồ sơ",
+    submitSuccess: "Đã gửi hồ sơ",
+    submitFailed: "Không thể gửi hồ sơ",
+  },
+  customerAccount: {
+    userAccounts: "Tài khoản khách hàng",
+    userAccountsDescription: "Tạo tài khoản đăng nhập cho người gửi hồ sơ.",
+    userFullName: "Họ và tên",
+    createUser: "Tạo tài khoản User",
+    userCreated: "Đã tạo tài khoản User",
+    userCreateFailed: "Không thể tạo tài khoản User",
+  },
   toast: {
     claimInformationSaved: "Đã lưu thông tin hồ sơ",
     claimInformationSaveFailed: "Chưa thể lưu thông tin hồ sơ",
@@ -788,6 +842,7 @@ const vi = {
 
     status: {
       DRAFT: "Bản nháp",
+      SUBMITTED: "Đã gửi",
       ANALYZING: "Đang phân tích",
       REVIEW_REQUIRED: "Cần xem xét",
       AI_APPROVED: "Đánh giá AI đã được chấp thuận",

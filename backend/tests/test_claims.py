@@ -143,6 +143,134 @@ def create_claim(client: TestClient) -> dict[str, object]:
     return response.json()
 
 
+def customer_headers(client: TestClient, email: str) -> dict[str, str]:
+    created = client.post(
+        "/api/auth/users",
+        headers=admin_headers(client),
+        json={"email": email, "full_name": "Customer", "password": "Customer123!", "role": "USER"},
+    )
+    assert created.status_code == 201
+    login_response = client.post(
+        "/api/auth/login", json={"email": email, "password": "Customer123!"}
+    )
+    return {"Authorization": f"Bearer {login_response.json()['access_token']}"}
+
+
+def create_customer_claim(client: TestClient, headers: dict[str, str]) -> dict:
+    response = client.post(
+        "/api/claims",
+        headers=headers,
+        json={
+            "claimant_name": "Mai Nguyen",
+            "vehicle": {"make": "Toyota", "model": "Camry", "year": 2022},
+            "incident": {
+                "occurred_at": "2025-01-01T10:00:00Z",
+                "location": "Hanoi",
+                "description": "Parking accident",
+            },
+        },
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
+def test_customer_can_prepare_only_their_own_draft(client: TestClient):
+    owner = customer_headers(client, "owner@example.com")
+    stranger = customer_headers(client, "stranger@example.com")
+    claim = create_customer_claim(client, owner)
+    claim_id = claim["id"]
+
+    assert client.get("/api/claims/mine", headers=owner).json() == [
+        {"id": claim_id, "created_at": claim["created_at"], "status": "DRAFT"}
+    ]
+    assert client.get("/api/claims/mine", headers=stranger).json() == []
+    assert client.get("/api/claims", headers=owner).status_code == 403
+    assert client.get(f"/api/claims/{claim_id}", headers=stranger).status_code == 404
+    assert client.post(f"/api/claims/{claim_id}/submit", headers=stranger).status_code == 404
+    assert client.get("/api/vehicle-makes", headers=owner).status_code == 200
+    assert client.post(f"/api/claims/{claim_id}/analysis-runs", headers=owner).status_code == 403
+
+    update = client.patch(
+        f"/api/claims/{claim_id}/information",
+        headers=owner,
+        json={
+            "claimant_name": "Mai Nguyen Updated",
+            "vehicle": {"make": "Toyota", "model": "Camry", "year": 2022},
+            "incident": {
+                "occurred_at": "2025-01-01T10:00:00Z",
+                "location": "Hanoi",
+                "description": "Parking accident",
+            },
+        },
+    )
+    assert update.status_code == 200
+    assert update.json()["claimant_name"] == "Mai Nguyen Updated"
+    assert client.patch(f"/api/claims/{claim_id}/information", headers=stranger, json=update.json()).status_code == 404
+
+    upload = client.post(
+        f"/api/claims/{claim_id}/evidence",
+        headers=owner,
+        data={"categories": "ID_CARD"},
+        files={"files": ("id.jpg", evidence_bytes("id.jpg", b"id-card"), "image/jpeg")},
+    )
+    assert upload.status_code == 200
+    evidence = upload.json()["evidence"][0]
+    assert client.post(f"/api/claims/{claim_id}/evidence", headers=stranger, data={"categories": "ID_CARD"}, files={"files": ("other.jpg", evidence_bytes("other.jpg", b"other"), "image/jpeg")}).status_code == 404
+    assert client.get(evidence["content_url"], headers=owner).status_code == 200
+    assert client.get(evidence["content_url"], headers=stranger).status_code == 404
+    assert client.delete(f"/api/claims/{claim_id}/evidence/{evidence['id']}", headers=stranger).status_code == 404
+    assert client.delete(f"/api/claims/{claim_id}/evidence/{evidence['id']}", headers=owner).status_code == 200
+    assert client.delete(f"/api/claims/{claim_id}", headers=owner).status_code == 403
+
+
+def test_customer_submission_hands_claim_to_adjuster(client: TestClient):
+    owner = customer_headers(client, "owner@example.com")
+    claim = create_customer_claim(client, owner)
+    claim_id = claim["id"]
+    assert client.post(f"/api/claims/{claim_id}/submit", headers=owner).status_code == 422
+    categories = ["VEHICLE_DAMAGE_IMAGE", "ID_CARD", "INSURANCE_POLICY", "VEHICLE_REGISTRATION", "DRIVER_LICENSE"]
+    uploaded = client.post(
+        f"/api/claims/{claim_id}/evidence",
+        headers=owner,
+        data={"categories": categories},
+        files=[("files", (f"{category}.jpg", evidence_bytes("photo.jpg", b"evidence"), "image/jpeg")) for category in categories],
+    )
+    assert uploaded.status_code == 200
+    assert client.get("/api/claims/queue", headers=adjuster_headers(client)).json() == []
+    assert client.get(f"/api/claims/{claim_id}", headers=adjuster_headers(client)).status_code == 404
+    assert client.get(uploaded.json()["evidence"][0]["content_url"], headers=adjuster_headers(client)).status_code == 404
+    assert client.post(f"/api/claims/{claim_id}/analysis-runs", headers=adjuster_headers(client)).status_code == 422
+    assert client.post(f"/api/claims/{claim_id}/damage-analysis", headers=adjuster_headers(client)).status_code == 422
+    assert client.patch(f"/api/claims/{claim_id}/status", headers=admin_headers(client), json={"status": "ANALYZING"}).status_code == 409
+    submitted = client.post(f"/api/claims/{claim_id}/submit", headers=owner)
+    assert submitted.status_code == 200
+    assert submitted.json() == {"id": claim_id, "created_at": claim["created_at"], "status": "SUBMITTED"}
+    assert client.get("/api/claims/mine", headers=owner).json() == [submitted.json()]
+    assert client.get(f"/api/claims/{claim_id}", headers=owner).status_code == 404
+    assert client.get(uploaded.json()["evidence"][0]["content_url"], headers=owner).status_code == 404
+    assert client.post(f"/api/claims/{claim_id}/evidence", headers=owner, data={"categories": "ID_CARD"}, files={"files": ("new.jpg", evidence_bytes("new.jpg", b"new"), "image/jpeg")}).status_code == 409
+    assert client.delete(f"/api/claims/{claim_id}/evidence/{uploaded.json()['evidence'][0]['id']}", headers=owner).status_code == 409
+    assert client.patch(f"/api/claims/{claim_id}/information", headers=owner, json={"claimant_name": "Changed", "vehicle": {"make": "Toyota", "model": "Camry", "year": 2022}, "incident": {"occurred_at": "2025-01-01T10:00:00Z", "location": "Hanoi", "description": "Parking accident"}}).status_code == 409
+    assert client.get("/api/claims/queue", headers=adjuster_headers(client)).json()[0]["id"] == claim_id
+    assert client.get(f"/api/claims/{claim_id}", headers=adjuster_headers(client)).status_code == 200
+    assert client.get(uploaded.json()["evidence"][0]["content_url"], headers=adjuster_headers(client)).status_code == 200
+    assert client.post(f"/api/claims/{claim_id}/analysis-runs/999/ai-review", headers=adjuster_headers(client)).status_code in {404, 409}
+    assert client.post(f"/api/claims/{claim_id}/copilot-conclusions/999/review", headers=adjuster_headers(client), json={"status": "APPROVED", "comment": "Reviewed"}).status_code == 404
+    assert client.post(f"/api/claims/{claim_id}/analysis-runs", headers=adjuster_headers(client)).status_code == 202
+
+
+def test_adjuster_queue_retains_admin_claims_without_exposing_customer_drafts(client: TestClient):
+    admin_claim = create_claim(client)
+    owner = customer_headers(client, "owner@example.com")
+    customer_claim = create_customer_claim(client, owner)
+
+    queue = client.get("/api/claims/queue", headers=adjuster_headers(client))
+    assert queue.status_code == 200
+    assert [item["id"] for item in queue.json()] == [admin_claim["id"]]
+    assert client.get(f"/api/claims/{admin_claim['id']}", headers=adjuster_headers(client)).status_code == 200
+    assert client.get(f"/api/claims/{customer_claim['id']}", headers=adjuster_headers(client)).status_code == 404
+
+
 def test_admin_can_create_persisted_claim_case(client: TestClient):
     claim = create_claim(client)
 

@@ -7,8 +7,12 @@ export function useDashboardOverview() {
   const { session } = useAuth();
 
   return useQuery({
-    queryKey: ["dashboard-overview"],
-    queryFn: () => getDashboardOverview(session!.access_token),
-    enabled: Boolean(session),
+    queryKey: ["dashboard-overview", session?.user.role],
+    queryFn: () =>
+      getDashboardOverview(
+        session!.access_token,
+        session!.user.role as "ADMIN" | "ADJUSTER",
+      ),
+    enabled: Boolean(session && session.user.role !== "USER"),
   });
 }

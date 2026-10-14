@@ -1,7 +1,7 @@
 import json
 import logging
 
-from app.models import AnalysisRunStatus, Claim, ClaimStatus, EvidenceCategory, WorkflowAnalysisRun
+from app.models import AnalysisRunStatus, Claim, ClaimStatus, EvidenceCategory, User, UserRole, WorkflowAnalysisRun
 from app.repositories.analysis_runs import AnalysisRunRepository
 from app.repositories.claims import ClaimRepository
 from app.repositories.claim_incidents import ClaimIncidentRepository
@@ -53,6 +53,9 @@ class WorkflowAnalysisOperations:
         claim = self.claims.find_by_claim_number(claim_number)
         if claim is None:
             return None
+        creator = self.claims.session.get(User, claim.created_by_user_id)
+        if creator and creator.role is UserRole.USER and claim.status is ClaimStatus.DRAFT:
+            raise ClaimValidationError("Customer claim must be submitted before analysis")
         if claim.status in {ClaimStatus.AI_APPROVED, ClaimStatus.AI_REJECTED}:
             raise ClaimValidationError("Revert the human review before running analysis again")
         active_run = self.analysis_runs.latest_for_claim(claim.id)

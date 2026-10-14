@@ -1,12 +1,16 @@
 import type { DashboardOverview } from "./types";
-import { listClaims } from "../claims/claimsApi";
+import { listAdjusterQueue, listClaims } from "../claims/claimsApi";
 
 export async function getDashboardOverview(
   accessToken: string,
+  role: "ADMIN" | "ADJUSTER",
 ): Promise<DashboardOverview> {
-  const claims = await listClaims(accessToken);
+  const claims = await (role === "ADMIN"
+    ? listClaims(accessToken)
+    : listAdjusterQueue(accessToken));
   const pendingReviews = claims.filter(
-    (claim) => claim.status === "REVIEW_REQUIRED",
+    (claim) =>
+      claim.status === "SUBMITTED" || claim.status === "REVIEW_REQUIRED",
   ).length;
   const aiApproved = claims.filter(
     (claim) => claim.status === "AI_APPROVED",

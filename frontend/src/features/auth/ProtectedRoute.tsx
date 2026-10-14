@@ -28,8 +28,9 @@ export function RoleRoute({
 }: {
   children: ReactNode;
   fallback: ReactNode;
-  role: UserRole;
+  role: UserRole | UserRole[];
 }) {
   const { session } = useAuth();
-  return session?.user.role === role ? children : fallback;
+  const allowed = Array.isArray(role) ? role : [role];
+  return session && allowed.includes(session.user.role) ? children : fallback;
 }

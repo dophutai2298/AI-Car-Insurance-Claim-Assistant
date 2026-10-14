@@ -1,7 +1,7 @@
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Claim, ClaimStatus
+from app.models import Claim, ClaimStatus, User, UserRole
 from app.schemas.claims import ClaimCreateRequest, ClaimInformationUpdateRequest
 
 
@@ -29,6 +29,16 @@ class ClaimRepository:
 
     def list_all(self) -> list[Claim]:
         return list(self.session.scalars(select(Claim).order_by(Claim.updated_at.desc())))
+
+    def list_owned(self, user_id: int) -> list[Claim]:
+        return list(self.session.scalars(select(Claim).where(Claim.created_by_user_id == user_id).order_by(Claim.created_at.desc())))
+
+    def list_adjuster_queue(self) -> list[Claim]:
+        return list(self.session.scalars(
+            select(Claim).join(User, User.id == Claim.created_by_user_id)
+            .where(or_(User.role != UserRole.USER, Claim.status != ClaimStatus.DRAFT))
+            .order_by(Claim.updated_at.desc())
+        ))
 
     def find_by_claim_number(self, claim_number: str) -> Claim | None:
         return self.session.scalar(select(Claim).where(Claim.claim_number == claim_number))

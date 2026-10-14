@@ -5,6 +5,7 @@ import type {
   ClaimDetail,
   ClaimInformationInput,
   ClaimListItem,
+  MyClaimItem,
   ClaimStatus,
   CopilotConclusionReviewInput,
   DamageAnalysis,
@@ -95,6 +96,14 @@ async function request<T>(
 
 export const listClaims = (accessToken: string) =>
   request<ClaimListItem[]>("/api/claims", accessToken);
+export const listAdjusterQueue = (accessToken: string) =>
+  request<ClaimListItem[]>("/api/claims/queue", accessToken);
+export const listMyClaims = (accessToken: string) =>
+  request<MyClaimItem[]>("/api/claims/mine", accessToken);
+export const submitClaim = (claimId: string, accessToken: string) =>
+  request<MyClaimItem>(`/api/claims/${claimId}/submit`, accessToken, {
+    method: "POST",
+  });
 export const getClaim = (claimId: string, accessToken: string) =>
   request<ClaimDetail>(`/api/claims/${claimId}`, accessToken);
 export const deleteClaim = (claimId: string, accessToken: string) =>

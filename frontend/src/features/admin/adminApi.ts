@@ -11,6 +11,17 @@ import type {
 
 export class AdminApiError extends Error {}
 
+export function createCustomerAccount(
+  input: { email: string; full_name: string; password: string },
+  accessToken: string,
+) {
+  return request<{ email: string; full_name: string; role: "USER" }>(
+    "/api/auth/users",
+    accessToken,
+    { method: "POST", body: JSON.stringify({ ...input, role: "USER" }) },
+  );
+}
+
 async function request<T>(
   path: string,
   accessToken: string,
