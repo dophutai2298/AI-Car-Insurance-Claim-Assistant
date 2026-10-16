@@ -38,11 +38,14 @@ export function MyClaimsPage() {
       ) : null}
       {isPending ? <Skeleton className="h-48 rounded-lg" /> : null}
       {data && data.length === 0 ? (
-        <EmptyState className="border border-slate-200 bg-white py-16">
-          <Document size={28} className="text-slate-400" />
-          <h2 className="mt-3 text-base font-semibold text-slate-950">
+        <EmptyState className="card card--default rounded-lg border border-slate-200 bg-white shadow-sm text-center">
+          <div className="flex flex-col items-center justify-center gap-4 py-10">
+            {/* <Document size={15} className="text-slate-400" /> */}
+          <h2 className="text-sm font-semibold text-slate-950">
             {t("myClaims.empty")}
           </h2>
+          </div>
+         
         </EmptyState>
       ) : null}
       {data && data.length > 0 ? (
