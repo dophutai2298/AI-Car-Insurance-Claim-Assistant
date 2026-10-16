@@ -14,10 +14,9 @@ export function CustomerAccountsPage() {
   const refreshAccounts = useRefreshCustomerAccounts();
 
   return (
-    <div className="mx-auto grid max-w-[1440px] gap-6 py-2">
+    <div className="mx-auto grid max-w-[1440px] gap-6">
       <header className="border-b border-slate-200 pb-5">
         <div className="flex items-center gap-3 text-slate-500">
-          <User size={20} />
           <p className="text-sm font-semibold">
             {t("customerAccount.eyebrow")}
           </p>

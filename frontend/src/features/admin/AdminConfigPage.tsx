@@ -177,8 +177,8 @@ export function AdminConfigPage() {
       <VehicleManufacturerPanel />
 
       <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <Card.Header className="flex items-center gap-3 border-b border-slate-100 px-6 py-5">
-          <Time className="text-slate-600" size={20} />
+        <Card.Header className="flex items-start gap-3 border-b border-slate-100 px-6 py-5">
+          {/* <Time className="text-slate-600" size={20} /> */}
           <div>
             <Card.Title className="text-lg text-slate-950">
               {t("admin.changeHistory")}
