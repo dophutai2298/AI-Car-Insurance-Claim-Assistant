@@ -83,6 +83,37 @@ def test_admin_can_create_an_adjuster_account(client: TestClient):
     assert login(client, "assistant1", "123456").status_code == 200
 
 
+def test_admin_can_provision_user_without_granting_admin_access(client: TestClient):
+    created = client.post(
+        "/api/auth/users",
+        headers=admin_headers(client),
+        json={"email": "customer@example.com", "full_name": "Mai Nguyen", "password": "Customer123!", "role": "USER"},
+    )
+    assert created.status_code == 201
+    signed_in = login(client, "customer@example.com", "Customer123!")
+    assert signed_in.status_code == 200
+    token = {"Authorization": f"Bearer {signed_in.json()['access_token']}"}
+    assert client.get("/api/auth/me", headers=token).json()["role"] == "USER"
+    assert client.get("/api/admin/access-check", headers=token).status_code == 403
+    assert client.post("/api/auth/users", headers=token, json={"email": "other@example.com", "password": "123456", "role": "USER"}).status_code == 403
+
+
+def test_admin_can_list_customer_accounts_only(client: TestClient):
+    admin = admin_headers(client)
+    assert client.post(
+        "/api/auth/users",
+        headers=admin,
+        json={"email": "customer@example.com", "full_name": "Mai Nguyen", "password": "Customer123!", "role": "USER"},
+    ).status_code == 201
+
+    response = client.get("/api/auth/users", headers=admin)
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {"email": "customer@example.com", "full_name": "Mai Nguyen", "is_active": True}
+    ]
+
+
 def test_adjuster_cannot_create_accounts(client: TestClient):
     token = login(client, "adjuster@example.com", "Adjuster123!").json()["access_token"]
 

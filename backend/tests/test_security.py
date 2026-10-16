@@ -53,9 +53,14 @@ def client(tmp_path, monkeypatch) -> Iterator[TestClient]:
 
 
 def headers(client: TestClient, role: str) -> dict[str, str]:
+    if role == "user":
+        created = client.post("/api/auth/users", headers=headers(client, "admin"), json={
+            "email": "customer@example.com", "full_name": "Customer", "password": "Customer123!", "role": "USER"
+        })
+        assert created.status_code == 201
     response = client.post(
         "/api/auth/login",
-        json={"email": f"{role}@example.com", "password": "Admin123!" if role == "admin" else "Adjuster123!"},
+        json={"email": f"{role if role != 'user' else 'customer'}@example.com", "password": {"admin": "Admin123!", "adjuster": "Adjuster123!", "user": "Customer123!"}[role]},
     )
     assert response.status_code == 200
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
@@ -64,8 +69,9 @@ def headers(client: TestClient, role: str) -> dict[str, str]:
 PROTECTED_ROUTES = [
     ("GET", "/api/auth/me", True),
     ("POST", "/api/auth/users", False),
+    ("GET", "/api/auth/users", False),
     ("GET", "/api/runtime-config", False),
-    ("GET", "/api/vehicle-makes", False),
+    ("GET", "/api/vehicle-makes", True),
     ("GET", "/api/admin/access-check", False),
     ("GET", "/api/admin/assessment-rules", False),
     ("PUT", "/api/admin/assessment-rules", False),
@@ -75,7 +81,10 @@ PROTECTED_ROUTES = [
     ("PUT", "/api/admin/vehicle-makes/1", False),
     ("POST", "/api/claims", False),
     ("GET", "/api/claims", False),
+    ("GET", "/api/claims/mine", False),
+    ("GET", "/api/claims/queue", True),
     ("GET", "/api/claims/CLM-999999", True),
+    ("POST", "/api/claims/CLM-999999/submit", False),
     ("DELETE", "/api/claims/CLM-999999", False),
     ("PATCH", "/api/claims/CLM-999999/status", False),
     ("POST", "/api/claims/CLM-999999/evidence", False),
@@ -92,6 +101,19 @@ PROTECTED_ROUTES = [
     ("POST", "/api/claims/CLM-999999/copilot-conclusions/1/review", True),
     ("POST", "/api/claims/CLM-999999/copilot-conclusions/1/review/revert", True),
 ]
+
+USER_ALLOWED_ROUTES = {
+    ("GET", "/api/auth/me"),
+    ("GET", "/api/vehicle-makes"),
+    ("POST", "/api/claims"),
+    ("GET", "/api/claims/mine"),
+    ("GET", "/api/claims/CLM-999999"),
+    ("POST", "/api/claims/CLM-999999/submit"),
+    ("POST", "/api/claims/CLM-999999/evidence"),
+    ("DELETE", "/api/claims/CLM-999999/evidence/1"),
+    ("GET", "/api/claims/CLM-999999/evidence/1/content"),
+    ("PATCH", "/api/claims/CLM-999999/information"),
+}
 
 
 def test_permission_matrix_covers_every_registered_api_route(client: TestClient):
@@ -117,6 +139,9 @@ def test_permission_matrix(client: TestClient, method: str, path: str, adjuster_
 
     adjuster = client.request(method, path, headers=headers(client, "adjuster"), json={} if method in {"POST", "PUT", "PATCH"} else None)
     assert (adjuster.status_code not in {401, 403}) if adjuster_allowed else adjuster.status_code == 403
+
+    user = client.request(method, path, headers=headers(client, "user"), json={} if method in {"POST", "PUT", "PATCH"} else None)
+    assert (user.status_code not in {401, 403}) if (method, path) in USER_ALLOWED_ROUTES else user.status_code == 403
 
     admin = client.request(method, path, headers=headers(client, "admin"), json={} if method in {"POST", "PUT", "PATCH"} else None)
     assert admin.status_code not in {401, 403}

@@ -75,6 +75,12 @@ class ClaimListItem(BaseModel):
     updated_at: datetime
 
 
+class MyClaimItem(BaseModel):
+    id: str
+    created_at: datetime
+    status: ClaimStatus
+
+
 class ClaimStatusUpdateRequest(BaseModel):
     status: ClaimStatus
 

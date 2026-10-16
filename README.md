@@ -6,7 +6,7 @@ A full-stack proof of concept for managing auto insurance claims. Adjusters can 
 
 ## What it does
 
-- Provides role-based access for `ADMIN` and `ADJUSTER` users.
+- Provides role-based access for `ADMIN`, `ADJUSTER`, and customer `USER` accounts.
 - Manages claims, vehicle and incident details, and evidence files.
 - Runs document OCR and LLM-based extraction for identity cards, insurance policies, vehicle registrations, and driver licenses.
 - Runs vehicle damage analysis and presents normalized damage findings by vehicle part.
@@ -151,8 +151,9 @@ Warnings that remain in an otherwise ready snapshot reduce the score, so treat a
 
 ## Access rules
 
-- `ADMIN` can use all protected APIs and manage claims and configuration, and can create user accounts.
-- `ADJUSTER` can run Analysis, AI Review, and Human Review. Adjusters can also read claim details and evidence needed for those workflows; claim creation/listing, evidence changes, account management, and configuration are admin-only.
+- `ADMIN` can use all protected APIs, manage claims and configuration, and create customer `USER` accounts in Admin Config.
+- `USER` can create and edit only their own Draft claims through Claim Information and Evidence & documents. They can submit a complete Draft and then see only its identifier, creation date, and status in My Claims. Users cannot delete claims or access staff workflows and configuration.
+- `ADJUSTER` can see submitted customer claims in the work queue and run Analysis, AI Review, and Human Review. Adjusters cannot open an unsubmitted customer Draft, change evidence, create claims or accounts, or manage configuration.
 
 ## DeepDoc package
 

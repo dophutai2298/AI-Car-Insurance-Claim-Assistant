@@ -22,9 +22,12 @@ import { useCreateClaim } from "./useClaims";
 import { ClaimWorkflowStepper } from "./ClaimWorkflowStepper";
 import { showWorkflowActionError } from "./workflowToasts";
 import { useVehicleMakes } from "../vehicleMakes/useVehicleMakes";
+import { useAuth } from "../auth/AuthProvider";
 
 export function ClaimCreatePage() {
   const navigate = useNavigate();
+  const { session } = useAuth();
+  const isCustomer = session?.user.role === "USER";
   const { t } = useTranslation();
   const { contains } = useFilter({ sensitivity: "base" });
   const createClaim = useCreateClaim();
@@ -71,7 +74,9 @@ export function ClaimCreatePage() {
         },
       });
       toast.success(t("toast.claimCreated"));
-      navigate(`/claims/${claim.id}`);
+      navigate(
+        isCustomer ? `/my-claims/${claim.id}/edit` : `/claims/${claim.id}`,
+      );
     } catch (caughtError) {
       const message =
         caughtError instanceof ClaimsApiError
@@ -96,7 +101,7 @@ export function ClaimCreatePage() {
     <div className="mx-auto grid max-w-[1440px] gap-6 py-2">
       <Link
         className="flex w-fit items-center gap-2 text-sm font-semibold text-blue-700"
-        to="/claims"
+        to={isCustomer ? "/my-claims" : "/claims"}
       >
         <ArrowLeft size={18} />
         {t("claim.backToClaims")}
@@ -113,7 +118,7 @@ export function ClaimCreatePage() {
         </p>
       </header>
 
-      <ClaimWorkflowStepper />
+      <ClaimWorkflowStepper maxSteps={isCustomer ? 2 : 5} />
 
       <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
         <Card.Header className="flex items-center gap-3 border-b border-slate-100 px-6 py-5">
@@ -295,7 +300,12 @@ export function ClaimCreatePage() {
               />
             </TextField>
             <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
-              <Button onPress={() => navigate("/dashboard")} variant="ghost">
+              <Button
+                onPress={() =>
+                  navigate(isCustomer ? "/my-claims" : "/dashboard")
+                }
+                variant="ghost"
+              >
                 {t("claim.cancel")}
               </Button>
               <Button

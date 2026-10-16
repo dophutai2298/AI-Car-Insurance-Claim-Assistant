@@ -20,3 +20,12 @@ class UserRepository:
         )
         self.session.add(user)
         return user
+
+    def list_by_role(self, role: UserRole) -> list[User]:
+        return list(
+            self.session.scalars(
+                select(User)
+                .where(User.role == role)
+                .order_by(User.full_name.asc(), User.email.asc())
+            )
+        )

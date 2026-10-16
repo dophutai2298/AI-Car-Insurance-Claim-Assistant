@@ -1,5 +1,6 @@
 export type ClaimStatus =
   | "DRAFT"
+  | "SUBMITTED"
   | "ANALYZING"
   | "REVIEW_REQUIRED"
   | "AI_APPROVED"
@@ -39,6 +40,12 @@ export type ClaimDetail = {
   latest_damage_analysis: DamageAnalysis | null;
   latest_analysis_run?: WorkflowAnalysisRun | null;
   copilot_review_history?: CopilotConclusionReview[];
+};
+
+export type MyClaimItem = {
+  id: string;
+  created_at: string;
+  status: ClaimStatus;
 };
 
 export type EvidenceItem = {

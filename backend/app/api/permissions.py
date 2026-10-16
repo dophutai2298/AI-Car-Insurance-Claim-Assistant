@@ -9,6 +9,7 @@ class Permission(str, Enum):
     AI_REVIEW = "ai_review"
     HUMAN_REVIEW = "human_review"
     ANALYSIS_SUPPORT = "analysis_support"
+    CLAIM_INTAKE = "claim_intake"
 
 
 ROLE_PERMISSIONS = {
@@ -21,6 +22,7 @@ ROLE_PERMISSIONS = {
             Permission.ANALYSIS_SUPPORT,
         }
     ),
+    UserRole.USER: frozenset({Permission.CLAIM_INTAKE}),
 }
 
 

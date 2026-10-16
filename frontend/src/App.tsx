@@ -9,6 +9,7 @@ import {
   ErrorOutline,
   Logout,
   SettingsAdjust,
+  User,
   WarningAlt,
 } from "@carbon/icons-react";
 import {
@@ -50,12 +51,16 @@ import { LanguageSwitcher } from "./features/auth/LanguageSwitcher";
 import { ProtectedRoute, RoleRoute } from "./features/auth/ProtectedRoute";
 import { ClaimCreatePage } from "./features/claims/ClaimCreatePage";
 import { ClaimDetailPage } from "./features/claims/ClaimDetailPage";
+import { MyClaimsPage } from "./features/claims/MyClaimsPage";
+import { CustomerDraftPage } from "./features/claims/CustomerDraftPage";
 import { AdminConfigPage } from "./features/admin/AdminConfigPage";
+import { CustomerAccountsPage } from "./features/admin/CustomerAccountsPage";
 import { statusTone } from "./features/claims/statusPresentation";
 import type { ClaimStatus } from "./features/claims/types";
 
 const claimStatusChartColor: Record<ClaimStatus, string> = {
   DRAFT: "#64748b",
+  SUBMITTED: "#0f766e",
   ANALYZING: "#2563eb",
   REVIEW_REQUIRED: "#d97706",
   AI_APPROVED: "#059669",
@@ -68,9 +73,15 @@ function AppShell() {
   const { t } = useTranslation();
   const scrollContainerRef = useRef<HTMLElement | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
-  const navigation = [
+  const staffNavigation = [
     { label: t("navigation.dashboard"), icon: Activity, path: "/dashboard" },
     { label: t("navigation.claims"), icon: Document, path: "/claims" },
+    {
+      label: t("navigation.customerAccounts"),
+      icon: User,
+      path: "/customer-accounts",
+      adminOnly: true,
+    },
     {
       label: t("navigation.admin"),
       icon: SettingsAdjust,
@@ -78,9 +89,19 @@ function AppShell() {
       adminOnly: true,
     },
   ];
-  const visibleNavigation = navigation.filter(
-    (item) => !item.adminOnly || session?.user.role === "ADMIN",
-  );
+  const visibleNavigation =
+    session?.user.role === "USER"
+      ? [
+          { label: t("myClaims.title"), icon: Document, path: "/my-claims" },
+          {
+            label: t("myClaims.newClaim"),
+            icon: CloudUpload,
+            path: "/claims/new",
+          },
+        ]
+      : staffNavigation.filter(
+          (item) => !item.adminOnly || session?.user.role === "ADMIN",
+        );
 
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current;
@@ -206,7 +227,10 @@ function DashboardPage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const reviewQueue =
-    data?.claims.filter((claim) => claim.status === "REVIEW_REQUIRED") ?? [];
+    data?.claims.filter(
+      (claim) =>
+        claim.status === "SUBMITTED" || claim.status === "REVIEW_REQUIRED",
+    ) ?? [];
   const chartData =
     data?.queueMix.map((point) => ({
       name: t(`claim.status.${point.status}`),
@@ -222,7 +246,7 @@ function DashboardPage() {
           <p className="mb-2 text-sm font-semibold text-slate-500">
             {t("dashboard.eyebrow")}
           </p>
-          <h1 className="max-w-3xl text-3xl font-semibold text-slate-950 sm:text-4xl">
+          <h1 className="mt-3 text-3xl font-semibold text-slate-950">
             {t("dashboard.title")}
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
@@ -510,6 +534,7 @@ function ClaimsPage() {
 
 function AccessRestricted() {
   const navigate = useNavigate();
+  const { session } = useAuth();
   const { t } = useTranslation();
 
   return (
@@ -524,10 +549,16 @@ function AccessRestricted() {
           </p>
           <Button
             className="mt-6"
-            onPress={() => navigate("/dashboard")}
+            onPress={() =>
+              navigate(
+                session?.user.role === "USER" ? "/my-claims" : "/dashboard",
+              )
+            }
             variant="primary"
           >
-            {t("access.returnToDashboard")}
+            {session?.user.role === "USER"
+              ? t("myClaims.title")
+              : t("access.returnToDashboard")}
           </Button>
         </Card.Content>
       </Card>
@@ -552,10 +583,66 @@ export function AppRoutes() {
             </ProtectedRoute>
           }
         >
-          <Route element={<DashboardPage />} path="/dashboard" />
-          <Route element={<ClaimsPage />} path="/claims" />
-          <Route element={<ClaimCreatePage />} path="/claims/new" />
-          <Route element={<ClaimDetailPage />} path="/claims/:claimId" />
+          <Route
+            element={
+              <RoleRoute
+                fallback={<AccessRestricted />}
+                role={["ADMIN", "ADJUSTER"]}
+              >
+                <DashboardPage />
+              </RoleRoute>
+            }
+            path="/dashboard"
+          />
+          <Route
+            element={
+              <RoleRoute
+                fallback={<AccessRestricted />}
+                role={["ADMIN", "ADJUSTER"]}
+              >
+                <ClaimsPage />
+              </RoleRoute>
+            }
+            path="/claims"
+          />
+          <Route
+            element={
+              <RoleRoute
+                fallback={<AccessRestricted />}
+                role={["ADMIN", "USER"]}
+              >
+                <ClaimCreatePage />
+              </RoleRoute>
+            }
+            path="/claims/new"
+          />
+          <Route
+            element={
+              <RoleRoute
+                fallback={<AccessRestricted />}
+                role={["ADMIN", "ADJUSTER"]}
+              >
+                <ClaimDetailPage />
+              </RoleRoute>
+            }
+            path="/claims/:claimId"
+          />
+          <Route
+            element={
+              <RoleRoute fallback={<AccessRestricted />} role="USER">
+                <MyClaimsPage />
+              </RoleRoute>
+            }
+            path="/my-claims"
+          />
+          <Route
+            element={
+              <RoleRoute fallback={<AccessRestricted />} role="USER">
+                <CustomerDraftPage />
+              </RoleRoute>
+            }
+            path="/my-claims/:claimId/edit"
+          />
           <Route
             element={
               <RoleRoute fallback={<AccessRestricted />} role="ADMIN">
@@ -564,10 +651,28 @@ export function AppRoutes() {
             }
             path="/admin"
           />
+          <Route
+            element={
+              <RoleRoute fallback={<AccessRestricted />} role="ADMIN">
+                <CustomerAccountsPage />
+              </RoleRoute>
+            }
+            path="/customer-accounts"
+          />
         </Route>
-        <Route element={<Navigate replace to="/dashboard" />} path="*" />
+        <Route element={<DefaultRedirect />} path="*" />
       </Routes>
     </>
+  );
+}
+
+function DefaultRedirect() {
+  const { session } = useAuth();
+  return (
+    <Navigate
+      replace
+      to={session?.user.role === "USER" ? "/my-claims" : "/dashboard"}
+    />
   );
 }
 

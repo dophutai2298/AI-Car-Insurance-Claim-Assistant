@@ -5,6 +5,7 @@ export const statusTone: Record<
   "default" | "accent" | "success" | "warning" | "danger"
 > = {
   DRAFT: "default",
+  SUBMITTED: "accent",
   ANALYZING: "accent",
   REVIEW_REQUIRED: "warning",
   AI_APPROVED: "success",
@@ -14,6 +15,7 @@ export const statusTone: Record<
 
 export const statusLabel: Record<ClaimStatus, string> = {
   DRAFT: "Draft",
+  SUBMITTED: "Submitted",
   ANALYZING: "Analyzing",
   REVIEW_REQUIRED: "Review required",
   AI_APPROVED: "AI review approved",

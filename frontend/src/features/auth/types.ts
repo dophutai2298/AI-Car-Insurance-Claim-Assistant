@@ -1,4 +1,4 @@
-export type UserRole = "ADMIN" | "ADJUSTER";
+export type UserRole = "ADMIN" | "ADJUSTER" | "USER";
 
 export type AuthUser = {
   email: string;

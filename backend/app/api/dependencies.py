@@ -48,10 +48,13 @@ require_analysis = require_permission(Permission.ANALYSIS)
 require_ai_review = require_permission(Permission.AI_REVIEW)
 require_human_review = require_permission(Permission.HUMAN_REVIEW)
 require_analysis_support = require_permission(Permission.ANALYSIS_SUPPORT)
+require_claim_intake = require_permission(Permission.CLAIM_INTAKE)
 
 
 AdminUser = Annotated[User, Depends(require_admin)]
+CurrentUser = Annotated[User, Depends(get_current_user)]
 AnalysisUser = Annotated[User, Depends(require_analysis)]
 AiReviewUser = Annotated[User, Depends(require_ai_review)]
 HumanReviewUser = Annotated[User, Depends(require_human_review)]
 AnalysisSupportUser = Annotated[User, Depends(require_analysis_support)]
+ClaimIntakeUser = Annotated[User, Depends(require_claim_intake)]

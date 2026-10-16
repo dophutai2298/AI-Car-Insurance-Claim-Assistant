@@ -56,14 +56,23 @@ export function ClaimWorkflowStepper({
   current = "information",
   states,
   onNavigate,
+  maxSteps = 5,
 }: {
   current?: ClaimStepId;
   states?: Partial<Record<ClaimStepId, ClaimStepState>>;
   onNavigate?: (step: ClaimStepId) => void;
+  maxSteps?: 2 | 5;
 }) {
   const { t } = useTranslation();
-  const currentIndex = claimSteps.findIndex((step) => step.id === current);
-  const progressWidths = ["w-1/5", "w-2/5", "w-3/5", "w-4/5", "w-full"];
+  const visibleSteps = claimSteps.slice(0, maxSteps);
+  const currentIndex = Math.max(
+    0,
+    visibleSteps.findIndex((step) => step.id === current),
+  );
+  const progressWidths =
+    maxSteps === 2
+      ? ["w-1/2", "w-full"]
+      : ["w-1/5", "w-2/5", "w-3/5", "w-4/5", "w-full"];
 
   return (
     <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -72,7 +81,7 @@ export function ClaimWorkflowStepper({
           {t("claim.workflow")}
         </h2>
         <span className="font-mono text-xs font-semibold tabular-nums text-slate-500">
-          {currentIndex + 1} / {claimSteps.length}
+          {currentIndex + 1} / {visibleSteps.length}
         </span>
       </header>
       <div aria-hidden="true" className="h-1 bg-slate-100">
@@ -82,9 +91,9 @@ export function ClaimWorkflowStepper({
       </div>
       <ol
         aria-label={t("claim.workflow")}
-        className="grid divide-y divide-slate-100 sm:grid-cols-5 sm:divide-x sm:divide-y-0"
+        className={`grid divide-y divide-slate-100 sm:divide-x sm:divide-y-0 ${maxSteps === 2 ? "sm:grid-cols-2" : "sm:grid-cols-5"}`}
       >
-        {claimSteps.map((step, index) => {
+        {visibleSteps.map((step, index) => {
           const state =
             states?.[step.id] ??
             (index < currentIndex

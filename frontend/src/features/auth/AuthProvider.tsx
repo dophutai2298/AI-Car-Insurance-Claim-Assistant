@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { getCurrentUser, login as requestLogin } from "./authApi";
 import type { AuthSession, LoginCredentials } from "./types";
@@ -15,7 +16,7 @@ const STORAGE_KEY = "claim-assistant-session";
 type AuthContextValue = {
   session: AuthSession | null;
   isInitializing: boolean;
-  login: (credentials: LoginCredentials) => Promise<void>;
+  login: (credentials: LoginCredentials) => Promise<AuthSession>;
   logout: () => void;
 };
 
@@ -37,6 +38,7 @@ function readStoredSession(): AuthSession | null {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [session, setSession] = useState<AuthSession | null>(readStoredSession);
   const [isInitializing, setIsInitializing] = useState(session !== null);
 
@@ -47,12 +49,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     getCurrentUser(session.access_token)
       .then((user) => {
         if (!isCurrent) return;
+        if (
+          user.email !== session.user.email ||
+          user.role !== session.user.role
+        )
+          queryClient.clear();
         const verifiedSession = { ...session, user };
         sessionStorage.setItem(STORAGE_KEY, JSON.stringify(verifiedSession));
         setSession(verifiedSession);
       })
       .catch(() => {
         if (!isCurrent) return;
+        queryClient.clear();
         sessionStorage.removeItem(STORAGE_KEY);
         setSession(null);
       })
@@ -71,15 +79,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isInitializing,
       login: async (credentials) => {
         const nextSession = await requestLogin(credentials);
+        queryClient.clear();
         sessionStorage.setItem(STORAGE_KEY, JSON.stringify(nextSession));
         setSession(nextSession);
+        return nextSession;
       },
       logout: () => {
+        queryClient.clear();
         sessionStorage.removeItem(STORAGE_KEY);
         setSession(null);
       },
     }),
-    [isInitializing, session],
+    [isInitializing, queryClient, session],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

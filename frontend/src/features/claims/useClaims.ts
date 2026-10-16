@@ -7,6 +7,8 @@ import {
   deleteEvidence,
   getClaim,
   listClaims,
+  listMyClaims,
+  submitClaim,
   reviewCopilotConclusion,
   revertCopilotConclusionReview,
   runDamageAnalysis,
@@ -46,6 +48,27 @@ export function useClaims() {
     queryKey: claimsQueryKey,
     queryFn: () => listClaims(session!.access_token),
     enabled: Boolean(session),
+  });
+}
+
+export function useMyClaims() {
+  const { session } = useAuth();
+  return useQuery({
+    queryKey: ["my-claims"],
+    queryFn: () => listMyClaims(session!.access_token),
+    enabled: session?.user.role === "USER",
+  });
+}
+
+export function useSubmitClaim(claimId: string | undefined) {
+  const { session } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => submitClaim(claimId!, session!.access_token),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["my-claims"] });
+      queryClient.removeQueries({ queryKey: [...claimsQueryKey, claimId] });
+    },
   });
 }
 

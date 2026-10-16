@@ -11,6 +11,7 @@ from app.db import Base
 class UserRole(str, Enum):
     ADMIN = "ADMIN"
     ADJUSTER = "ADJUSTER"
+    USER = "USER"
 
 
 class User(Base):
@@ -34,6 +35,7 @@ class VehicleManufacturer(Base):
 
 class ClaimStatus(str, Enum):
     DRAFT = "DRAFT"
+    SUBMITTED = "SUBMITTED"
     ANALYZING = "ANALYZING"
     REVIEW_REQUIRED = "REVIEW_REQUIRED"
     AI_APPROVED = "AI_APPROVED"

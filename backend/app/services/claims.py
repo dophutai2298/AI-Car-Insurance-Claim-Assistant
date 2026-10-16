@@ -17,6 +17,7 @@ from app.models import (
     EvidenceCategory,
     GENERATED_EVIDENCE_CATEGORIES,
     User,
+    UserRole,
     WorkflowAnalysisRun,
 )
 from app.repositories.analysis_runs import AnalysisRunRepository
@@ -39,6 +40,7 @@ from app.schemas.claims import (
     CopilotConclusionReviewRevertRequest,
     DamageAnalysisResponse,
     ClaimListItem,
+    MyClaimItem,
     ClaimResponse,
     DocumentExtractedFieldsBatchUpdateRequest,
     DocumentExtractedFieldUpdateRequest,
@@ -55,7 +57,7 @@ from app.services.claim_errors import ClaimConflictError, ClaimResourceNotFoundE
 from app.services.analysis_snapshots import AnalysisSnapshotOperations
 from app.services.claim_reviews import ClaimReviewOperations
 from app.services.claim_responses import ClaimResponseAssembler
-from app.services.workflow_analysis import WorkflowAnalysisOperations
+from app.services.workflow_analysis import REQUIRED_EVIDENCE_CATEGORIES, WorkflowAnalysisOperations
 from app.services.evidence_storage import EvidenceStorage, EvidenceStorageError
 from app.services.damage_assessment import DamageAssessmentService
 from app.services.damage_model import DamageModelAdapter, DamageModelDetection
@@ -86,6 +88,7 @@ from app.services.document_field_validation import (
 
 ALLOWED_LIFECYCLE_TRANSITIONS: dict[ClaimStatus, set[ClaimStatus]] = {
     ClaimStatus.DRAFT: {ClaimStatus.ANALYZING},
+    ClaimStatus.SUBMITTED: {ClaimStatus.ANALYZING},
     ClaimStatus.ANALYZING: {ClaimStatus.REVIEW_REQUIRED, ClaimStatus.FAILED},
     ClaimStatus.FAILED: {ClaimStatus.ANALYZING},
 }
@@ -207,6 +210,13 @@ class ClaimService:
         return self._to_response(claim)
 
     def list_claims(self) -> list[ClaimListItem]:
+        return self._list_items(self.claims.list_all())
+
+    def list_adjuster_queue(self) -> list[ClaimListItem]:
+        return self._list_items(self.claims.list_adjuster_queue())
+
+    @staticmethod
+    def _list_items(claims: list[Claim]) -> list[ClaimListItem]:
         return [
             ClaimListItem(
                 id=claim.claim_number,
@@ -215,13 +225,48 @@ class ClaimService:
                 status=claim.status,
                 updated_at=claim.updated_at,
             )
-            for claim in self.claims.list_all()
+            for claim in claims
             if claim.claim_number
         ]
 
-    def get_claim(self, claim_number: str) -> ClaimResponse | None:
+    def list_my_claims(self, user_id: int) -> list[MyClaimItem]:
+        return [self._my_claim_item(claim) for claim in self.claims.list_owned(user_id) if claim.claim_number]
+
+    @staticmethod
+    def _my_claim_item(claim: Claim) -> MyClaimItem:
+        return MyClaimItem(id=claim.claim_number, created_at=claim.created_at, status=claim.status)
+
+    def get_claim(self, claim_number: str, viewer: User) -> ClaimResponse | None:
         claim = self.claims.find_by_claim_number(claim_number)
+        if viewer.role is UserRole.USER and (not claim or claim.created_by_user_id != viewer.id or claim.status is not ClaimStatus.DRAFT):
+            return None
+        if claim and viewer.role is UserRole.ADJUSTER and claim.status is ClaimStatus.DRAFT and self._is_customer_claim(claim):
+            return None
         return self._to_response(claim) if claim else None
+
+    def _intake_claim(self, claim_number: str, actor: User) -> Claim | None:
+        claim = self.claims.find_by_claim_number(claim_number)
+        if actor.role is UserRole.USER:
+            if claim is None or claim.created_by_user_id != actor.id:
+                return None
+            if claim.status is not ClaimStatus.DRAFT:
+                raise ClaimConflictError("Submitted claims cannot be changed by their owner")
+        return claim
+
+    def submit_claim(self, claim_number: str, actor: User) -> MyClaimItem | None:
+        claim = self._intake_claim(claim_number, actor)
+        if claim is None:
+            return None
+        if claim.status is not ClaimStatus.DRAFT:
+            raise ClaimValidationError("Only draft claims can be submitted")
+        if self.claim_incidents.find_for_claim(claim.id) is None:
+            raise ClaimValidationError("Complete incident information before submission")
+        categories = {item.category for item in self.evidence.list_for_claim(claim.id)}
+        missing = [category.value for category in REQUIRED_EVIDENCE_CATEGORIES if category not in categories]
+        if missing:
+            raise ClaimValidationError(f"Upload required evidence before submission: {', '.join(missing)}")
+        self.claims.update_status(claim, ClaimStatus.SUBMITTED)
+        return self._my_claim_item(claim)
 
     def delete_claim(self, claim_number: str) -> bool:
         claim = self.claims.find_by_claim_number(claim_number)
@@ -243,9 +288,9 @@ class ClaimService:
         return True
 
     def update_claim_information(
-        self, claim_number: str, data: ClaimInformationUpdateRequest
+        self, claim_number: str, data: ClaimInformationUpdateRequest, actor: User
     ) -> ClaimResponse | None:
-        claim = self.claims.find_by_claim_number(claim_number)
+        claim = self._intake_claim(claim_number, actor)
         if claim is None:
             return None
         if claim.status in {ClaimStatus.ANALYZING, ClaimStatus.AI_APPROVED, ClaimStatus.AI_REJECTED}:
@@ -262,6 +307,8 @@ class ClaimService:
         claim = self.claims.find_by_claim_number(claim_number)
         if claim is None:
             return None
+        if claim.status is ClaimStatus.DRAFT and self._is_customer_claim(claim):
+            raise ClaimValidationError("Customer claims must be submitted before staff processing")
         if next_status not in ALLOWED_LIFECYCLE_TRANSITIONS.get(claim.status, set()):
             raise ClaimValidationError("Invalid claim lifecycle transition")
         return self._to_response(self.claims.update_status(claim, next_status))
@@ -447,8 +494,10 @@ class ClaimService:
         categories: list[EvidenceCategory],
         files: list[UploadFile],
         other_document_label: str | None = None,
+        *,
+        actor: User,
     ) -> ClaimResponse | None:
-        claim = self.claims.find_by_claim_number(claim_number)
+        claim = self._intake_claim(claim_number, actor)
         if claim is None:
             return None
         if claim.status in {ClaimStatus.ANALYZING, ClaimStatus.AI_APPROVED, ClaimStatus.AI_REJECTED}:
@@ -484,8 +533,8 @@ class ClaimService:
 
         return self._to_response(claim)
 
-    def delete_evidence(self, claim_number: str, evidence_id: int) -> ClaimResponse | None:
-        claim = self.claims.find_by_claim_number(claim_number)
+    def delete_evidence(self, claim_number: str, evidence_id: int, actor: User) -> ClaimResponse | None:
+        claim = self._intake_claim(claim_number, actor)
         if claim is None:
             return None
         if claim.status in {ClaimStatus.ANALYZING, ClaimStatus.AI_APPROVED, ClaimStatus.AI_REJECTED}:
@@ -503,11 +552,18 @@ class ClaimService:
         self.claims.session.commit()
         return self._to_response(claim)
 
-    def evidence_content_path(self, claim_number: str, evidence_id: int) -> tuple[Evidence, Path] | None:
+    def evidence_content_path(self, claim_number: str, evidence_id: int, viewer: User) -> tuple[Evidence, Path] | None:
         claim = self.claims.find_by_claim_number(claim_number)
         if claim is None:
             return None
-        evidence = self.evidence.find_any_for_claim(claim.id, evidence_id)
+        if viewer.role is UserRole.USER:
+            if claim.created_by_user_id != viewer.id or claim.status is not ClaimStatus.DRAFT:
+                return None
+            evidence = self.evidence.find_for_claim(claim.id, evidence_id)
+        else:
+            if viewer.role is UserRole.ADJUSTER and claim.status is ClaimStatus.DRAFT and self._is_customer_claim(claim):
+                return None
+            evidence = self.evidence.find_any_for_claim(claim.id, evidence_id)
         if evidence is None:
             return None
         path = self.storage.resolve_path(evidence.stored_path)
@@ -519,6 +575,8 @@ class ClaimService:
         claim = self.claims.find_by_claim_number(claim_number)
         if claim is None:
             return None
+        if claim.status is ClaimStatus.DRAFT and self._is_customer_claim(claim):
+            raise ClaimValidationError("Customer claims must be submitted before staff processing")
         images = [
             item
             for item in self.evidence.list_for_claim(claim.id)
@@ -557,6 +615,10 @@ class ClaimService:
         provider_model = self.llm_model if conclusion.status is CopilotConclusionStatus.GENERATED else None
         self.copilot_conclusions.create(analysis, conclusion, provider_model)
         return self._to_damage_analysis_response(claim.claim_number, analysis)
+
+    def _is_customer_claim(self, claim: Claim) -> bool:
+        creator = self.claims.session.get(User, claim.created_by_user_id) if claim.created_by_user_id else None
+        return creator is not None and creator.role is UserRole.USER
 
     def _to_response(self, claim: Claim) -> ClaimResponse:
         return self.responses._to_response(claim)

@@ -6,7 +6,7 @@ Proof of concept full-stack hỗ trợ xử lý hồ sơ bảo hiểm ô tô. Đ
 
 ## Chức năng
 
-- Phân quyền theo vai trò `ADMIN` và `ADJUSTER`.
+- Phân quyền theo vai trò `ADMIN`, `ADJUSTER` và khách hàng `USER`.
 - Quản lý hồ sơ, thông tin xe, sự cố và các file chứng cứ.
 - Chạy OCR và LLM để trích xuất thông tin từ giấy tờ tùy thân, hợp đồng bảo hiểm, giấy đăng ký xe và giấy phép lái xe.
 - Phân tích hư hỏng xe và hiển thị kết quả đã chuẩn hóa theo từng bộ phận.
@@ -151,8 +151,9 @@ Warning còn lại trong snapshot đã sẵn sàng làm giảm điểm; hãy ki�
 
 ## Quyền truy cập
 
-- `ADMIN` được dùng tất cả API cần đăng nhập, quản lý hồ sơ và cấu hình, đồng thời có thể tạo tài khoản.
-- `ADJUSTER` được chạy Analysis, AI Review và Human Review. Adjuster cũng có thể đọc chi tiết hồ sơ và chứng cứ cần thiết cho các bước này; tạo/liệt kê hồ sơ, thay đổi chứng cứ, quản lý tài khoản và cấu hình chỉ dành cho admin.
+- `ADMIN` được dùng tất cả API cần đăng nhập, quản lý hồ sơ và cấu hình, đồng thời tạo tài khoản `USER` trong Admin Config.
+- `USER` chỉ được tạo và sửa hồ sơ Draft do mình tạo ở bước Claim Information và Evidence & documents. Sau khi nộp hồ sơ đầy đủ, User chỉ xem mã hồ sơ, ngày tạo và trạng thái trong My Claims; không được xóa hồ sơ hay truy cập quy trình và cấu hình nội bộ.
+- `ADJUSTER` xem hồ sơ khách hàng đã nộp trong work queue và thực hiện Analysis, AI Review, Human Review. Adjuster không được mở Draft khách hàng chưa nộp, thay đổi chứng cứ, tạo hồ sơ hoặc tài khoản, hay quản lý cấu hình.
 
 ## Package DeepDoc
 

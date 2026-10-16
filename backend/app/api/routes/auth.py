@@ -3,10 +3,16 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import AdminUser, AnalysisSupportUser
+from app.api.dependencies import AdminUser, CurrentUser
 from app.core.config import Settings, get_settings
 from app.db import get_db
-from app.schemas.auth import LoginRequest, LoginResponse, UserCreateRequest, UserResponse
+from app.schemas.auth import (
+    CustomerAccountResponse,
+    LoginRequest,
+    LoginResponse,
+    UserCreateRequest,
+    UserResponse,
+)
 from app.services.auth import AuthService
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -34,7 +40,7 @@ def login(
 
 
 @router.get("/me", response_model=UserResponse)
-def current_session(current_user: AnalysisSupportUser) -> UserResponse:
+def current_session(current_user: CurrentUser) -> UserResponse:
     return UserResponse.model_validate(current_user)
 
 
@@ -52,3 +58,13 @@ def create_user(
             detail="A user with this email already exists",
         )
     return UserResponse.model_validate(user)
+
+
+@router.get("/users", response_model=list[CustomerAccountResponse])
+def list_customer_accounts(
+    _admin_user: AdminUser,
+    session: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> list[CustomerAccountResponse]:
+    accounts = AuthService(session, settings).list_customer_accounts()
+    return [CustomerAccountResponse.model_validate(account) for account in accounts]
