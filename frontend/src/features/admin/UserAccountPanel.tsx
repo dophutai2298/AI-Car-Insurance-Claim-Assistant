@@ -14,7 +14,11 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../auth/AuthProvider";
 import { AdminApiError, createCustomerAccount } from "./adminApi";
 
-export function UserAccountPanel() {
+type UserAccountPanelProps = {
+  onCreated?: () => void;
+};
+
+export function UserAccountPanel({ onCreated }: UserAccountPanelProps) {
   const { session } = useAuth();
   const { t } = useTranslation();
   const [email, setEmail] = useState("");
@@ -36,6 +40,7 @@ export function UserAccountPanel() {
       setName("");
       setPassword("");
       toast.success(t("customerAccount.userCreated"));
+      onCreated?.();
     } catch (caught) {
       setError(
         caught instanceof AdminApiError
@@ -49,11 +54,11 @@ export function UserAccountPanel() {
 
   return (
     <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
-      <Card.Header className="flex items-center gap-3 border-b border-slate-100 px-6 py-5">
-        <User size={20} className="text-slate-600" />
+      <Card.Header className="flex items-start gap-3 border-b border-slate-100 px-6 py-5">
+        {/* <User size={20} className="text-slate-600" /> */}
         <div>
           <Card.Title className="text-lg text-slate-950">
-            {t("customerAccount.userAccounts")}
+            {t("customerAccount.createAccount")}
           </Card.Title>
           <Card.Description className="text-sm text-slate-500">
             {t("customerAccount.userAccountsDescription")}

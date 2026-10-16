@@ -98,6 +98,22 @@ def test_admin_can_provision_user_without_granting_admin_access(client: TestClie
     assert client.post("/api/auth/users", headers=token, json={"email": "other@example.com", "password": "123456", "role": "USER"}).status_code == 403
 
 
+def test_admin_can_list_customer_accounts_only(client: TestClient):
+    admin = admin_headers(client)
+    assert client.post(
+        "/api/auth/users",
+        headers=admin,
+        json={"email": "customer@example.com", "full_name": "Mai Nguyen", "password": "Customer123!", "role": "USER"},
+    ).status_code == 201
+
+    response = client.get("/api/auth/users", headers=admin)
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {"email": "customer@example.com", "full_name": "Mai Nguyen", "is_active": True}
+    ]
+
+
 def test_adjuster_cannot_create_accounts(client: TestClient):
     token = login(client, "adjuster@example.com", "Adjuster123!").json()["access_token"]
 

@@ -25,6 +25,14 @@ class UserResponse(BaseModel):
     role: UserRole
 
 
+class CustomerAccountResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    email: str
+    full_name: str
+    is_active: bool
+
+
 class LoginResponse(BaseModel):
     access_token: str
     token_type: Literal["bearer"] = "bearer"

@@ -11,6 +11,12 @@ import type {
 
 export class AdminApiError extends Error {}
 
+export type CustomerAccount = {
+  email: string;
+  full_name: string;
+  is_active: boolean;
+};
+
 export function createCustomerAccount(
   input: { email: string; full_name: string; password: string },
   accessToken: string,
@@ -20,6 +26,10 @@ export function createCustomerAccount(
     accessToken,
     { method: "POST", body: JSON.stringify({ ...input, role: "USER" }) },
   );
+}
+
+export function getCustomerAccounts(accessToken: string) {
+  return request<CustomerAccount[]>("/api/auth/users", accessToken);
 }
 
 async function request<T>(

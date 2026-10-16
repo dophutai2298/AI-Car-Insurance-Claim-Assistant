@@ -9,6 +9,7 @@ import {
   ErrorOutline,
   Logout,
   SettingsAdjust,
+  User,
   WarningAlt,
 } from "@carbon/icons-react";
 import {
@@ -53,6 +54,7 @@ import { ClaimDetailPage } from "./features/claims/ClaimDetailPage";
 import { MyClaimsPage } from "./features/claims/MyClaimsPage";
 import { CustomerDraftPage } from "./features/claims/CustomerDraftPage";
 import { AdminConfigPage } from "./features/admin/AdminConfigPage";
+import { CustomerAccountsPage } from "./features/admin/CustomerAccountsPage";
 import { statusTone } from "./features/claims/statusPresentation";
 import type { ClaimStatus } from "./features/claims/types";
 
@@ -74,6 +76,12 @@ function AppShell() {
   const staffNavigation = [
     { label: t("navigation.dashboard"), icon: Activity, path: "/dashboard" },
     { label: t("navigation.claims"), icon: Document, path: "/claims" },
+    {
+      label: t("navigation.customerAccounts"),
+      icon: User,
+      path: "/customer-accounts",
+      adminOnly: true,
+    },
     {
       label: t("navigation.admin"),
       icon: SettingsAdjust,
@@ -642,6 +650,14 @@ export function AppRoutes() {
               </RoleRoute>
             }
             path="/admin"
+          />
+          <Route
+            element={
+              <RoleRoute fallback={<AccessRestricted />} role="ADMIN">
+                <CustomerAccountsPage />
+              </RoleRoute>
+            }
+            path="/customer-accounts"
           />
         </Route>
         <Route element={<DefaultRedirect />} path="*" />

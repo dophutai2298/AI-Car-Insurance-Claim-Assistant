@@ -44,6 +44,9 @@ class AuthService:
         self.session.refresh(user)
         return user
 
+    def list_customer_accounts(self) -> list[User]:
+        return self.users.list_by_role(UserRole.USER)
+
     def create_access_token(self, user: User) -> str:
         expires_at = datetime.now(timezone.utc) + timedelta(
             minutes=self.settings.jwt_access_token_minutes

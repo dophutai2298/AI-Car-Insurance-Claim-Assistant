@@ -83,6 +83,9 @@ test("admin can log in and land on dashboard with admin navigation", async () =>
     await screen.findByRole("heading", { name: /claim review workspace/i }),
   ).toBeVisible();
   expect(screen.getByRole("link", { name: /admin config/i })).toBeVisible();
+  expect(
+    screen.getByRole("link", { name: /customer accounts/i }),
+  ).toBeVisible();
   expect(sessionStorage.getItem("claim-assistant-session")).toContain(
     "admin-token",
   );
@@ -106,6 +109,24 @@ test("adjuster cannot open the admin route", async () => {
   ).toBeVisible();
   expect(
     screen.queryByRole("link", { name: /admin config/i }),
+  ).not.toBeInTheDocument();
+});
+
+test("adjuster cannot open the customer accounts route", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(JSON.stringify(adjusterSession.user), { status: 200 }),
+  );
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adjusterSession),
+  );
+  renderRoute("/customer-accounts");
+
+  expect(
+    await screen.findByRole("heading", { name: /access restricted/i }),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("link", { name: /customer accounts/i }),
   ).not.toBeInTheDocument();
 });
 
@@ -2353,19 +2374,34 @@ test("admin can update global assessment rules from the configuration page", asy
   ).toBeVisible();
 });
 
-test("admin can provision a customer account from Admin Config", async () => {
+test("admin can provision a customer account from Customer Accounts", async () => {
   const configuration: AssessmentRuleConfiguration = {
     values: { repair_max_percentage: 40, replacement_min_percentage: 60 },
     updated_by: null,
     updated_at: "2026-09-08T00:00:00Z",
   };
   let created: unknown = null;
+  let accounts: Array<{
+    email: string;
+    full_name: string;
+    is_active: boolean;
+  }> = [];
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const path = String(input);
     if (path.endsWith("/api/auth/me"))
       return new Response(JSON.stringify(adminSession.user));
+    if (path.endsWith("/api/auth/users") && !init?.method) {
+      return new Response(JSON.stringify(accounts));
+    }
     if (path.endsWith("/api/auth/users") && init?.method === "POST") {
       created = JSON.parse(init.body as string);
+      accounts = [
+        {
+          email: "owner@example.com",
+          full_name: "Mai Nguyen",
+          is_active: true,
+        },
+      ];
       return new Response(
         JSON.stringify({
           email: "owner@example.com",
@@ -2386,7 +2422,10 @@ test("admin can provision a customer account from Admin Config", async () => {
     "claim-assistant-session",
     JSON.stringify(adminSession),
   );
-  renderRoute("/admin");
+  renderRoute("/customer-accounts");
+  expect(
+    await screen.findByRole("heading", { name: "Customer Accounts" }),
+  ).toBeVisible();
   const user = userEvent.setup();
   await user.type(await screen.findByLabelText("Full name"), "Mai Nguyen");
   await user.type(screen.getByLabelText("Email"), "owner@example.com");
@@ -2402,6 +2441,9 @@ test("admin can provision a customer account from Admin Config", async () => {
     role: "USER",
   });
   expect(await screen.findByText("User account created")).toBeVisible();
+  expect(
+    await screen.findByRole("cell", { name: "owner@example.com" }),
+  ).toBeVisible();
 });
 
 test("admin can create, disable, and re-enable a vehicle manufacturer", async () => {

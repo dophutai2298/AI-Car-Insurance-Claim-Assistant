@@ -19,7 +19,6 @@ import {
   useUpdateAssessmentRules,
 } from "./useAssessmentRules";
 import { VehicleManufacturerPanel } from "./VehicleManufacturerPanel";
-import { UserAccountPanel } from "./UserAccountPanel";
 
 type RuleForm = {
   repairMaxPercentage: string;
@@ -176,8 +175,6 @@ export function AdminConfigPage() {
       </Card>
 
       <VehicleManufacturerPanel />
-
-      <UserAccountPanel />
 
       <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
         <Card.Header className="flex items-center gap-3 border-b border-slate-100 px-6 py-5">

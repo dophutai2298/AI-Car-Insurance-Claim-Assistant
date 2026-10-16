@@ -69,6 +69,7 @@ def headers(client: TestClient, role: str) -> dict[str, str]:
 PROTECTED_ROUTES = [
     ("GET", "/api/auth/me", True),
     ("POST", "/api/auth/users", False),
+    ("GET", "/api/auth/users", False),
     ("GET", "/api/runtime-config", False),
     ("GET", "/api/vehicle-makes", True),
     ("GET", "/api/admin/access-check", False),
