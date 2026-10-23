@@ -2358,15 +2358,15 @@ def test_adjuster_can_confirm_extracted_fields_then_run_structured_ai_review(cli
         "source_evidence_id",
         "annotated_evidence_id",
         "content_url",
-        "source_url",
         "raw_text",
         "confidence",
     ):
         assert excluded not in serialized_context
+    assert captured_context["pricing"]["line_items"][0]["repair_estimate"]["source_name"] == "Demo Vietnam price catalog (mock)"
     assert conclusion["structured_review"]["human_review_required"] is True
     assert conclusion["structured_review"]["recommended_next_step"]
-    assert conclusion["prompt_version"] == "ai-review-v2"
-    assert conclusion["schema_version"] == "ai-review-schema-v2"
+    assert conclusion["prompt_version"] == "ai-review-v3-pricing"
+    assert conclusion["schema_version"] == "ai-review-schema-v3-pricing"
 
     reloaded = client.get(
         f"/api/claims/{claim['id']}", headers=admin_headers(client)
@@ -2375,8 +2375,8 @@ def test_adjuster_can_confirm_extracted_fields_then_run_structured_ai_review(cli
     assert reloaded.status_code == 200
     persisted = reloaded.json()["latest_damage_analysis"]["copilot_conclusion"]
     assert persisted["structured_review"] == conclusion["structured_review"]
-    assert persisted["prompt_version"] == "ai-review-v2"
-    assert persisted["schema_version"] == "ai-review-schema-v2"
+    assert persisted["prompt_version"] == "ai-review-v3-pricing"
+    assert persisted["schema_version"] == "ai-review-schema-v3-pricing"
 
 
 def test_analysis_completeness_score_deducts_snapshot_warnings_and_ignores_llm_mode(
@@ -2903,6 +2903,58 @@ def test_damage_analyses_preserve_the_active_rules_used_at_runtime(client: TestC
     assert first_detail["latest_damage_analysis"]["rules"]["repair_max_percentage"] == 20.0
 
 
+@pytest.mark.parametrize("missing_category", [None, "REPAIR_ESTIMATE", "REPLACEMENT_PART_PRICE"])
+def test_ai_review_receives_frozen_pricing_and_persists_recommendation(client: TestClient, monkeypatch, missing_category):
+    from app.models import VehiclePartPriceCatalog
+    from sqlalchemy import delete, update
+    if missing_category:
+        with client.app.state.session_factory() as session:
+            session.execute(delete(VehiclePartPriceCatalog).where(
+                VehiclePartPriceCatalog.part_identity == "hood",
+                VehiclePartPriceCatalog.price_type == missing_category,
+            ))
+            session.commit()
+    calls = []
+
+    class PriceAwareAdapter:
+        def generate_review(self, input_data):
+            calls.append(input_data.model_context())
+            return AiReviewStructuredResult(
+                summary="Confirmed findings support adjuster review.",
+                assessment_interpretation="REPAIR_LIKELY",
+                damaged_parts_summary="Four damaged parts.",
+                document_consistency_summary="Comparable fields match.",
+                recommended_next_step="Have an adjuster verify the estimates.",
+                price_recommendation={"recommendation": "SUPPORTS_REPAIR", "rationale": "Complete exact-match estimates support the supplied repair assessment."},
+            )
+
+    monkeypatch.setattr(claim_composition, "get_llm_copilot_adapter", lambda settings: PriceAwareAdapter())
+    claim = prepare_claim_for_workflow_analysis(client, policy_filename="policy.jpg")
+    url = f"/api/claims/{claim['id']}"
+    client.post(f"{url}/analysis-runs", headers=admin_headers(client))
+    run = client.get(url, headers=admin_headers(client)).json()["latest_analysis_run"]
+    saved = save_ready_analysis_snapshot(client, claim, run)
+    assert saved.status_code == 200
+    with client.app.state.session_factory() as session:
+        session.execute(update(VehiclePartPriceCatalog).values(amount=1))
+        session.commit()
+    response = client.post(f"{url}/analysis-runs/{run['id']}/ai-review", headers=admin_headers(client))
+    assert response.status_code == 200
+    conclusion = response.json()["latest_analysis_run"]["damage_analysis"]["copilot_conclusion"]
+    assert len(calls) == 1
+    assert calls[0]["pricing"] == run["damage_analysis"]["pricing"]
+    recommendation = conclusion["structured_review"]["price_recommendation"]
+    assert recommendation["recommendation"] == ("MANUAL_REVIEW" if missing_category else "SUPPORTS_REPAIR")
+    if missing_category:
+        assert "hood" in recommendation["rationale"]
+    else:
+        assert calls[0]["pricing"]["repair_estimate"]["total_amount"] == 8600000
+    assert conclusion["summary"] == "Confirmed findings support adjuster review."
+    reloaded = client.get(url, headers=admin_headers(client)).json()["latest_analysis_run"]["damage_analysis"]["copilot_conclusion"]
+    assert reloaded["structured_review"] == conclusion["structured_review"]
+    assert reloaded["structured_review"]["human_review_required"] is True
+
+
 def test_workflow_analysis_exposes_complete_vnd_pricing(client: TestClient):
     claim = prepare_claim_for_workflow_analysis(client)
     started = client.post(f"/api/claims/{claim['id']}/analysis-runs", headers=admin_headers(client))
@@ -3102,6 +3154,7 @@ def test_vietnamese_ai_review_translation_is_cached_without_changing_canonical_r
     class FakeTranslationAdapter:
         def translate(self, review: AiReviewStructuredResult) -> AiReviewStructuredResult:
             calls.append(review)
+            translated.price_recommendation = review.price_recommendation.model_copy(update={"rationale": "Chuyên viên đồng thời cần kiểm tra nguồn giá và tỷ lệ hư hại."}) if review.price_recommendation else None
             return translated
 
     monkeypatch.setattr(
@@ -3125,7 +3178,7 @@ def test_vietnamese_ai_review_translation_is_cached_without_changing_canonical_r
     assert first.json() == second.json()
     assert first.json()["locale"] == "vi"
     assert first.json()["structured_review"] == translated.model_dump(mode="json")
-    assert first.json()["prompt_version"] == "ai-review-translation-vi-v1"
+    assert first.json()["prompt_version"] == "ai-review-translation-vi-v2-pricing"
     assert len(calls) == 1
     assert calls[0].summary == original_summary
 
@@ -3135,6 +3188,25 @@ def test_vietnamese_ai_review_translation_is_cached_without_changing_canonical_r
     assert reloaded["summary"] == original_summary
     assert reloaded["validity_percentage"] == original_validity
     assert reloaded["review_history"] == []
+
+
+@pytest.mark.parametrize("code", ["SUPPORTS_REPAIR", None, "unsafe"])
+def test_translation_cannot_change_or_remove_price_recommendation(client: TestClient, monkeypatch, code):
+    from app.schemas.price_recommendation import PriceRecommendation
+
+    class ChangedRecommendationAdapter:
+        def translate(self, review):
+            return review.model_copy(update={"price_recommendation": PriceRecommendation(
+                recommendation=review.price_recommendation.recommendation if code == "unsafe" else code,
+                rationale="Chi phí là 1000 VND." if code == "unsafe" else "Changed recommendation"
+            ) if code else None})
+
+    monkeypatch.setattr(claim_composition, "get_ai_review_translation_adapter", lambda settings: ChangedRecommendationAdapter())
+    claim, conclusion = create_reviewable_conclusion(client)
+    path = f"/api/claims/{claim['id']}/copilot-conclusions/{conclusion['id']}/translations/vi"
+    assert client.post(path, headers=adjuster_headers(client)).status_code == 502
+    persisted = client.get(f"/api/claims/{claim['id']}", headers=adjuster_headers(client)).json()["latest_damage_analysis"]["copilot_conclusion"]
+    assert persisted["structured_review"] == conclusion["structured_review"]
 
 
 def test_vietnamese_ai_review_translation_failure_preserves_canonical_review(

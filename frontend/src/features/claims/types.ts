@@ -320,6 +320,7 @@ export type CopilotConclusion = {
 };
 
 export type AiReviewStructuredResult = {
+  price_recommendation?: PriceRecommendation | null;
   summary: string;
   assessment_interpretation: string;
   damaged_parts_summary: string;
@@ -327,6 +328,11 @@ export type AiReviewStructuredResult = {
   warnings: string[];
   recommended_next_step: string;
   human_review_required: boolean;
+};
+
+export type PriceRecommendation = {
+  recommendation: "SUPPORTS_REPAIR" | "SUPPORTS_REPLACEMENT" | "MANUAL_REVIEW";
+  rationale: string;
 };
 
 export type AiReviewTranslation = {

@@ -50,7 +50,7 @@ from app.schemas.claims import (
     AiReviewTranslationResponse,
     AiReviewStructuredResponse,
 )
-from app.services.ai_review_translation import AiReviewTranslationAdapter
+from app.services.ai_review_translation import AiReviewTranslationAdapter, validate_review_translation
 from app.services.assessment_rules import AssessmentRuleService
 from app.services.analysis_errors import AnalysisConfirmationBlockedError
 from app.services.claim_errors import ClaimConflictError, ClaimResourceNotFoundError, ClaimValidationError
@@ -62,7 +62,7 @@ from app.services.evidence_storage import EvidenceStorage, EvidenceStorageError
 from app.services.damage_assessment import DamageAssessmentService
 from app.services.damage_model import DamageModelAdapter, DamageModelDetection
 from app.services.part_search import PartSearchService, ReferencePartPriceResult
-from app.services.price_catalog import legacy_reference_prices
+from app.services.price_catalog import legacy_reference_prices, pricing_summary
 from app.services.llm_copilot import (
     AiReviewStructuredResult,
     AiReviewClaimFacts,
@@ -452,6 +452,7 @@ class ClaimService:
                 review_output.review_json
             )
             translated = self.ai_review_translation.translate(original)
+            validate_review_translation(original, translated)
             cached = self.ai_review_translations.create(
                 conclusion,
                 locale,
@@ -670,6 +671,7 @@ class ClaimService:
                     ],
                 ),
                 warnings=[warning] if warning else [],
+                pricing=pricing_summary(reference_prices),
                 reference_prices=[
                     AiReviewReferencePrice(
                         part=price.part_identity,

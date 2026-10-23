@@ -19,6 +19,7 @@ from app.models import (
     ReferencePriceStatus,
 )
 from app.schemas.admin import AssessmentRuleValuesSchema
+from app.schemas.price_recommendation import PriceRecommendation
 
 
 class VehicleMetadata(BaseModel):
@@ -354,6 +355,7 @@ class AiReviewStructuredResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     recommended_next_step: str
     human_review_required: bool
+    price_recommendation: PriceRecommendation | None = None
 
 
 class AiReviewTranslationResponse(BaseModel):

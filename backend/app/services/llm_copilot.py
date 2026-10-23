@@ -3,14 +3,17 @@ import logging
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.config import Settings
 from app.models import CopilotConclusionStatus
 from app.services.llm_token_usage import log_llm_token_usage
+from app.schemas.claims import AnalysisPricingResponse
+from app.schemas.price_recommendation import PriceRecommendation
+from app.services.ai_price_recommendation import enforce_price_recommendation
 
-AI_REVIEW_PROMPT_VERSION = "ai-review-v2"
-AI_REVIEW_SCHEMA_VERSION = "ai-review-schema-v2"
+AI_REVIEW_PROMPT_VERSION = "ai-review-v3-pricing"
+AI_REVIEW_SCHEMA_VERSION = "ai-review-schema-v3-pricing"
 MANUAL_ADJUSTER_REVIEW = "MANUAL_ADJUSTER_REVIEW"
 logger = logging.getLogger(__name__)
 output_logger = logging.getLogger("uvicorn.error")
@@ -128,6 +131,23 @@ You support the adjuster. You must never approve or reject the insurance claim.
 
 Human review is always required.
 
+PRICING ADVICE
+
+The pricing object contains immutable backend-calculated VND estimates, known
+subtotals, coverage states, and per-part source provenance. Use these facts
+without calculating new amounts. Missing pricing must remain unavailable.
+Return price_recommendation with recommendation and a concise rationale:
+- SUPPORTS_REPAIR only when complete exact-match prices support REPAIR_LIKELY.
+- SUPPORTS_REPLACEMENT only when complete prices support REPLACEMENT_LIKELY.
+- MANUAL_REVIEW if either category lacks any confirmed part's price, pricing is
+  absent, evidence conflicts, or the assessment requires manual inspection.
+Identify missing-price limitations explicitly. Prices cannot override the
+deterministic damage assessment. Do not include monetary amounts in the
+rationale or add numeric price fields to the output. Keep the rationale qualitative:
+no digits, currency units, or claim approval/rejection statements. The application displays
+backend amounts separately. These are mock reference estimates, not a workshop
+quote, payout, or final decision. The human adjuster decides.
+
 Return only the required structured output.
 """
 
@@ -232,6 +252,7 @@ class AiReviewContext(BaseModel):
     damage: AiReviewDamage
     warnings: list[str] = Field(default_factory=list)
     reference_prices: list[AiReviewReferencePrice] = Field(default_factory=list)
+    pricing: AnalysisPricingResponse | None = None
 
 
 class AiReviewStructuredResult(BaseModel):
@@ -242,12 +263,19 @@ class AiReviewStructuredResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     recommended_next_step: str
     human_review_required: bool = True
+    price_recommendation: PriceRecommendation | None = None
 
     @model_validator(mode="after")
     def require_human_review(self) -> "AiReviewStructuredResult":
         if not self.human_review_required:
             raise ValueError("AI Review must require a human adjuster")
         return self
+
+
+class AiReviewGenerationResult(AiReviewStructuredResult):
+    model_config = ConfigDict(extra="forbid")
+    # New provider output requires pricing advice; historical reviews may lack it.
+    price_recommendation: PriceRecommendation
 
 
 @dataclass(frozen=True)
@@ -371,7 +399,7 @@ class LangChainOpenAiAdapter:
                 chat_options["base_url"] = self.base_url
             model = ChatOpenAI(**chat_options)
             structured_model = model.with_structured_output(
-                AiReviewStructuredResult,
+                AiReviewGenerationResult,
                 method="json_schema",
                 include_raw=True,
                 strict=True,
@@ -418,7 +446,7 @@ class LangChainOpenAiAdapter:
                     type(parsing_error).__name__ if parsing_error else "NoParsedOutput",
                 )
                 raise LlmGenerationError("LLM structured output parsing failed")
-            return AiReviewStructuredResult.model_validate(parsed)
+            return AiReviewGenerationResult.model_validate(parsed.model_dump() if isinstance(parsed, BaseModel) else parsed)
         except LlmGenerationError:
             raise
         except Exception as error:
@@ -438,8 +466,11 @@ class LlmCopilotService:
 
     def generate(self, input_data: CopilotInput) -> CopilotConclusionResult:
         fallback = DeterministicLlmCopilotAdapter().generate_review(input_data)
+        fallback = self._with_price_recommendation(input_data, fallback)
         try:
             review = self.adapter.generate_review(input_data)
+            review = AiReviewStructuredResult.model_validate(review.model_dump())
+            review = self._with_price_recommendation(input_data, review)
         except Exception:
             logger.exception("AI review generation failed")
             return CopilotConclusionResult(
@@ -462,6 +493,15 @@ class LlmCopilotService:
             fallback_summary=review.summary if is_fallback else None,
             failure_reason=None,
         )
+
+    @staticmethod
+    def _with_price_recommendation(input_data: CopilotInput, review: AiReviewStructuredResult) -> AiReviewStructuredResult:
+        context = input_data.context
+        recommendation = enforce_price_recommendation(
+            context.pricing, context.damage.assessment,
+            [finding.part for finding in context.damage.findings], review.price_recommendation,
+        )
+        return review.model_copy(update={"price_recommendation": recommendation})
 
 
 def get_llm_copilot_adapter(settings: Settings) -> LlmCopilotAdapter:

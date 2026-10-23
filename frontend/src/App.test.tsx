@@ -1483,6 +1483,11 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
       reference_prices: [],
       structured_review: {
         summary: "The confirmed claim requires manual review.",
+        price_recommendation: {
+          recommendation: "MANUAL_REVIEW",
+          rationale:
+            "Exact replacement pricing is missing; an adjuster must verify it.",
+        },
         assessment_interpretation:
           "The deterministic assessment is repair likely.",
         damaged_parts_summary: "Rear bumper dent affects 32.5% of the part.",
@@ -1657,6 +1662,11 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
           conclusion_id: 8,
           locale: "vi",
           structured_review: {
+            price_recommendation: {
+              recommendation: "MANUAL_REVIEW",
+              rationale:
+                "Chưa có đủ giá thay thế; chuyên viên cần kiểm tra thêm.",
+            },
             summary: "Hồ sơ đã xác nhận vẫn cần chuyên viên xem xét.",
             assessment_interpretation:
               "Kết quả xác định xe có khả năng cần sửa chữa.",
@@ -1757,6 +1767,11 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
   expect(within(damageTable).queryByText(/pixels/i)).not.toBeInTheDocument();
   expect(screen.getByText("Assessment interpretation")).toBeVisible();
   expect(
+    screen.getByText(
+      "Exact replacement pricing is missing; an adjuster must verify it.",
+    ),
+  ).toBeVisible();
+  expect(
     screen.getByText("The deterministic assessment is repair likely."),
   ).toBeVisible();
   expect(screen.getByText("Damaged parts summary")).toBeVisible();
@@ -1783,6 +1798,9 @@ test("adjuster reviews grouped workflow results and submits a noted human decisi
     screen.getByText("Cần kiểm tra giá phụ tùng tham khảo."),
   ).toBeVisible();
   expect(translationRequests).toBe(1);
+  expect(
+    screen.getByText("Chưa có đủ giá thay thế; chuyên viên cần kiểm tra thêm."),
+  ).toBeVisible();
 
   await i18n.changeLanguage("en");
   expect(

@@ -128,6 +128,14 @@ Khi khởi động, ứng dụng tạo thêm bảng catalog/snapshot và seed gi
 Có thể chạy `python scripts/seed_price_catalog.py` từ `backend`. Seed giữ nguyên các giá đã có. Mỗi Analysis lưu snapshot giá bất biến; thay đổi catalog chỉ áp dụng cho lần Analysis sau. Snapshot USD lịch sử vẫn đọc được. Giá VNĐ mới lưu bằng số nguyên đồng.
 
 Step 4 hiển thị đánh giá tổn thất trước, hai khối tổng quan giá sửa/thay, rồi bảng giá từng phụ tùng kèm nguồn. Khi thiếu giá, chỉ hiển thị số cộng các giá đã biết và ghi rõ chưa đủ để tính tổng. Giá mock chỉ tham khảo, chưa bao gồm công, vật tư, thuế và phí xưởng chưa được mô hình hóa; quyết định cuối thuộc chuyên viên thẩm định.
+
+AI Review nhận snapshot giá đã lưu trong lần gọi LLM hiện có. Field `price_recommendation` chỉ gồm `recommendation` (`SUPPORTS_REPAIR`: hỗ trợ sửa chữa; `SUPPORTS_REPLACEMENT`: hỗ trợ thay thế; `MANUAL_REVIEW`: cần thẩm định giá thủ công) và `rationale` giải thích ngắn. Thiếu giá ở bất kỳ loại giá nào sẽ bắt buộc thẩm định thủ công nhưng vẫn giữ phần review còn lại. Khuyến nghị trái với đánh giá tổn thất cũng chuyển sang thẩm định thủ công. Các số tiền trên UI luôn lấy từ Analysis; AI không tự tính giá mới. Khi AI đang mock hoặc không khả dụng, khuyến nghị giá vẫn là thẩm định thủ công.
+
+Bản dịch tiếng Việt bao gồm rationale và giữ nguyên mã recommendation. Review lịch sử chưa có khuyến nghị giá vẫn đọc được; chạy lại AI Review để tạo revision mới từ snapshot Analysis đã lưu. Version prompt/schema review là `ai-review-v3-pricing` / `ai-review-schema-v3-pricing`; bản dịch là `ai-review-translation-vi-v2-pricing` / `ai-review-translation-schema-v2-pricing`.
+
+AI Review nhận snapshot giá đã lưu trong lần gọi LLM hiện có. Field `price_recommendation` chỉ gồm `recommendation` (`SUPPORTS_REPAIR`: hỗ trợ sửa chữa; `SUPPORTS_REPLACEMENT`: hỗ trợ thay thế; `MANUAL_REVIEW`: cần thẩm định giá thủ công) và `rationale` giải thích ngắn. Thiếu giá ở bất kỳ loại giá nào sẽ bắt buộc thẩm định thủ công nhưng vẫn giữ phần review còn lại. Khuyến nghị trái với đánh giá tổn thất cũng chuyển sang thẩm định thủ công. Các số tiền trên UI luôn lấy từ Analysis; AI không tự tính giá mới. Khi AI đang mock hoặc không khả dụng, khuyến nghị giá vẫn là thẩm định thủ công.
+
+Bản dịch tiếng Việt bao gồm rationale và giữ nguyên mã recommendation. Review lịch sử chưa có khuyến nghị giá vẫn đọc được; chạy lại AI Review để tạo revision mới từ snapshot Analysis đã lưu. Version prompt/schema review là `ai-review-v3-pricing` / `ai-review-schema-v3-pricing`; bản dịch là `ai-review-translation-vi-v2-pricing` / `ai-review-translation-schema-v2-pricing`.
 | `DOCUMENT_OCR_MODE` | `deepdoc`, `mock` | `deepdoc` | OCR DeepDoc hoặc OCR demo xác định. |
 | `LLM_MODE` | `mock`, `openai` | `mock` | Response demo hoặc gọi chat model tương thích OpenAI qua LangChain. |
 

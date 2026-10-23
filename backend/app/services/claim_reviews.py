@@ -224,6 +224,7 @@ class ClaimReviewOperations:
                     ],
                 ),
                 warnings=payload.get("warnings", []),
+                pricing=damage_payload.get("pricing"),
                 reference_prices=[
                     AiReviewReferencePrice(
                         part=price["part_identity"],
