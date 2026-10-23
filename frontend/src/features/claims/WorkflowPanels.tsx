@@ -44,6 +44,7 @@ import {
 } from "./EvidencePanel";
 import { ClaimsApiError } from "./claimsApi";
 import { DocumentAnalysisResults } from "./DocumentAnalysisResults";
+import { PricingOverview } from "./PricingOverview";
 import {
   useAiReviewTranslation,
   useRevertCopilotReview,
@@ -589,6 +590,13 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
                 : t("common.tryAgain")}
             </Alert.Description>
           </Alert>
+        ) : null}
+        {run?.damage_analysis?.pricing ? (
+          <PricingOverview
+            pricing={run.damage_analysis.pricing}
+            assessment={run.damage_analysis.assessment}
+            findings={run.damage_analysis.detections}
+          />
         ) : null}
         {conclusion ? (
           <AiReviewResult claimId={claim.id} conclusion={conclusion} />

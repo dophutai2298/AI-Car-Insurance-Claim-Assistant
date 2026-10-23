@@ -119,7 +119,15 @@ Open `http://localhost:5173`.
 | Setting | Supported values | Default | Purpose |
 | --- | --- | --- | --- |
 | `DAMAGE_MODEL_MODE` | `local` | `local` | Runs the local `AI/CarDamageDetector` with the bundled model weights. |
-| `PART_SEARCH_MODE` | `mock`, `unavailable` | `mock` | Demo reference prices or no price search results. |
+| `PART_SEARCH_MODE` | `mock`, `unavailable` | `mock` | PostgreSQL mock VND catalog or unavailable pricing. |
+
+### Vehicle pricing catalog
+
+Startup creates the additive catalog/snapshot tables and seeds demo prices for Toyota Camry 2022, Toyota Vios 2023, and BMW M3 2024. Repair and replacement prices are separate records, matched exactly by make, model, year, part, and category. Part identifiers normalize case, spaces, and hyphens only. Missing matches stay unavailable.
+
+You can also run `python scripts/seed_price_catalog.py` from `backend`. Seeding preserves existing catalog values. Each Analysis stores an immutable price snapshot; catalog updates apply to later runs. Existing historical USD snapshots remain readable. New VND amounts use whole-dong integers.
+
+Step 4 shows assessment first, repair/replacement summaries, then a per-part provenance table. A partial sum is labeled as a known subtotal, never a complete estimate. These mock prices are informational and exclude unmodeled labor, materials, taxes, and workshop fees. They do not determine payouts or replace the adjuster's decision.
 | `DOCUMENT_OCR_MODE` | `deepdoc`, `mock` | `deepdoc` | DeepDoc OCR or deterministic demo OCR. |
 | `LLM_MODE` | `mock`, `openai` | `mock` | Demo responses or LangChain calls to an OpenAI-compatible chat model. |
 

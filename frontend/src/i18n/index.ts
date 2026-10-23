@@ -8,6 +8,28 @@ const initialLanguage =
     : null;
 
 const en = {
+  pricing: {
+    lookupFailed: "Price lookup unavailable. Try again later.",
+    title: "Repair and replacement estimates",
+    mockNotice:
+      "Mock Vietnam price catalog · VND. Informational estimates, not a workshop quote or payout.",
+    assessment: "Damage assessment",
+    independent: "Based on confirmed damage; independent of pricing",
+    repair_estimate: "Repair estimate",
+    replacement_part_price: "Replacement part prices",
+    COMPLETE: "Complete estimate",
+    INCOMPLETE: "Known subtotal only; incomplete estimate",
+    UNAVAILABLE: "No matching prices",
+    unavailable: "Unavailable",
+    missing: "No exact price match",
+    parts: "parts priced",
+    source: "Price source",
+    effective: "Effective",
+    retrieved: "Retrieved",
+    breakdown: "Per-part price comparison",
+    humanDecision:
+      "Prices are reference estimates. The adjuster makes the final decision.",
+  },
   myClaims: {
     eyebrow: "Customer intake",
     title: "My Claims",
@@ -573,6 +595,28 @@ const en = {
 };
 
 const vi = {
+  pricing: {
+    lookupFailed: "Không thể lấy giá lúc này. Vui lòng thử lại sau.",
+    title: "Ước tính sửa chữa và thay thế",
+    mockNotice:
+      "Danh mục giá Việt Nam minh họa · VNĐ. Giá tham khảo, không phải báo giá xưởng hay khoản bồi thường.",
+    assessment: "Đánh giá tổn thất",
+    independent: "Theo hư hại đã xác nhận; độc lập với giá",
+    repair_estimate: "Ước tính sửa chữa",
+    replacement_part_price: "Giá thay thế phụ tùng",
+    COMPLETE: "Ước tính đầy đủ",
+    INCOMPLETE: "Cộng các giá đã biết; chưa đủ để tính tổng",
+    UNAVAILABLE: "Chưa có giá khớp",
+    unavailable: "Chưa có giá",
+    missing: "Chưa có giá khớp chính xác",
+    parts: "phụ tùng có giá",
+    source: "Nguồn giá",
+    effective: "Hiệu lực",
+    retrieved: "Ngày lấy giá",
+    breakdown: "Bảng so sánh giá từng phụ tùng",
+    humanDecision:
+      "Giá chỉ mang tính tham khảo. Chuyên viên thẩm định quyết định phương án cuối cùng.",
+  },
   myClaims: {
     eyebrow: "Tiếp nhận hồ sơ",
     title: "Hồ sơ của tôi",

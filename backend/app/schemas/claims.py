@@ -142,6 +142,7 @@ class DamageAnalysisResponse(BaseModel):
     rules: AssessmentRuleValuesSchema | None = None
     reference_price_status: ReferencePriceLookupStatus
     reference_prices: list["ReferencePartPriceResponse"] = Field(default_factory=list)
+    pricing: "AnalysisPricingResponse | None" = None
     copilot_conclusion: "CopilotConclusionResponse | None" = None
     created_at: datetime
 
@@ -300,7 +301,7 @@ class WorkflowAnalysisRunResponse(BaseModel):
 
 class ReferencePartPriceResponse(BaseModel):
     part_identity: str
-    amount: float | None
+    amount: int | float | None
     currency: str | None
     source_name: str | None
     source_url: str | None
@@ -308,6 +309,33 @@ class ReferencePartPriceResponse(BaseModel):
     retrieved_at: datetime
     status: ReferencePriceStatus
     failure_reason: str | None
+    effective_at: datetime | None = None
+    catalog_id: int | None = None
+    unavailable_reason: Literal["NO_EXACT_MATCH", "PROVIDER_UNAVAILABLE"] | None = None
+    vehicle_make: str | None = None
+    vehicle_model: str | None = None
+    vehicle_year: int | None = None
+
+
+class PriceEstimateResponse(BaseModel):
+    status: Literal["COMPLETE", "INCOMPLETE", "UNAVAILABLE"]
+    total_amount: int | None
+    known_subtotal: int
+    priced_parts: int
+    total_parts: int
+
+
+class PartPriceComparisonResponse(BaseModel):
+    part_identity: str
+    repair_estimate: ReferencePartPriceResponse
+    replacement_part_price: ReferencePartPriceResponse
+
+
+class AnalysisPricingResponse(BaseModel):
+    currency: Literal["VND"]
+    repair_estimate: PriceEstimateResponse
+    replacement_part_price: PriceEstimateResponse
+    line_items: list[PartPriceComparisonResponse]
 
 
 class CopilotFindingResponse(BaseModel):

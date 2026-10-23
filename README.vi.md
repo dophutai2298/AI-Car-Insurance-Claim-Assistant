@@ -119,7 +119,15 @@ Mở `http://localhost:5173`.
 | Cấu hình | Giá trị hỗ trợ | Mặc định | Mục đích |
 | --- | --- | --- | --- |
 | `DAMAGE_MODEL_MODE` | `local` | `local` | Chạy `AI/CarDamageDetector` với model weights cục bộ. |
-| `PART_SEARCH_MODE` | `mock`, `unavailable` | `mock` | Giá phụ tùng demo hoặc không trả kết quả tìm giá. |
+| `PART_SEARCH_MODE` | `mock`, `unavailable` | `mock` | Catalog giá mock VNĐ trong PostgreSQL hoặc giá không khả dụng. |
+
+### Catalog giá xe
+
+Khi khởi động, ứng dụng tạo thêm bảng catalog/snapshot và seed giá minh họa cho Toyota Camry 2022, Toyota Vios 2023 và BMW M3 2024. Giá sửa và giá thay là các record riêng, khớp chính xác hãng, model, năm, phụ tùng và loại giá. Tên phụ tùng chỉ chuẩn hóa chữ hoa/thường, khoảng trắng và dấu nối. Không có record khớp thì báo thiếu giá.
+
+Có thể chạy `python scripts/seed_price_catalog.py` từ `backend`. Seed giữ nguyên các giá đã có. Mỗi Analysis lưu snapshot giá bất biến; thay đổi catalog chỉ áp dụng cho lần Analysis sau. Snapshot USD lịch sử vẫn đọc được. Giá VNĐ mới lưu bằng số nguyên đồng.
+
+Step 4 hiển thị đánh giá tổn thất trước, hai khối tổng quan giá sửa/thay, rồi bảng giá từng phụ tùng kèm nguồn. Khi thiếu giá, chỉ hiển thị số cộng các giá đã biết và ghi rõ chưa đủ để tính tổng. Giá mock chỉ tham khảo, chưa bao gồm công, vật tư, thuế và phí xưởng chưa được mô hình hóa; quyết định cuối thuộc chuyên viên thẩm định.
 | `DOCUMENT_OCR_MODE` | `deepdoc`, `mock` | `deepdoc` | OCR DeepDoc hoặc OCR demo xác định. |
 | `LLM_MODE` | `mock`, `openai` | `mock` | Response demo hoặc gọi chat model tương thích OpenAI qua LangChain. |
 

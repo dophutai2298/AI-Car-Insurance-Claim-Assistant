@@ -217,7 +217,7 @@ class AiReviewDamage(BaseModel):
 
 class AiReviewReferencePrice(BaseModel):
     part: str
-    amount: float | None = None
+    amount: int | float | None = None
     currency: str | None = None
     source_name: str | None = None
     price_type: str

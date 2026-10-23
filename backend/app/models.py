@@ -2,7 +2,7 @@ from enum import Enum
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum as SqlEnum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, Enum as SqlEnum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -488,6 +488,35 @@ class DamageAnalysisRuleSnapshot(Base):
     analysis_id: Mapped[int] = mapped_column(ForeignKey("damage_analyses.id"), unique=True, index=True)
     repair_max_percentage: Mapped[float] = mapped_column(Float)
     replacement_min_percentage: Mapped[float] = mapped_column(Float)
+
+
+class VehiclePartPriceCatalog(Base):
+    __tablename__ = "vehicle_part_price_catalog"
+    __table_args__ = (
+        UniqueConstraint("vehicle_make", "vehicle_model", "vehicle_year", "part_identity", "price_type"),
+        CheckConstraint("amount >= 0 AND amount <= 1000000000000"),
+        CheckConstraint("price_type IN ('REPAIR_ESTIMATE', 'REPLACEMENT_PART_PRICE')"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vehicle_make: Mapped[str] = mapped_column(String(120))
+    vehicle_model: Mapped[str] = mapped_column(String(120))
+    vehicle_year: Mapped[int] = mapped_column(Integer)
+    part_identity: Mapped[str] = mapped_column(String(80))
+    price_type: Mapped[str] = mapped_column(String(64))
+    amount: Mapped[int] = mapped_column(BigInteger)
+    source_name: Mapped[str] = mapped_column(String(160))
+    source_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AnalysisPricingSnapshot(Base):
+    __tablename__ = "analysis_pricing_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    analysis_id: Mapped[int] = mapped_column(ForeignKey("damage_analyses.id"), unique=True, index=True)
+    payload_json: Mapped[str] = mapped_column(Text)
 
 
 class ReferencePartPrice(Base):

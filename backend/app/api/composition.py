@@ -26,7 +26,7 @@ def build_claim_service(session: Session, settings: Settings) -> ClaimService:
         get_damage_model_adapter(settings, storage),
         DamageAssessmentService(),
         AssessmentRuleService(AssessmentRuleRepository(session), settings),
-        PartSearchService(get_part_price_provider(settings)),
+        PartSearchService(get_part_price_provider(settings, session)),
         LlmCopilotService(get_llm_copilot_adapter(settings)),
         settings.openai_model,
         get_ai_review_translation_adapter(settings),

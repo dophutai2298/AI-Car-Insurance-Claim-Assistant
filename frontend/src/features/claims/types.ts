@@ -252,6 +252,7 @@ export type DamageAnalysis = {
   } | null;
   reference_price_status: ReferencePriceLookupStatus;
   reference_prices: ReferencePartPrice[];
+  pricing?: AnalysisPricing | null;
   copilot_conclusion: CopilotConclusion | null;
   created_at: string;
 };
@@ -268,6 +269,29 @@ export type ReferencePartPrice = {
   retrieved_at: string;
   status: "FOUND" | "UNAVAILABLE";
   failure_reason: string | null;
+  effective_at?: string | null;
+  unavailable_reason?: "NO_EXACT_MATCH" | "PROVIDER_UNAVAILABLE" | null;
+  vehicle_make?: string | null;
+  vehicle_model?: string | null;
+  vehicle_year?: number | null;
+};
+
+export type PriceEstimate = {
+  status: "COMPLETE" | "INCOMPLETE" | "UNAVAILABLE";
+  total_amount: number | null;
+  known_subtotal: number;
+  priced_parts: number;
+  total_parts: number;
+};
+export type AnalysisPricing = {
+  currency: "VND";
+  repair_estimate: PriceEstimate;
+  replacement_part_price: PriceEstimate;
+  line_items: Array<{
+    part_identity: string;
+    repair_estimate: ReferencePartPrice;
+    replacement_part_price: ReferencePartPrice;
+  }>;
 };
 
 export type CopilotConclusion = {

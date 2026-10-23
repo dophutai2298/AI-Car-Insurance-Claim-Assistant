@@ -62,6 +62,7 @@ from app.services.evidence_storage import EvidenceStorage, EvidenceStorageError
 from app.services.damage_assessment import DamageAssessmentService
 from app.services.damage_model import DamageModelAdapter, DamageModelDetection
 from app.services.part_search import PartSearchService, ReferencePartPriceResult
+from app.services.price_catalog import legacy_reference_prices
 from app.services.llm_copilot import (
     AiReviewStructuredResult,
     AiReviewClaimFacts,
@@ -678,7 +679,7 @@ class ClaimService:
                         price_type=price.price_type,
                         status=price.status.value,
                     )
-                    for price in reference_prices
+                    for price in legacy_reference_prices(reference_prices)
                 ],
             )
         )

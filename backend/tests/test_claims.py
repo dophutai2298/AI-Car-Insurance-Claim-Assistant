@@ -2903,6 +2903,90 @@ def test_damage_analyses_preserve_the_active_rules_used_at_runtime(client: TestC
     assert first_detail["latest_damage_analysis"]["rules"]["repair_max_percentage"] == 20.0
 
 
+def test_workflow_analysis_exposes_complete_vnd_pricing(client: TestClient):
+    claim = prepare_claim_for_workflow_analysis(client)
+    started = client.post(f"/api/claims/{claim['id']}/analysis-runs", headers=admin_headers(client))
+    assert started.status_code == 202
+    detail = client.get(f"/api/claims/{claim['id']}", headers=admin_headers(client)).json()
+    pricing = detail["latest_analysis_run"]["damage_analysis"]["pricing"]
+    assert pricing["repair_estimate"] == {
+        "status": "COMPLETE", "total_amount": 8600000, "known_subtotal": 8600000,
+        "priced_parts": 4, "total_parts": 4,
+    }
+    assert pricing["replacement_part_price"]["total_amount"] == 25700000
+    assert pricing["currency"] == "VND"
+    assert len(pricing["line_items"]) == 4
+
+
+@pytest.mark.parametrize("key,value", [("vehicle_make", "Honda"), ("vehicle_model", "Vios"), ("vehicle_year", 2021), ("part_identity", "unmatched_part"), ("price_type", "REPLACEMENT_PART_PRICE")])
+def test_pricing_requires_every_exact_catalog_key(client: TestClient, key, value):
+    from app.models import VehiclePartPriceCatalog
+    from sqlalchemy import delete
+    with client.app.state.session_factory() as session:
+        session.execute(delete(VehiclePartPriceCatalog))
+        session.add(VehiclePartPriceCatalog(**{
+            "vehicle_make": "Toyota", "vehicle_model": "Camry", "vehicle_year": 2022,
+            "part_identity": "front_left_door", "price_type": "REPAIR_ESTIMATE", "amount": 1000000,
+            "source_name": "Test catalog", "effective_at": datetime.now(timezone.utc),
+            "retrieved_at": datetime.now(timezone.utc), key: value,
+        }))
+        session.commit()
+    claim = prepare_claim_for_workflow_analysis(client, damage_filename="replacement.jpg")
+    client.post(f"/api/claims/{claim['id']}/analysis-runs", headers=admin_headers(client))
+    detail = client.get(f"/api/claims/{claim['id']}", headers=admin_headers(client)).json()
+    estimate = detail["latest_analysis_run"]["damage_analysis"]["pricing"]["repair_estimate"]
+    assert estimate["status"] == "UNAVAILABLE"
+    assert estimate["total_amount"] is None
+    assert estimate["known_subtotal"] == 0
+    if key == "price_type":
+        analysis = detail["latest_analysis_run"]["damage_analysis"]
+        assert analysis["reference_price_status"] == "FOUND"
+        assert analysis["reference_prices"][0]["price_type"] == "REFERENCE_OEM_PART_PRICE"
+
+
+def test_analysis_prices_are_immutable_and_partial_prices_are_not_totals(client: TestClient):
+    from app.models import VehiclePartPriceCatalog
+    from sqlalchemy import delete, update
+    claim = prepare_claim_for_workflow_analysis(client)
+    client.post(f"/api/claims/{claim['id']}/analysis-runs", headers=admin_headers(client))
+    url = f"/api/claims/{claim['id']}"
+    original = client.get(url, headers=admin_headers(client)).json()["latest_analysis_run"]["damage_analysis"]["pricing"]
+    with client.app.state.session_factory() as session:
+        session.execute(delete(VehiclePartPriceCatalog).where(VehiclePartPriceCatalog.part_identity == "rear_bumper"))
+        session.execute(update(VehiclePartPriceCatalog).where(VehiclePartPriceCatalog.part_identity == "hood").values(amount=1000000))
+        session.commit()
+    persisted = client.get(url, headers=admin_headers(client)).json()["latest_analysis_run"]["damage_analysis"]["pricing"]
+    assert persisted == original
+    client.post(f"{url}/analysis-runs", headers=admin_headers(client))
+    pricing = client.get(url, headers=admin_headers(client)).json()["latest_analysis_run"]["damage_analysis"]["pricing"]
+    assert pricing["repair_estimate"] == {"status": "INCOMPLETE", "total_amount": None,
+        "known_subtotal": 6500000, "priced_parts": 3, "total_parts": 4}
+    assert next(item for item in pricing["line_items"] if item["part_identity"] == "rear_bumper")["repair_estimate"]["status"] == "UNAVAILABLE"
+    assert client.delete(url, headers=admin_headers(client)).status_code == 204
+
+
+def test_historical_usd_reference_prices_remain_readable(client: TestClient):
+    from app.models import AnalysisPricingSnapshot, ReferencePartPrice, DamageAnalysis, ReferencePriceStatus
+    from sqlalchemy import delete
+    claim = create_claim(client)
+    upload_damage_images(client, claim["id"], ["replacement.jpg"])
+    client.post(f"/api/claims/{claim['id']}/damage-analysis", headers=admin_headers(client))
+    with client.app.state.session_factory() as session:
+        analysis = session.scalar(select(DamageAnalysis))
+        session.execute(delete(AnalysisPricingSnapshot))
+        session.add(ReferencePartPrice(
+            analysis_id=analysis.id, part_identity="front_left_door", amount=950.0,
+            currency="USD", source_name="Historical OEM catalog", source_url=None,
+            price_type="REFERENCE_OEM_PART_PRICE", retrieved_at=datetime.now(timezone.utc),
+            status=ReferencePriceStatus.FOUND,
+        ))
+        session.commit()
+    result = client.get(f"/api/claims/{claim['id']}", headers=admin_headers(client)).json()["latest_damage_analysis"]
+    assert result["pricing"] is None
+    assert result["reference_prices"][0]["amount"] == 950.0
+    assert result["reference_prices"][0]["currency"] == "USD"
+
+
 def test_replacement_analysis_returns_a_reference_oem_part_price(client: TestClient):
     claim = create_claim(client)
     upload_damage_images(client, claim["id"], ["replacement.jpg"])
@@ -2912,28 +2996,21 @@ def test_replacement_analysis_returns_a_reference_oem_part_price(client: TestCli
     assert response.status_code == 200
     analysis = response.json()
     assert analysis["reference_price_status"] == "FOUND"
-    assert analysis["reference_prices"] == [{
-        "part_identity": "front_left_door",
-        "amount": 950.0,
-        "currency": "USD",
-        "source_name": "Mock OEM Parts Catalog",
-        "source_url": "https://example.com/oem-parts/front-left-door",
-        "price_type": "REFERENCE_OEM_PART_PRICE",
-        "retrieved_at": analysis["reference_prices"][0]["retrieved_at"],
-        "status": "FOUND",
-        "failure_reason": None,
-    }]
+    assert len(analysis["reference_prices"]) == 1
+    assert analysis["reference_prices"][0]["price_type"] == "REFERENCE_OEM_PART_PRICE"
+    assert analysis["pricing"]["line_items"][0]["repair_estimate"]["price_type"] == "REPAIR_ESTIMATE"
+    assert analysis["pricing"]["replacement_part_price"]["total_amount"] == 5800000
 
 
-def test_non_replacement_analysis_skips_reference_price_lookup(client: TestClient):
+def test_non_replacement_analysis_includes_both_price_categories(client: TestClient):
     claim = create_claim(client)
     upload_damage_images(client, claim["id"], ["repair.jpg"])
 
     response = client.post(f"/api/claims/{claim['id']}/damage-analysis", headers=admin_headers(client))
 
     assert response.status_code == 200
-    assert response.json()["reference_price_status"] == "NOT_REQUESTED"
-    assert response.json()["reference_prices"] == []
+    assert response.json()["reference_price_status"] == "FOUND"
+    assert len(response.json()["reference_prices"]) == 4
 
 
 def test_non_replacement_analysis_can_explicitly_request_reference_price_lookup(client: TestClient):
@@ -2979,7 +3056,7 @@ def test_mock_llm_copilot_returns_a_deterministic_fallback_conclusion(client: Te
     assert conclusion["status"] == "FALLBACK"
     assert conclusion["recommendation"] == "MANUAL_ADJUSTER_REVIEW"
     assert conclusion["findings"][0]["vehicle_part"] == "front_left_door"
-    assert conclusion["reference_prices"][0]["amount"] == 950.0
+    assert conclusion["reference_prices"][0]["amount"] == 5800000
     assert conclusion["summary"]
 
 
