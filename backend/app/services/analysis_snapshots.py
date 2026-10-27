@@ -13,6 +13,7 @@ from app.schemas.claims import (
     IncidentInformation,
 )
 from app.services.document_consistency import ClaimConsistencyService, ClaimFacts, ConsistencyResult
+from app.services.price_catalog import pricing_summary, legacy_reference_prices
 
 DOCUMENT_EVIDENCE_CATEGORIES = (
     EvidenceCategory.ID_CARD,
@@ -309,6 +310,7 @@ class AnalysisSnapshotOperations:
                     for item in detections
                 ],
                 "model_output": json.loads(model_output.output_json) if model_output else None,
+                "pricing": pricing_summary(reference_prices),
                 "reference_prices": [
                     {
                         "part_identity": price.part_identity,
@@ -319,7 +321,7 @@ class AnalysisSnapshotOperations:
                         "price_type": price.price_type,
                         "status": price.status.value,
                     }
-                    for price in reference_prices
+                    for price in legacy_reference_prices(reference_prices)
                 ],
             },
             "claim": {"id": claim.claim_number, "status": claim.status.value},

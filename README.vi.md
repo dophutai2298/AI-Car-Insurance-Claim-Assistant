@@ -119,7 +119,27 @@ Mở `http://localhost:5173`.
 | Cấu hình | Giá trị hỗ trợ | Mặc định | Mục đích |
 | --- | --- | --- | --- |
 | `DAMAGE_MODEL_MODE` | `local` | `local` | Chạy `AI/CarDamageDetector` với model weights cục bộ. |
-| `PART_SEARCH_MODE` | `mock`, `unavailable` | `mock` | Giá phụ tùng demo hoặc không trả kết quả tìm giá. |
+| `PART_SEARCH_MODE` | `mock`, `unavailable` | `mock` | Catalog giá mock VNĐ trong PostgreSQL hoặc giá không khả dụng. |
+
+### Catalog giá xe
+
+Khi khởi động, ứng dụng tạo thêm bảng catalog/snapshot và seed giá minh họa cho Toyota Camry 2022, Toyota Vios 2023 và BMW M3 2024. Giá sửa và giá thay là các record riêng, khớp chính xác hãng, model, năm, phụ tùng và loại giá. Tên phụ tùng chỉ chuẩn hóa chữ hoa/thường, khoảng trắng và dấu nối. Không có record khớp thì báo thiếu giá.
+
+Có thể chạy `python scripts/seed_price_catalog.py` từ `backend` để tạo catalog giá mock cho 19 hãng và các dòng xe liệt kê trong script, từ năm 2015 đến năm hiện tại. Mỗi tổ hợp dòng xe/năm có giá sửa và giá thay riêng cho đủ 21 nhãn bộ phận của detector cùng bốn tên bộ phận lịch sử. Đây là dữ liệu minh họa được sinh tự động, chưa xác minh năm sản xuất thực tế hay giá thị trường.
+
+Chỉnh `VEHICLES` (dòng xe và hệ số phần trăm), `PART_PRICES_VND` (giá sửa/thay gốc), `PRICE_OVERRIDES` (giá chính xác theo hãng/dòng/năm/bộ phận) trong script. Giá tự sinh áp dụng hệ số dòng xe và điều chỉnh 3% mỗi năm so với 2024, giới hạn hệ số năm ở 60%-120%; giá override bỏ qua cả hai hệ số. `--dry-run` xem trước phạm vi mà không kết nối DB. Dùng `--make Toyota --start-year 2020 --end-year 2026` để giới hạn dữ liệu. Mặc định giữ nguyên giá đã có; thêm `--update-existing` để ghi đè giá và thông tin nguồn thành nguồn mock của script. Script dùng `DATABASE_URL` trong `.env` của dự án và commit toàn bộ trong một transaction.
+
+Mỗi Analysis lưu snapshot giá bất biến; thay đổi catalog chỉ áp dụng cho lần Analysis sau. Snapshot USD lịch sử vẫn đọc được. Giá VNĐ mới lưu bằng số nguyên đồng.
+
+Step 4 hiển thị đánh giá tổn thất trước, hai khối tổng quan giá sửa/thay, rồi bảng giá từng phụ tùng kèm nguồn. Khi thiếu giá, chỉ hiển thị số cộng các giá đã biết và ghi rõ chưa đủ để tính tổng. Giá mock chỉ tham khảo, chưa bao gồm công, vật tư, thuế và phí xưởng chưa được mô hình hóa; quyết định cuối thuộc chuyên viên thẩm định.
+
+AI Review nhận snapshot giá đã lưu trong lần gọi LLM hiện có. Field `price_recommendation` chỉ gồm `recommendation` (`SUPPORTS_REPAIR`: hỗ trợ sửa chữa; `SUPPORTS_REPLACEMENT`: hỗ trợ thay thế; `MANUAL_REVIEW`: cần thẩm định giá thủ công) và `rationale` giải thích ngắn. Thiếu giá ở bất kỳ loại giá nào sẽ bắt buộc thẩm định thủ công nhưng vẫn giữ phần review còn lại. Khuyến nghị trái với đánh giá tổn thất cũng chuyển sang thẩm định thủ công. Các số tiền trên UI luôn lấy từ Analysis; AI không tự tính giá mới. Khi AI đang mock hoặc không khả dụng, khuyến nghị giá vẫn là thẩm định thủ công.
+
+Bản dịch tiếng Việt bao gồm rationale và giữ nguyên mã recommendation. Review lịch sử chưa có khuyến nghị giá vẫn đọc được; chạy lại AI Review để tạo revision mới từ snapshot Analysis đã lưu. Version prompt/schema review là `ai-review-v3-pricing` / `ai-review-schema-v3-pricing`; bản dịch là `ai-review-translation-vi-v2-pricing` / `ai-review-translation-schema-v2-pricing`.
+
+AI Review nhận snapshot giá đã lưu trong lần gọi LLM hiện có. Field `price_recommendation` chỉ gồm `recommendation` (`SUPPORTS_REPAIR`: hỗ trợ sửa chữa; `SUPPORTS_REPLACEMENT`: hỗ trợ thay thế; `MANUAL_REVIEW`: cần thẩm định giá thủ công) và `rationale` giải thích ngắn. Thiếu giá ở bất kỳ loại giá nào sẽ bắt buộc thẩm định thủ công nhưng vẫn giữ phần review còn lại. Khuyến nghị trái với đánh giá tổn thất cũng chuyển sang thẩm định thủ công. Các số tiền trên UI luôn lấy từ Analysis; AI không tự tính giá mới. Khi AI đang mock hoặc không khả dụng, khuyến nghị giá vẫn là thẩm định thủ công.
+
+Bản dịch tiếng Việt bao gồm rationale và giữ nguyên mã recommendation. Review lịch sử chưa có khuyến nghị giá vẫn đọc được; chạy lại AI Review để tạo revision mới từ snapshot Analysis đã lưu. Version prompt/schema review là `ai-review-v3-pricing` / `ai-review-schema-v3-pricing`; bản dịch là `ai-review-translation-vi-v2-pricing` / `ai-review-translation-schema-v2-pricing`.
 | `DOCUMENT_OCR_MODE` | `deepdoc`, `mock` | `deepdoc` | OCR DeepDoc hoặc OCR demo xác định. |
 | `LLM_MODE` | `mock`, `openai` | `mock` | Response demo hoặc gọi chat model tương thích OpenAI qua LangChain. |
 

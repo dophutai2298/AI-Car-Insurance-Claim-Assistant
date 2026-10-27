@@ -16,6 +16,7 @@ from app.services.llm_copilot import (
     AiReviewIncidentFacts,
     AiReviewReferencePrice,
     AiReviewStructuredResult,
+    AiReviewGenerationResult,
     AiReviewVehicleFacts,
     CopilotInput,
     LlmCopilotService,
@@ -33,6 +34,7 @@ def structured_review(summary: str = "The confirmed claim requires manual review
         warnings=[],
         recommended_next_step="An adjuster must verify the evidence and reference price.",
         human_review_required=True,
+        price_recommendation={"recommendation": "MANUAL_REVIEW", "rationale": "The adjuster must verify available prices."},
     )
 
 
@@ -200,7 +202,7 @@ def test_openai_adapter_uses_langchain_messages_typed_output_and_logs_usage(monk
     assert "base_url" not in captured
     assert captured["api_key"] == "test-key"
     assert captured["model"] == "gpt-5.6-luna"
-    assert captured["schema"] is AiReviewStructuredResult
+    assert captured["schema"] is AiReviewGenerationResult
     assert captured["structured_output_options"] == {
         "method": "json_schema",
         "include_raw": True,
@@ -253,3 +255,94 @@ def test_openai_adapter_reports_a_provider_structured_output_parsing_failure(mon
         get_llm_copilot_adapter(settings).generate_review(build_input())
 
     assert "structured output parsing failed" in caplog.text
+
+
+def priced_input(assessment="REPAIR_LIKELY"):
+    payload = build_input().model_context()
+    payload["damage"]["assessment"] = assessment
+    price = {"part_identity": "rear_bumper", "amount": 1200000, "currency": "VND",
+             "source_name": "Demo catalog", "source_url": None, "price_type": "REPAIR_ESTIMATE",
+             "retrieved_at": "2026-01-01T00:00:00Z", "status": "FOUND", "failure_reason": None}
+    payload["pricing"] = {
+        "currency": "VND",
+        "repair_estimate": {"status": "COMPLETE", "total_amount": 1200000, "known_subtotal": 1200000, "priced_parts": 1, "total_parts": 1},
+        "replacement_part_price": {"status": "COMPLETE", "total_amount": 4200000, "known_subtotal": 4200000, "priced_parts": 1, "total_parts": 1},
+        "line_items": [{"part_identity": "rear_bumper", "repair_estimate": price,
+                        "replacement_part_price": {**price, "amount": 4200000, "price_type": "REPLACEMENT_PART_PRICE"}}],
+    }
+    return CopilotInput(context=AiReviewContext.model_validate(payload))
+
+
+@pytest.mark.parametrize("assessment,advice,expected", [
+    ("REPAIR_LIKELY", "SUPPORTS_REPAIR", "SUPPORTS_REPAIR"),
+    ("REPLACEMENT_LIKELY", "SUPPORTS_REPLACEMENT", "SUPPORTS_REPLACEMENT"),
+    ("REPAIR_LIKELY", "MANUAL_REVIEW", "MANUAL_REVIEW"),
+    ("REPAIR_LIKELY", "SUPPORTS_REPLACEMENT", "MANUAL_REVIEW"),
+    ("MANUAL_INSPECTION_REQUIRED", "SUPPORTS_REPAIR", "MANUAL_REVIEW"),
+])
+def test_price_advice_respects_the_confirmed_assessment(assessment, advice, expected):
+    input_data = priced_input(assessment)
+    original = input_data.model_context()
+    calls = []
+
+    class Adapter:
+        def generate_review(self, value):
+            calls.append(value.model_context())
+            return AiReviewStructuredResult.model_validate({**structured_review().model_dump(),
+                "price_recommendation": {"recommendation": advice, "rationale": "Exact-match price evidence requires adjuster verification."}})
+
+    result = LlmCopilotService(Adapter()).generate(input_data)
+    assert len(calls) == 1
+    assert calls[0] == original == input_data.model_context()
+    assert result.status == "GENERATED"
+    assert result.structured_review.price_recommendation.recommendation == expected
+    assert set(result.structured_review.price_recommendation.model_dump()) == {"recommendation", "rationale"}
+    assert result.structured_review.human_review_required is True
+    assert result.recommendation == "MANUAL_ADJUSTER_REVIEW"
+
+
+@pytest.mark.parametrize("invalid", [
+    {"price_recommendation": {"recommendation": "SUPPORTS_REPAIR", "rationale": "Generated quote", "amount": 1}},
+    {"price_recommendation": {"recommendation": "APPROVE_CLAIM", "rationale": "Approve"}},
+    {"human_review_required": False},
+])
+def test_invalid_provider_price_output_preserves_review_fallback(invalid):
+    class Adapter:
+        def generate_review(self, value):
+            return AiReviewGenerationResult.model_validate({**structured_review().model_dump(), **invalid})
+    result = LlmCopilotService(Adapter()).generate(priced_input())
+    assert result.status == "LLM_UNAVAILABLE"
+    assert result.structured_review.price_recommendation.recommendation == "MANUAL_REVIEW"
+    assert result.structured_review.human_review_required is True
+    assert result.structured_review.damaged_parts_summary
+
+
+@pytest.mark.parametrize("rationale", ["Repair costs 1 VND and replacement costs 2 VND.", "Approve the claim.", "Giá sửa chữa là một triệu đồng.", "Giá sửa chữa là một đồng."])
+def test_model_written_amounts_or_claim_decisions_only_replace_pricing_advice(rationale):
+    class Adapter:
+        def generate_review(self, value):
+            return AiReviewStructuredResult.model_validate({**structured_review().model_dump(),
+                "price_recommendation": {"recommendation": "SUPPORTS_REPAIR", "rationale": rationale}})
+    result = LlmCopilotService(Adapter()).generate(priced_input())
+    assert result.status == "GENERATED"
+    assert result.structured_review.summary == structured_review().summary
+    assert result.structured_review.price_recommendation.recommendation == "MANUAL_REVIEW"
+    assert rationale not in result.structured_review.price_recommendation.rationale
+
+
+def test_historical_reviews_can_omit_price_advice_but_new_provider_output_cannot():
+    historical = structured_review().model_dump(exclude={"price_recommendation"})
+    assert AiReviewStructuredResult.model_validate(historical).price_recommendation is None
+    with pytest.raises(ValueError):
+        AiReviewGenerationResult.model_validate(historical)
+
+
+def test_qualitative_vietnamese_prose_is_not_mistaken_for_monetary_amounts():
+    rationale = "Chuyên viên đồng thời cần xác minh nguồn giá và tỷ lệ hư hại."
+    class Adapter:
+        def generate_review(self, value):
+            return AiReviewStructuredResult.model_validate({**structured_review().model_dump(),
+                "price_recommendation": {"recommendation": "SUPPORTS_REPAIR", "rationale": rationale}})
+    result = LlmCopilotService(Adapter()).generate(priced_input())
+    assert result.structured_review.price_recommendation.recommendation == "SUPPORTS_REPAIR"
+    assert result.structured_review.price_recommendation.rationale == rationale

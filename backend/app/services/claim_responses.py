@@ -29,6 +29,7 @@ from app.schemas.claims import (
 )
 from app.schemas.admin import AssessmentRuleValuesSchema
 from app.services.document_consistency import ClaimConsistencyService, ClaimFacts
+from app.services.price_catalog import pricing_summary, legacy_reference_prices
 
 DOCUMENT_EVIDENCE_CATEGORIES = (
     EvidenceCategory.ID_CARD,
@@ -337,7 +338,8 @@ class ClaimResponseAssembler:
                 )
             )
         reference_prices = self.damage_analyses.reference_prices(analysis.id)
-        reference_price_responses = [self._to_reference_price_response(price) for price in reference_prices]
+        projected_prices = legacy_reference_prices(reference_prices)
+        reference_price_responses = [self._to_reference_price_response(price) for price in projected_prices]
         model_output = self.damage_analyses.model_output(analysis.id)
         model_output_response = None
         if model_output is not None:
@@ -360,8 +362,9 @@ class ClaimResponseAssembler:
             detections=detections,
             model_output=model_output_response,
             rules=self._rules_for_analysis(analysis.id),
-            reference_price_status=self._reference_price_status(reference_prices),
+            reference_price_status=self._reference_price_status(projected_prices),
             reference_prices=reference_price_responses,
+            pricing=pricing_summary(reference_prices),
             copilot_conclusion=self._to_copilot_conclusion_response(
                 claim_number,
                 self.copilot_conclusions.find_for_analysis(analysis.id),
@@ -394,6 +397,12 @@ class ClaimResponseAssembler:
             retrieved_at=price.retrieved_at,
             status=price.status,
             failure_reason=price.failure_reason,
+            effective_at=getattr(price, "effective_at", None),
+            catalog_id=getattr(price, "catalog_id", None),
+            unavailable_reason=getattr(price, "unavailable_reason", None),
+            vehicle_make=getattr(price, "vehicle_make", None),
+            vehicle_model=getattr(price, "vehicle_model", None),
+            vehicle_year=getattr(price, "vehicle_year", None),
         )
 
     def _to_copilot_conclusion_response(

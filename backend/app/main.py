@@ -18,6 +18,7 @@ from app.db import (
 )
 from app.services.auth import seed_demo_users
 from app.services.vehicle_manufacturers import seed_vehicle_manufacturers
+from app.services.price_catalog import seed_price_catalog
 
 OPENAPI_TAGS = [
     {"name": "auth", "description": "Session authentication and current-user operations."},
@@ -41,6 +42,7 @@ def create_app() -> FastAPI:
         with app.state.session_factory() as session:
             seed_demo_users(session, settings)
             seed_vehicle_manufacturers(session)
+            seed_price_catalog(session)
         try:
             yield
         finally:

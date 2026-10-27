@@ -8,6 +8,39 @@ const initialLanguage =
     : null;
 
 const en = {
+  pricing: {
+    staleRecommendation: "Earlier snapshot",
+    staleDescription:
+      "This advice is no longer current. Complete and save the updated Analysis, then rerun AI Review.",
+    recommendationTitle: "AI price recommendation",
+    recommendationDisclaimer:
+      "Informational advice based on mock reference prices. The damage assessment remains unchanged; the adjuster makes the final decision.",
+    recommendation: {
+      SUPPORTS_REPAIR: "Supports repair",
+      SUPPORTS_REPLACEMENT: "Supports replacement",
+      MANUAL_REVIEW: "Manual pricing review required",
+    },
+    lookupFailed: "Price lookup unavailable. Try again later.",
+    title: "Repair and replacement estimates",
+    mockNotice:
+      "Mock Vietnam price catalog · VND. Informational estimates, not a workshop quote or payout.",
+    assessment: "Damage assessment",
+    independent: "Based on confirmed damage; independent of pricing",
+    repair_estimate: "Repair estimate",
+    replacement_part_price: "Replacement part prices",
+    COMPLETE: "Complete estimate",
+    INCOMPLETE: "Known subtotal only; incomplete estimate",
+    UNAVAILABLE: "No matching prices",
+    unavailable: "Unavailable",
+    missing: "No exact price match",
+    parts: "parts priced",
+    source: "Price source",
+    effective: "Effective",
+    retrieved: "Retrieved",
+    breakdown: "Per-part price comparison",
+    humanDecision:
+      "Prices are reference estimates. The adjuster makes the final decision.",
+  },
   myClaims: {
     eyebrow: "Customer intake",
     title: "My Claims",
@@ -573,6 +606,39 @@ const en = {
 };
 
 const vi = {
+  pricing: {
+    staleRecommendation: "Snapshot trước đó",
+    staleDescription:
+      "Khuyến nghị này không còn hiện hành. Hoàn tất và lưu Analysis đã cập nhật, sau đó chạy lại AI Review.",
+    recommendationTitle: "Khuyến nghị AI về giá",
+    recommendationDisclaimer:
+      "Thông tin hỗ trợ dựa trên giá minh họa. Đánh giá tổn thất giữ nguyên; chuyên viên thẩm định quyết định cuối cùng.",
+    recommendation: {
+      SUPPORTS_REPAIR: "Hỗ trợ phương án sửa chữa",
+      SUPPORTS_REPLACEMENT: "Hỗ trợ phương án thay thế",
+      MANUAL_REVIEW: "Cần thẩm định giá thủ công",
+    },
+    lookupFailed: "Không thể lấy giá lúc này. Vui lòng thử lại sau.",
+    title: "Ước tính sửa chữa và thay thế",
+    mockNotice:
+      "Danh mục giá Việt Nam minh họa · VNĐ. Giá tham khảo, không phải báo giá xưởng hay khoản bồi thường.",
+    assessment: "Đánh giá tổn thất",
+    independent: "Theo hư hại đã xác nhận; độc lập với giá",
+    repair_estimate: "Ước tính sửa chữa",
+    replacement_part_price: "Giá thay thế phụ tùng",
+    COMPLETE: "Ước tính đầy đủ",
+    INCOMPLETE: "Cộng các giá đã biết; chưa đủ để tính tổng",
+    UNAVAILABLE: "Chưa có giá khớp",
+    unavailable: "Chưa có giá",
+    missing: "Chưa có giá khớp chính xác",
+    parts: "phụ tùng có giá",
+    source: "Nguồn giá",
+    effective: "Hiệu lực",
+    retrieved: "Ngày lấy giá",
+    breakdown: "Bảng so sánh giá từng phụ tùng",
+    humanDecision:
+      "Giá chỉ mang tính tham khảo. Chuyên viên thẩm định quyết định phương án cuối cùng.",
+  },
   myClaims: {
     eyebrow: "Tiếp nhận hồ sơ",
     title: "Hồ sơ của tôi",

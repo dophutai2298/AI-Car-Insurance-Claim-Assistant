@@ -2,6 +2,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models import (
+    AnalysisPricingSnapshot,
     Claim,
     ClaimConsistencyCheck,
     ClaimIncident,
@@ -107,6 +108,7 @@ class ClaimDeletionRepository:
                 DamageAnalysisRuleSnapshot.analysis_id.in_(damage_ids)
             )
         )
+        self.session.execute(delete(AnalysisPricingSnapshot).where(AnalysisPricingSnapshot.analysis_id.in_(damage_ids)))
         self.session.execute(
             delete(ReferencePartPrice).where(ReferencePartPrice.analysis_id.in_(damage_ids))
         )

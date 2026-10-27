@@ -5,9 +5,10 @@ from typing import Protocol
 from app.core.config import Settings
 from app.services.llm_copilot import AiReviewStructuredResult
 from app.services.llm_token_usage import log_llm_token_usage
+from app.services.ai_price_recommendation import qualitative_rationale_is_safe
 
-AI_REVIEW_TRANSLATION_PROMPT_VERSION = "ai-review-translation-vi-v1"
-AI_REVIEW_TRANSLATION_SCHEMA_VERSION = "ai-review-translation-schema-v1"
+AI_REVIEW_TRANSLATION_PROMPT_VERSION = "ai-review-translation-vi-v2-pricing"
+AI_REVIEW_TRANSLATION_SCHEMA_VERSION = "ai-review-translation-schema-v2-pricing"
 
 AI_REVIEW_TRANSLATION_SYSTEM_PROMPT = """
 You are a professional Vietnamese localization editor for an insurance claim
@@ -24,6 +25,9 @@ Rules:
 - Keep each output field aligned with the corresponding input field.
 - Translate every warning independently and preserve warning order.
 - Keep human_review_required unchanged.
+- Translate price_recommendation.rationale naturally; preserve the recommendation
+  code exactly, including MANUAL_REVIEW. Preserve null when no pricing advice exists.
+- Keep pricing rationale qualitative: no digits, currency units, or claim decisions.
 - Do not make an approval, rejection, coverage, fraud, legal, payout, repair,
   or replacement decision that is not present in the source.
 - Return only the required structured output.
@@ -34,6 +38,15 @@ logger = logging.getLogger(__name__)
 
 class AiReviewTranslationError(Exception):
     pass
+
+
+def validate_review_translation(original: AiReviewStructuredResult, translated: AiReviewStructuredResult) -> None:
+    original_code = original.price_recommendation.recommendation if original.price_recommendation else None
+    translated_code = translated.price_recommendation.recommendation if translated.price_recommendation else None
+    if translated.human_review_required != original.human_review_required or translated_code != original_code:
+        raise AiReviewTranslationError("AI Review translation changed a protected value")
+    if translated.price_recommendation and not qualitative_rationale_is_safe(translated.price_recommendation.rationale):
+        raise AiReviewTranslationError("AI Review translation introduced unsupported pricing claims")
 
 
 class AiReviewTranslationAdapter(Protocol):
@@ -103,10 +116,7 @@ class LangChainOpenAiTranslationAdapter:
                     "AI Review translation structured output parsing failed"
                 )
             translated = AiReviewStructuredResult.model_validate(parsed)
-            if translated.human_review_required != review.human_review_required:
-                raise AiReviewTranslationError(
-                    "AI Review translation changed a protected value"
-                )
+            validate_review_translation(review, translated)
             return translated
         except AiReviewTranslationError:
             raise

@@ -44,6 +44,8 @@ import {
 } from "./EvidencePanel";
 import { ClaimsApiError } from "./claimsApi";
 import { DocumentAnalysisResults } from "./DocumentAnalysisResults";
+import { PricingOverview } from "./PricingOverview";
+import { PriceRecommendationPanel } from "./PriceRecommendationPanel";
 import {
   useAiReviewTranslation,
   useRevertCopilotReview,
@@ -590,8 +592,19 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
             </Alert.Description>
           </Alert>
         ) : null}
+        {run?.damage_analysis?.pricing ? (
+          <PricingOverview
+            pricing={run.damage_analysis.pricing}
+            assessment={run.damage_analysis.assessment}
+            findings={run.damage_analysis.detections}
+          />
+        ) : null}
         {conclusion ? (
-          <AiReviewResult claimId={claim.id} conclusion={conclusion} />
+          <AiReviewResult
+            claimId={claim.id}
+            conclusion={conclusion}
+            pricingIsStale={Boolean(run && !ready)}
+          />
         ) : (
           <div className="grid gap-2 text-sm text-slate-500">
             <p>
@@ -630,9 +643,11 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
 function AiReviewResult({
   claimId,
   conclusion,
+  pricingIsStale = false,
 }: {
   claimId: string;
   conclusion: CopilotConclusion;
+  pricingIsStale?: boolean;
 }) {
   const { i18n, t } = useTranslation();
   const locale = i18n.resolvedLanguage?.startsWith("vi") ? "vi" : undefined;
@@ -644,9 +659,18 @@ function AiReviewResult({
   const warnings = Array.from(
     new Set([...conclusion.warnings, ...(structuredReview?.warnings ?? [])]),
   );
+  const priceRecommendation =
+    structuredReview?.price_recommendation ??
+    conclusion.structured_review?.price_recommendation;
 
   return (
     <div className="grid gap-5">
+      {priceRecommendation ? (
+        <PriceRecommendationPanel
+          value={priceRecommendation}
+          isStale={pricingIsStale}
+        />
+      ) : null}
       <div className="grid gap-4 border-b border-slate-100 pb-5 sm:grid-cols-[12rem_minmax(0,1fr)]">
         <div>
           <p className="text-xs font-semibold uppercase text-slate-500">

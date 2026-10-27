@@ -15,6 +15,7 @@ from app.models import (
     Evidence,
     EvidenceCategory,
     ReferencePartPrice,
+    AnalysisPricingSnapshot,
 )
 from app.services.damage_assessment import AssessmentResult
 from app.services.damage_model import DamageModelAnalysisResult, DamageModelDetection
@@ -162,23 +163,10 @@ class DamageAnalysisRepository:
                 replacement_min_percentage=rules.replacement_min_percentage,
             )
         )
-        self.session.add_all(
-            [
-                ReferencePartPrice(
-                    analysis_id=analysis_id,
-                    part_identity=price.part_identity,
-                    amount=price.amount,
-                    currency=price.currency,
-                    source_name=price.source_name,
-                    source_url=price.source_url,
-                    price_type=price.price_type,
-                    retrieved_at=price.retrieved_at,
-                    status=price.status,
-                    failure_reason=price.failure_reason,
-                )
-                for price in reference_prices
-            ]
-        )
+        self.session.add(AnalysisPricingSnapshot(
+            analysis_id=analysis_id,
+            payload_json=json.dumps({"schema_version": 1, "prices": [price.snapshot() for price in reference_prices]}),
+        ))
 
     def list_detections(self, analysis_id: int) -> list[DamageDetection]:
         statement = select(DamageDetection).where(DamageDetection.analysis_id == analysis_id).order_by(DamageDetection.id)
@@ -196,7 +184,18 @@ class DamageAnalysisRepository:
         )
         return self.session.scalar(statement)
 
-    def reference_prices(self, analysis_id: int) -> list[ReferencePartPrice]:
+    def reference_prices(self, analysis_id: int) -> list[ReferencePartPrice | ReferencePartPriceResult]:
+        snapshot = self.session.scalar(select(AnalysisPricingSnapshot).where(
+            AnalysisPricingSnapshot.analysis_id == analysis_id
+        ))
+        if snapshot is not None:
+            payload = json.loads(snapshot.payload_json)
+            # Unversioned snapshots from the initial PoC remain readable.
+            if isinstance(payload, dict):
+                if payload["schema_version"] != 1:
+                    raise ValueError("Unsupported pricing snapshot schema")
+                payload = payload["prices"]
+            return [ReferencePartPriceResult.from_snapshot(item) for item in payload]
         statement = (
             select(ReferencePartPrice)
             .where(ReferencePartPrice.analysis_id == analysis_id)

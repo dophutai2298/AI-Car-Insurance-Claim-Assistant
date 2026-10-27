@@ -119,7 +119,27 @@ Open `http://localhost:5173`.
 | Setting | Supported values | Default | Purpose |
 | --- | --- | --- | --- |
 | `DAMAGE_MODEL_MODE` | `local` | `local` | Runs the local `AI/CarDamageDetector` with the bundled model weights. |
-| `PART_SEARCH_MODE` | `mock`, `unavailable` | `mock` | Demo reference prices or no price search results. |
+| `PART_SEARCH_MODE` | `mock`, `unavailable` | `mock` | PostgreSQL mock VND catalog or unavailable pricing. |
+
+### Vehicle pricing catalog
+
+Startup creates the additive catalog/snapshot tables and seeds demo prices for Toyota Camry 2022, Toyota Vios 2023, and BMW M3 2024. Repair and replacement prices are separate records, matched exactly by make, model, year, part, and category. Part identifiers normalize case, spaces, and hyphens only. Missing matches stay unavailable.
+
+Run `python scripts/seed_price_catalog.py` from `backend` to populate a broader mock catalog for 19 makes and the models listed in the script, across 2015 through the current year. Every model/year combination gets separate repair and replacement prices for all 21 detector part labels and four historical part identifiers. These are generated demo combinations, not verified production years or market prices.
+
+Edit `VEHICLES` (models and percentage multipliers), `PART_PRICES_VND` (base repair/replacement amounts), and `PRICE_OVERRIDES` (exact make/model/year/part amounts) in the script. Generated prices use the model multiplier and a 3% annual adjustment relative to 2024, capped at 60%-120%; overrides bypass both factors. `--dry-run` previews coverage without a database connection. Use `--make Toyota --start-year 2020 --end-year 2026` to limit coverage. Existing prices are preserved unless you explicitly pass `--update-existing`, which also replaces their source metadata with the mock source. The script uses `DATABASE_URL` from the project `.env` and commits all changes in one transaction.
+
+Each Analysis stores an immutable price snapshot; catalog updates apply to later runs. Existing historical USD snapshots remain readable. New VND amounts use whole-dong integers.
+
+Step 4 shows assessment first, repair/replacement summaries, then a per-part provenance table. A partial sum is labeled as a known subtotal, never a complete estimate. These mock prices are informational and exclude unmodeled labor, materials, taxes, and workshop fees. They do not determine payouts or replace the adjuster's decision.
+
+AI Review receives that saved pricing snapshot in its existing LLM request. Its `price_recommendation` contains only `recommendation` (`SUPPORTS_REPAIR`, `SUPPORTS_REPLACEMENT`, or `MANUAL_REVIEW`) and a concise `rationale`. Missing prices in either category force manual pricing review without discarding the overall review. Advice that conflicts with the deterministic damage assessment also requires manual review. Amounts displayed by the UI always come from Analysis; the AI does not calculate new prices. Mock or unavailable AI pricing advice remains manual.
+
+The Vietnamese translation includes the rationale and preserves the recommendation code. Historical reviews without pricing advice remain readable; rerun AI Review to create a new revision using the saved Analysis snapshot. Review prompt/schema versions are `ai-review-v3-pricing` / `ai-review-schema-v3-pricing`; translation versions are `ai-review-translation-vi-v2-pricing` / `ai-review-translation-schema-v2-pricing`.
+
+AI Review receives that saved pricing snapshot in its existing LLM request. Its `price_recommendation` contains only `recommendation` (`SUPPORTS_REPAIR`, `SUPPORTS_REPLACEMENT`, or `MANUAL_REVIEW`) and a concise `rationale`. Missing prices in either category force manual pricing review without discarding the overall review. Advice that conflicts with the deterministic damage assessment also requires manual review. Amounts displayed by the UI always come from Analysis; the AI does not calculate new prices. Mock or unavailable AI pricing advice remains manual.
+
+The Vietnamese translation includes the rationale and preserves the recommendation code. Historical reviews without pricing advice remain readable; rerun AI Review to create a new revision using the saved Analysis snapshot. Review prompt/schema versions are `ai-review-v3-pricing` / `ai-review-schema-v3-pricing`; translation versions are `ai-review-translation-vi-v2-pricing` / `ai-review-translation-schema-v2-pricing`.
 | `DOCUMENT_OCR_MODE` | `deepdoc`, `mock` | `deepdoc` | DeepDoc OCR or deterministic demo OCR. |
 | `LLM_MODE` | `mock`, `openai` | `mock` | Demo responses or LangChain calls to an OpenAI-compatible chat model. |
 
