@@ -1,6 +1,8 @@
 import {
   Add,
   CheckmarkOutline,
+  ChevronLeft,
+  ChevronRight,
   ChevronSort,
   ChevronSortDown,
   ChevronSortUp,
@@ -21,13 +23,14 @@ import {
 import {
   getCoreRowModel,
   getFilteredRowModel,
+  getPaginationRowModel,
   getSortedRowModel,
   type LegacyColumn,
   type LegacyColumnDef,
   useLegacyTable,
 } from "@tanstack/react-table/legacy";
-import type { SortingState } from "@tanstack/react-table";
-import { useMemo, useState, type FormEvent } from "react";
+import type { PaginationState, SortingState } from "@tanstack/react-table";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -49,6 +52,10 @@ export function VehicleManufacturerPanel() {
   const [error, setError] = useState("");
   const [globalFilter, setGlobalFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 10,
+  });
   const [sorting, setSorting] = useState<SortingState>([]);
   const columns = useMemo<LegacyColumnDef<VehicleManufacturer>[]>(
     () => [
@@ -70,6 +77,7 @@ export function VehicleManufacturerPanel() {
         statusFilter === "ALL"
           ? []
           : [{ id: "is_active", value: statusFilter }],
+      pagination,
       sorting,
     },
     onGlobalFilterChange: setGlobalFilter,
@@ -77,11 +85,27 @@ export function VehicleManufacturerPanel() {
     globalFilterFn: "includesString",
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     enableSortingRemoval: false,
   });
   const rows = table.getRowModel().rows;
+  const totalRows = table.getFilteredRowModel().rows.length;
+  const firstVisibleRow = totalRows
+    ? pagination.pageIndex * pagination.pageSize + 1
+    : 0;
+  const lastVisibleRow = Math.min(
+    (pagination.pageIndex + 1) * pagination.pageSize,
+    totalRows,
+  );
+  const pageCount = table.getPageCount();
+  const canGoToPreviousPage = pagination.pageIndex > 0;
+  const canGoToNextPage = pagination.pageIndex < pageCount - 1;
   const isFiltered = Boolean(globalFilter) || statusFilter !== "ALL";
+
+  useEffect(() => {
+    setPagination((current) => ({ ...current, pageIndex: 0 }));
+  }, [globalFilter, statusFilter, sorting, manufacturers.data]);
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -160,9 +184,9 @@ export function VehicleManufacturerPanel() {
                 setStatusFilter("ALL");
               }}
               onSearchChange={setGlobalFilter}
-              resultCount={rows.length}
+              resultCount={totalRows}
               resultLabel={t(
-                rows.length === 1
+                totalRows === 1
                   ? "manufacturers.shownOne"
                   : "manufacturers.shownMany",
               )}
@@ -187,7 +211,7 @@ export function VehicleManufacturerPanel() {
                 value={statusFilter}
               />
             </DataTableToolbar>
-            <div className="max-h-[600px] overflow-x-auto rounded-lg border border-slate-200">
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table className="w-full min-w-[38rem] border-collapse text-left text-sm">
                 <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500">
                   <tr>
@@ -224,6 +248,69 @@ export function VehicleManufacturerPanel() {
                   ) : null}
                 </tbody>
               </table>
+            </div>
+            <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-end sm:justify-between">
+              <p className="text-sm tabular-nums text-slate-600">
+                {totalRows
+                  ? t("manufacturers.showing", {
+                      first: firstVisibleRow,
+                      last: lastVisibleRow,
+                      total: totalRows,
+                    })
+                  : t("manufacturers.none")}
+              </p>
+              <div className="flex flex-wrap items-end gap-2">
+                <TableFilterSelect
+                  label={t("manufacturers.rowsPerPage")}
+                  onChange={(value) =>
+                    setPagination({ pageIndex: 0, pageSize: Number(value) })
+                  }
+                  options={[10, 20, 50, 100].map((pageSize) => ({
+                    label: String(pageSize),
+                    value: String(pageSize),
+                  }))}
+                  value={String(pagination.pageSize)}
+                />
+                <div className="flex items-center gap-1 pb-0.5">
+                  <Button
+                    aria-label={t("manufacturers.previousPage")}
+                    isDisabled={!canGoToPreviousPage}
+                    onPress={() =>
+                      setPagination((current) => ({
+                        ...current,
+                        pageIndex: Math.max(0, current.pageIndex - 1),
+                      }))
+                    }
+                    size="sm"
+                    variant="ghost"
+                  >
+                    <ChevronLeft size={18} />
+                  </Button>
+                  <span className="min-w-24 px-2 text-center text-sm font-medium tabular-nums text-slate-700">
+                    {t("manufacturers.page", {
+                      current: totalRows ? pagination.pageIndex + 1 : 0,
+                      total: pageCount,
+                    })}
+                  </span>
+                  <Button
+                    aria-label={t("manufacturers.nextPage")}
+                    isDisabled={!canGoToNextPage}
+                    onPress={() =>
+                      setPagination((current) => ({
+                        ...current,
+                        pageIndex: Math.min(
+                          pageCount - 1,
+                          current.pageIndex + 1,
+                        ),
+                      }))
+                    }
+                    size="sm"
+                    variant="ghost"
+                  >
+                    <ChevronRight size={18} />
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         ) : null}
