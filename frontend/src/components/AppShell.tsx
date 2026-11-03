@@ -101,7 +101,6 @@ export function AppShell() {
         })}
       </nav>
       <div className="sidebar-footer">
-        <LanguageSwitcher />
         <div className="sidebar-profile">
           <span className="profile-avatar" aria-hidden="true">
             <User size={20} />
@@ -171,7 +170,10 @@ export function AppShell() {
             <ChevronRight size={14} aria-hidden="true" />
             <strong>{currentPage}</strong>
           </div>
-          <ThemeToggle />
+          <div className="workspace-controls">
+            <LanguageSwitcher />
+            <ThemeToggle />
+          </div>
         </header>
         <main
           id="workspace-content"

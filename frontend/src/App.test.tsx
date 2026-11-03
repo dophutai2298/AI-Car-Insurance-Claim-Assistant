@@ -2136,6 +2136,26 @@ test("adjuster reviews persisted identity extraction without a confidence score"
     within(identitySection).queryByText("Mismatch"),
   ).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Save all fields" })).toBeEnabled();
+  const identityToggle = within(identitySection).getByRole("button", {
+    name: "ID cards",
+  });
+  expect(identityToggle).toHaveAttribute("aria-expanded", "true");
+  await user.click(identityToggle);
+  expect(identityToggle).toHaveAttribute("aria-expanded", "false");
+  expect(
+    within(identitySection).getByRole("article", { name: "claimant-id.jpg" }),
+  ).toBeVisible();
+  expect(within(identitySection).getByText("Raw OCR text")).toBeVisible();
+  expect(
+    within(identitySection).queryByRole("textbox", {
+      name: "Full name confirmed value",
+    }),
+  ).not.toBeInTheDocument();
+  await user.click(identityToggle);
+  expect(identityToggle).toHaveAttribute("aria-expanded", "true");
+  expect(
+    within(identitySection).getByLabelText("Full name confirmed value"),
+  ).toHaveValue("Mai Nguyen");
   await user.click(screen.getByRole("button", { name: "Save all fields" }));
 
   expect(submittedField).toEqual({

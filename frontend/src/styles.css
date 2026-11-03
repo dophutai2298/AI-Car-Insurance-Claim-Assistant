@@ -282,7 +282,7 @@ textarea {
   align-items: center;
   gap: 10px;
   padding: 20px 6px 14px;
-  margin-top: 18px;
+  margin-top: 0;
   border-top: 1px solid #ffffff12;
 }
 .profile-avatar {
@@ -310,13 +310,13 @@ textarea {
   background: #ffffff0d;
 }
 .language-switch {
-  width: 100%;
+  width: auto;
   justify-content: center;
   padding: 10px;
   border-radius: 8px;
-  background: #ffffff06;
-  border: 1px solid #ffffff14;
-  color: #fff;
+  background: var(--surface-secondary);
+  border: 1px solid var(--border);
+  color: var(--foreground);
 }
 .workspace {
   min-width: 0;
@@ -340,6 +340,12 @@ textarea {
   gap: 12px;
   color: var(--muted);
   font-size: 12px;
+}
+.workspace-controls {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 12px;
 }
 .workspace-breadcrumb strong {
   font-weight: 500;
@@ -653,12 +659,6 @@ textarea {
   justify-content: flex-end;
   align-items: center;
 }
-.login-controls .language-switch {
-  width: auto;
-  background: var(--surface-secondary);
-  border-color: var(--border);
-  color: var(--foreground);
-}
 .login-form {
   width: 100%;
   max-width: 380px;
@@ -757,7 +757,6 @@ textarea {
     margin-top: 20px;
   }
   .sidebar-profile {
-    margin-top: 10px;
     padding-block: 10px;
   }
   .sidebar-footer {
@@ -785,6 +784,9 @@ textarea {
   }
   .workspace-bar {
     padding-inline: 12px;
+  }
+  .workspace-controls {
+    gap: 8px;
   }
   .workspace-breadcrumb > span,
   .workspace-breadcrumb > svg {
