@@ -47,6 +47,12 @@ import { DocumentAnalysisResults } from "./DocumentAnalysisResults";
 import { PricingOverview } from "./PricingOverview";
 import { PriceRecommendationPanel } from "./PriceRecommendationPanel";
 import {
+  damageTypeLabel,
+  localizeReviewText,
+  normalizeDamageType,
+  vehiclePartLabel,
+} from "./damagePresentation";
+import {
   useAiReviewTranslation,
   useRevertCopilotReview,
   useReviewCopilotConclusion,
@@ -250,7 +256,7 @@ export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
 }
 
 function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [globalFilter, setGlobalFilter] = useState("");
   const [damageTypeFilter, setDamageTypeFilter] = useState("ALL");
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -269,27 +275,39 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
     if (modelParts.length) {
       return modelParts.map((part, index) => ({
         id: `${part.part}-${index}`,
-        part: formatLabel(part.part) ?? part.part,
-        damageType: formatLabel(part.main_damage) ?? part.main_damage,
+        part: vehiclePartLabel(part.part, i18n.language),
+        damageTypeKey: normalizeDamageType(part.main_damage),
+        damageType:
+          damageTypeLabel(part.main_damage, i18n.language) ||
+          t("analysis.damageUnknown"),
         damagePercentage: part.damage_percent,
       }));
     }
 
     return analysis.detections.map((detection, index) => ({
       id: `${detection.annotated_evidence.id}-${index}`,
-      part: formatLabel(detection.vehicle_part) || t("analysis.areaUnknown"),
+      part:
+        vehiclePartLabel(detection.vehicle_part, i18n.language) ||
+        t("analysis.areaUnknown"),
+      damageTypeKey: normalizeDamageType(detection.damage_type),
       damageType:
-        formatLabel(detection.damage_type) || t("analysis.damageUnknown"),
+        damageTypeLabel(detection.damage_type, i18n.language) ||
+        t("analysis.damageUnknown"),
       damagePercentage: detection.damage_percentage,
     }));
-  }, [analysis.detections, analysis.model_output?.record.parts, t]);
+  }, [
+    analysis.detections,
+    analysis.model_output?.record.parts,
+    i18n.language,
+    t,
+  ]);
   const columns = useMemo<LegacyColumnDef<DamageFindingRow>[]>(
     () => [
       { accessorKey: "part" },
       {
         accessorKey: "damageType",
-        filterFn: (row, columnId, value) =>
-          value === "ALL" || row.getValue(columnId) === value,
+        filterFn: (row, _columnId, value) =>
+          value === "ALL" || row.original.damageTypeKey === value,
       },
       { accessorKey: "damagePercentage" },
     ],
@@ -316,7 +334,7 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
   });
   const rows = table.getRowModel().rows;
   const damageTypes = Array.from(
-    new Set(damageRows.map((row) => row.damageType).filter(Boolean)),
+    new Set(damageRows.map((row) => row.damageTypeKey).filter(Boolean)),
   );
   const isFiltered = Boolean(globalFilter) || damageTypeFilter !== "ALL";
 
@@ -350,7 +368,9 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
           <WarningAlt size={18} />
           <Alert.Content>
             <Alert.Title>{t("analysis.reviewNote")}</Alert.Title>
-            <Alert.Description>{analysis.warning}</Alert.Description>
+            <Alert.Description>
+              {localizeReviewText(analysis.warning, t)}
+            </Alert.Description>
           </Alert.Content>
         </Alert>
       ) : null}
@@ -405,7 +425,7 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
                 options={[
                   { label: t("analysis.allDamageTypes"), value: "ALL" },
                   ...damageTypes.map((damageType) => ({
-                    label: damageType,
+                    label: damageTypeLabel(damageType, i18n.language),
                     value: damageType,
                   })),
                 ]}
@@ -517,6 +537,7 @@ function DamageSortHeader({
 type DamageFindingRow = {
   id: string;
   part: string;
+  damageTypeKey: string;
   damageType: string;
   damagePercentage: number;
 };
@@ -705,7 +726,10 @@ function AiReviewResult({
             <Chip color="warning" variant="soft">
               {conclusion.review_status
                 ? t(`claim.status.${conclusion.review_status}`, {
-                    defaultValue: conclusion.review_status,
+                    defaultValue: localizeReviewText(
+                      conclusion.review_status,
+                      t,
+                    ),
                   })
                 : t("aiReview.reviewRequired")}
             </Chip>
@@ -727,7 +751,10 @@ function AiReviewResult({
             </Chip>
           </div>
           <p className="mt-4 text-sm leading-6 text-slate-700">
-            {structuredReview?.summary ?? conclusion.summary}
+            {localizeReviewText(
+              structuredReview?.summary ?? conclusion.summary,
+              t,
+            )}
           </p>
         </div>
       </div>
@@ -756,7 +783,10 @@ function AiReviewResult({
           <Alert.Content>
             <Alert.Title>{t("aiReview.unavailable")}</Alert.Title>
             <Alert.Description>
-              {conclusion.failure_reason ?? t("aiReview.failed")}
+              {localizeReviewText(
+                conclusion.failure_reason ?? t("aiReview.failed"),
+                t,
+              )}
             </Alert.Description>
           </Alert.Content>
         </Alert>
@@ -789,7 +819,9 @@ function AiReviewResult({
                 <dt className="text-xs font-semibold text-slate-600">
                   {label}
                 </dt>
-                <dd className="text-sm leading-6 text-slate-800">{value}</dd>
+                <dd className="text-sm leading-6 text-slate-800">
+                  {localizeReviewText(value, t)}
+                </dd>
               </div>
             ))}
           </dl>
@@ -807,7 +839,9 @@ function AiReviewResult({
           </Alert.Indicator>
           <Alert.Content>
             <Alert.Title>{t("aiReview.warnings")}</Alert.Title>
-            <Alert.Description>{warnings.join(" ")}</Alert.Description>
+            <Alert.Description>
+              {localizeReviewText(warnings.join(" "), t)}
+            </Alert.Description>
           </Alert.Content>
         </Alert>
       ) : null}
@@ -1086,11 +1120,6 @@ function ReviewHistory({ history }: { history: CopilotConclusionReview[] }) {
   );
 }
 
-function formatLabel(value: string | null) {
-  return value
-    ?.replaceAll("_", " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
 function formatPercent(value: number) {
   return `${Number.isInteger(value) ? value : value.toFixed(1)}%`;
 }

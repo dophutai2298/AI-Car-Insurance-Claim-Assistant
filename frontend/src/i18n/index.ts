@@ -903,8 +903,8 @@ const vi = {
 
     workflow: "Quy trình xử lý hồ sơ",
     layoutMode: "Cách hiển thị quy trình",
-    singlePage: "Xem trên một trang",
-    tabLayout: "Xem theo từng bước",
+    singlePage: "Một trang",
+    tabLayout: "Tabs",
 
     current: "Hiện tại",
     available: "Khả dụng",
