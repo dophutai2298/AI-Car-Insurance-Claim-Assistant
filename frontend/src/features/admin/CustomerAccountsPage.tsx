@@ -14,7 +14,7 @@ export function CustomerAccountsPage() {
   const refreshAccounts = useRefreshCustomerAccounts();
 
   return (
-    <div className="mx-auto grid max-w-[1440px] gap-6">
+    <div className="page-layout mx-auto grid max-w-[1440px] gap-6">
       <header className="border-b border-slate-200 pb-5">
         <div className="flex items-center gap-3 text-slate-500">
           <p className="text-sm font-semibold">
@@ -31,7 +31,7 @@ export function CustomerAccountsPage() {
 
       <UserAccountPanel onCreated={() => void refreshAccounts()} />
 
-      <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <Card className="rounded-lg border border-slate-200 bg-surface shadow-sm">
         <Card.Header className="border-b border-slate-100 px-6 py-5">
           <div>
             <Card.Title className="text-lg text-slate-950">
@@ -48,7 +48,9 @@ export function CustomerAccountsPage() {
           ) : null}
           {accounts.error ? (
             <Alert className="m-6" status="danger">
-              <Alert.Title>{t("customerAccount.loadFailed")}</Alert.Title>
+              <Alert.Content>
+                <Alert.Title>{t("customerAccount.loadFailed")}</Alert.Title>
+              </Alert.Content>
             </Alert>
           ) : null}
           {accounts.data?.length === 0 ? (

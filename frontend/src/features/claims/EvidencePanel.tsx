@@ -108,10 +108,10 @@ export function EvidencePanel({
 
   return (
     <Card
-      className="rounded-lg border border-slate-200 bg-white shadow-sm"
+      className="rounded-lg border border-slate-200 bg-surface shadow-sm"
       id="evidence"
     >
-      <Card.Header className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
+      <Card.Header className="panel-header flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
         <div className="flex items-center gap-3">
           <div className="flex size-10 items-center justify-center rounded-lg bg-blue-50 text-blue-700 ring-1 ring-blue-100">
             <Document size={20} />
@@ -130,8 +130,10 @@ export function EvidencePanel({
       <Card.Content className="grid gap-5 p-6">
         {error ? (
           <Alert status="danger">
-            <Alert.Title>{t("evidence.uploadFailed")}</Alert.Title>
-            <Alert.Description>{error}</Alert.Description>
+            <Alert.Content>
+              <Alert.Title>{t("evidence.uploadFailed")}</Alert.Title>
+              <Alert.Description>{error}</Alert.Description>
+            </Alert.Content>
           </Alert>
         ) : null}
         <div className="grid gap-4 xl:grid-cols-2">
@@ -181,7 +183,7 @@ export function EvidencePanel({
                 {t("evidence.files")}
                 <input
                   aria-label={t("evidence.otherFiles")}
-                  className="min-h-10 border border-slate-300 bg-white px-3 py-2 text-sm"
+                  className="min-h-10 border border-slate-300 bg-surface px-3 py-2 text-sm"
                   multiple
                   onChange={(event) =>
                     setOtherFiles(Array.from(event.target.files ?? []))
@@ -271,7 +273,7 @@ function CategorySection({
   const analysisRequired = evidence.some((item) => item.analysis_required);
   return (
     <section
-      className={`grid content-start gap-3 border p-4 ${complete ? "border-emerald-200 bg-emerald-50/40" : "border-amber-200 bg-amber-50/40"}`}
+      className={`evidence-category grid content-start gap-3 ${complete ? "evidence-category--complete" : "evidence-category--pending"}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -345,7 +347,7 @@ function EvidenceFiles({
     <div className="grid gap-2">
       {evidence.map((item) => (
         <div
-          className="flex min-w-0 items-center gap-3 border border-slate-200 bg-white p-2"
+          className="evidence-file flex min-w-0 items-center gap-3 border border-slate-200 bg-surface p-2"
           key={item.id}
         >
           <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded bg-slate-100">

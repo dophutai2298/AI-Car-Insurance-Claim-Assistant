@@ -8,6 +8,20 @@ const initialLanguage =
     : null;
 
 const en = {
+  chrome: {
+    insuranceWorkspace: "Insurance workspace",
+    workspace: "Workspace",
+    skipToContent: "Skip to content",
+    openNavigation: "Open navigation",
+    closeNavigation: "Close navigation",
+    lightTheme: "Switch to light theme",
+    darkTheme: "Switch to dark theme",
+    roles: {
+      ADMIN: "Administrator",
+      ADJUSTER: "Claims adjuster",
+      USER: "Customer",
+    },
+  },
   pricing: {
     staleRecommendation: "Earlier snapshot",
     staleDescription:
@@ -612,6 +626,20 @@ const en = {
 };
 
 const vi = {
+  chrome: {
+    insuranceWorkspace: "Không gian bảo hiểm",
+    workspace: "Không gian làm việc",
+    skipToContent: "Chuyển đến nội dung",
+    openNavigation: "Mở điều hướng",
+    closeNavigation: "Đóng điều hướng",
+    lightTheme: "Chuyển sang giao diện sáng",
+    darkTheme: "Chuyển sang giao diện tối",
+    roles: {
+      ADMIN: "Quản trị viên",
+      ADJUSTER: "Giám định viên",
+      USER: "Khách hàng",
+    },
+  },
   pricing: {
     staleRecommendation: "Snapshot trước đó",
     staleDescription:
@@ -880,7 +908,7 @@ const vi = {
 
     current: "Hiện tại",
     available: "Khả dụng",
-    blocked: "Bị chặn",
+    blocked: "Khóa",
     completed: "Hoàn tất",
     warning: "Cảnh báo",
     error: "Lỗi",

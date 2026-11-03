@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { expect, test, vi } from "vitest";
@@ -52,6 +52,52 @@ function renderRoute(path: string) {
   );
   return { ...result, queryClient };
 }
+
+test("theme control changes appearance and remembers the selected theme", async () => {
+  document.documentElement.dataset.theme = "light";
+  const user = userEvent.setup();
+  renderRoute("/login");
+  await user.click(
+    screen.getByRole("button", { name: "Switch to dark theme" }),
+  );
+  expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+  expect(localStorage.getItem("app.theme")).toBe("dark");
+  await user.click(
+    screen.getByRole("button", { name: "Switch to light theme" }),
+  );
+  expect(document.documentElement).toHaveAttribute("data-theme", "light");
+  expect(localStorage.getItem("app.theme")).toBe("light");
+});
+
+test("sidebar drawer supports keyboard dismissal and restores navigation focus", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(
+    async (input) =>
+      new Response(
+        JSON.stringify(
+          String(input).endsWith("/api/auth/me") ? adminSession.user : [],
+        ),
+      ),
+  );
+  sessionStorage.setItem(
+    "claim-assistant-session",
+    JSON.stringify(adminSession),
+  );
+  const user = userEvent.setup();
+  renderRoute("/dashboard");
+  const trigger = await screen.findByRole("button", {
+    name: "Open navigation",
+  });
+  await user.click(trigger);
+  const dialog = await screen.findByRole("dialog", {
+    name: "Primary navigation",
+  });
+  expect(
+    within(dialog).getByRole("link", { name: "Admin Config" }),
+  ).toBeVisible();
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  await waitFor(() => expect(trigger).toHaveFocus());
+});
 
 test("unauthenticated user is redirected to login", async () => {
   renderRoute("/dashboard");

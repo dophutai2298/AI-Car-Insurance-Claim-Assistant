@@ -28,7 +28,7 @@ export function DataTableToolbar({
   children,
 }: DataTableToolbarProps) {
   return (
-    <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[minmax(15rem,1fr)_auto] lg:items-end">
+    <div className="data-table-toolbar grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[minmax(15rem,1fr)_auto] lg:items-end">
       <TextField fullWidth name={`${searchLabel}-search`}>
         <Label>{searchLabel}</Label>
         <Input
@@ -71,7 +71,7 @@ export function TableFilterSelect({
     <label className="grid gap-1 text-xs font-semibold text-slate-600">
       {label}
       <select
-        className="h-10 min-w-36 rounded-lg border border-slate-300 bg-white px-3 text-sm font-normal text-slate-800 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+        className="h-10 min-w-36 rounded-lg border border-slate-300 bg-surface px-3 text-sm font-normal text-slate-800 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
         onChange={(event) => onChange(event.target.value)}
         value={value}
       >

@@ -89,7 +89,7 @@ export function PricingOverview({
           return (
             <div
               key={key}
-              className={`min-w-0 rounded-lg border p-4 ${estimate.status === "COMPLETE" ? "border-teal-200 bg-teal-50/50" : "border-amber-200 bg-amber-50/50"}`}
+              className={`pricing-total min-w-0 rounded-lg border border-slate-200 p-4 ${estimate.status === "COMPLETE" ? "border-l-teal-600" : "border-l-amber-600"}`}
             >
               <h4 className="text-sm font-semibold text-slate-700">
                 {t(`pricing.${key}`)}

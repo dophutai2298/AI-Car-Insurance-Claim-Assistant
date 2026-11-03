@@ -12,7 +12,7 @@ export function MyClaimsPage() {
   const { data, error, isPending } = useMyClaims();
 
   return (
-    <div className="mx-auto grid max-w-[1440px] gap-6 py-2">
+    <div className="page-layout mx-auto grid max-w-[1440px] gap-6 py-2">
       <header className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
           <p className="text-sm font-semibold text-slate-500">
@@ -33,25 +33,26 @@ export function MyClaimsPage() {
 
       {error ? (
         <Alert status="danger">
-          <Alert.Title>{t("myClaims.loadFailed")}</Alert.Title>
+          <Alert.Content>
+            <Alert.Title>{t("myClaims.loadFailed")}</Alert.Title>
+          </Alert.Content>
         </Alert>
       ) : null}
       {isPending ? <Skeleton className="h-48 rounded-lg" /> : null}
       {data && data.length === 0 ? (
-        <EmptyState className="card card--default rounded-lg border border-slate-200 bg-white shadow-sm text-center">
+        <EmptyState className="card card--default rounded-lg border border-slate-200 bg-surface shadow-sm text-center">
           <div className="flex flex-col items-center justify-center gap-4 py-10">
             {/* <Document size={15} className="text-slate-400" /> */}
-          <h2 className="text-sm font-semibold text-slate-950">
-            {t("myClaims.empty")}
-          </h2>
+            <h2 className="text-sm font-semibold text-slate-950">
+              {t("myClaims.empty")}
+            </h2>
           </div>
-         
         </EmptyState>
       ) : null}
       {data && data.length > 0 ? (
-        <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
+        <Card className="rounded-lg border border-slate-200 bg-surface shadow-sm">
           <Card.Content className="overflow-x-auto p-0">
-            <table className="w-full text-left text-sm">
+            <table className="w-full min-w-[36rem] text-left text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
                 <tr>
                   <th className="px-5 py-3">{t("myClaims.claim")}</th>

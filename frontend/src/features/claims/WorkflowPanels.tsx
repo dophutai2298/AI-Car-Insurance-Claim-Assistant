@@ -113,7 +113,7 @@ export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
 
   return (
     <Card
-      className="rounded-lg border border-slate-200 bg-white shadow-sm"
+      className="rounded-lg border border-slate-200 bg-surface shadow-sm"
       id="analysis"
     >
       <Card.Header className="flex flex-col gap-4 border-b border-slate-100 px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
@@ -170,25 +170,29 @@ export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
       <Card.Content className="grid gap-6 p-6">
         {start.error ? (
           <Alert status="danger">
-            <Alert.Title>{t("analysis.startFailed")}</Alert.Title>
-            <Alert.Description>
-              {start.error instanceof ClaimsApiError
-                ? start.error.message
-                : t("common.tryAgain")}
-            </Alert.Description>
+            <Alert.Content>
+              <Alert.Title>{t("analysis.startFailed")}</Alert.Title>
+              <Alert.Description>
+                {start.error instanceof ClaimsApiError
+                  ? start.error.message
+                  : t("common.tryAgain")}
+              </Alert.Description>
+            </Alert.Content>
           </Alert>
         ) : null}
         {!claim.incident || missingEvidence.length ? (
           <Alert status="warning">
             <WarningAlt size={18} />
-            <Alert.Title>{t("analysis.notReady")}</Alert.Title>
-            <Alert.Description>
-              {!claim.incident
-                ? t("analysis.incidentMissing")
-                : t("analysis.evidenceMissing", {
-                    count: missingEvidence.length,
-                  })}
-            </Alert.Description>
+            <Alert.Content>
+              <Alert.Title>{t("analysis.notReady")}</Alert.Title>
+              <Alert.Description>
+                {!claim.incident
+                  ? t("analysis.incidentMissing")
+                  : t("analysis.evidenceMissing", {
+                      count: missingEvidence.length,
+                    })}
+              </Alert.Description>
+            </Alert.Content>
           </Alert>
         ) : null}
         {analysisRunning ? (
@@ -204,27 +208,33 @@ export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
         {run?.inputs_changed ? (
           <Alert status="warning">
             <WarningAlt size={18} />
-            <Alert.Title>{t("analysis.inputsChanged")}</Alert.Title>
-            <Alert.Description>
-              {t("analysis.inputsChangedDescription")}
-            </Alert.Description>
+            <Alert.Content>
+              <Alert.Title>{t("analysis.inputsChanged")}</Alert.Title>
+              <Alert.Description>
+                {t("analysis.inputsChangedDescription")}
+              </Alert.Description>
+            </Alert.Content>
           </Alert>
         ) : null}
         {run?.status === "PARTIAL" ? (
           <Alert status="warning">
             <WarningAlt size={18} />
-            <Alert.Title>{t("analysis.partial")}</Alert.Title>
-            <Alert.Description>
-              {t("analysis.partialDescription")}
-            </Alert.Description>
+            <Alert.Content>
+              <Alert.Title>{t("analysis.partial")}</Alert.Title>
+              <Alert.Description>
+                {t("analysis.partialDescription")}
+              </Alert.Description>
+            </Alert.Content>
           </Alert>
         ) : null}
         {run?.status === "FAILED" ? (
           <Alert status="danger">
-            <Alert.Title>{t("analysis.failed")}</Alert.Title>
-            <Alert.Description>
-              {run.failure_reason ?? t("common.tryAgain")}
-            </Alert.Description>
+            <Alert.Content>
+              <Alert.Title>{t("analysis.failed")}</Alert.Title>
+              <Alert.Description>
+                {run.failure_reason ?? t("common.tryAgain")}
+              </Alert.Description>
+            </Alert.Content>
           </Alert>
         ) : null}
         {run?.damage_analysis ? (
@@ -338,8 +348,10 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
       {analysis.warning ? (
         <Alert status="warning">
           <WarningAlt size={18} />
-          <Alert.Title>{t("analysis.reviewNote")}</Alert.Title>
-          <Alert.Description>{analysis.warning}</Alert.Description>
+          <Alert.Content>
+            <Alert.Title>{t("analysis.reviewNote")}</Alert.Title>
+            <Alert.Description>{analysis.warning}</Alert.Description>
+          </Alert.Content>
         </Alert>
       ) : null}
       {damageRows.length || annotatedEvidence.length ? (
@@ -361,7 +373,7 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
                     className="aspect-[4/3] w-full object-contain"
                     item={item}
                   />
-                  <figcaption className="truncate border-t border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                  <figcaption className="truncate border-t border-slate-200 bg-surface px-3 py-2 text-xs text-slate-600">
                     {item.original_filename}
                   </figcaption>
                 </figure>
@@ -428,7 +440,7 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 bg-white">
+                <tbody className="divide-y divide-slate-200 bg-surface">
                   {rows.map((row) => (
                     <tr key={row.id}>
                       <td className="px-4 py-3 font-semibold text-slate-950">
@@ -540,10 +552,10 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
 
   return (
     <Card
-      className="rounded-lg border border-slate-200 bg-white shadow-sm"
+      className="rounded-lg border border-slate-200 bg-surface shadow-sm"
       id="aiReview"
     >
-      <Card.Header className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
+      <Card.Header className="panel-header flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
         <div className="flex items-center gap-3">
           <div className="flex size-10 items-center justify-center rounded-lg bg-teal-50 text-teal-700 ring-1 ring-teal-100">
             <DataStructured size={20} />
@@ -584,12 +596,14 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
         ) : null}
         {review.error ? (
           <Alert status="danger">
-            <Alert.Title>{t("aiReview.failed")}</Alert.Title>
-            <Alert.Description>
-              {review.error instanceof ClaimsApiError
-                ? review.error.message
-                : t("common.tryAgain")}
-            </Alert.Description>
+            <Alert.Content>
+              <Alert.Title>{t("aiReview.failed")}</Alert.Title>
+              <Alert.Description>
+                {review.error instanceof ClaimsApiError
+                  ? review.error.message
+                  : t("common.tryAgain")}
+              </Alert.Description>
+            </Alert.Content>
           </Alert>
         ) : null}
         {run?.damage_analysis?.pricing ? (
@@ -729,18 +743,22 @@ function AiReviewResult({
       ) : null}
       {locale && translation.error ? (
         <Alert status="warning">
-          <Alert.Title>{t("aiReview.translationUnavailable")}</Alert.Title>
-          <Alert.Description>
-            {t("aiReview.translationFallback")}
-          </Alert.Description>
+          <Alert.Content>
+            <Alert.Title>{t("aiReview.translationUnavailable")}</Alert.Title>
+            <Alert.Description>
+              {t("aiReview.translationFallback")}
+            </Alert.Description>
+          </Alert.Content>
         </Alert>
       ) : null}
       {conclusion.status === "LLM_UNAVAILABLE" ? (
         <Alert status="danger">
-          <Alert.Title>{t("aiReview.unavailable")}</Alert.Title>
-          <Alert.Description>
-            {conclusion.failure_reason ?? t("aiReview.failed")}
-          </Alert.Description>
+          <Alert.Content>
+            <Alert.Title>{t("aiReview.unavailable")}</Alert.Title>
+            <Alert.Description>
+              {conclusion.failure_reason ?? t("aiReview.failed")}
+            </Alert.Description>
+          </Alert.Content>
         </Alert>
       ) : null}
       {structuredReview ? (
@@ -787,8 +805,10 @@ function AiReviewResult({
           <Alert.Indicator className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-700">
             <WarningAlt aria-hidden="true" size={20} />
           </Alert.Indicator>
-          <Alert.Title>{t("aiReview.warnings")}</Alert.Title>
-          <Alert.Description>{warnings.join(" ")}</Alert.Description>
+          <Alert.Content>
+            <Alert.Title>{t("aiReview.warnings")}</Alert.Title>
+            <Alert.Description>{warnings.join(" ")}</Alert.Description>
+          </Alert.Content>
         </Alert>
       ) : null}
       <div>
@@ -881,10 +901,10 @@ export function HumanReviewPanel({ claim }: { claim: ClaimDetail }) {
 
   return (
     <Card
-      className="rounded-lg border border-slate-200 bg-white shadow-sm"
+      className="rounded-lg border border-slate-200 bg-surface shadow-sm"
       id="humanReview"
     >
-      <Card.Header className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
+      <Card.Header className="panel-header flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
         <div className="flex items-center gap-3">
           <div className="flex size-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
             <CheckmarkOutline size={20} />
@@ -905,7 +925,7 @@ export function HumanReviewPanel({ claim }: { claim: ClaimDetail }) {
         ) : null}
         {canReview ? (
           <form className="grid gap-4" onSubmit={save}>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button
                 onPress={() => setMode("APPROVED")}
                 variant={mode === "APPROVED" ? "primary" : "outline"}
@@ -924,7 +944,7 @@ export function HumanReviewPanel({ claim }: { claim: ClaimDetail }) {
                 {t("humanReview.reason")}
                 <select
                   aria-label={t("humanReview.reason")}
-                  className="min-h-10 border border-slate-300 bg-white px-3"
+                  className="min-h-10 border border-slate-300 bg-surface px-3"
                   onChange={(event) =>
                     setReason(
                       event.target.value as CopilotConclusionRejectionCategory,
@@ -941,7 +961,7 @@ export function HumanReviewPanel({ claim }: { claim: ClaimDetail }) {
                 </select>
               </label>
             ) : null}
-            <TextField isRequired>
+            <TextField fullWidth isRequired>
               <Label>{t("humanReview.note")}</Label>
               <Input
                 value={note}
@@ -963,7 +983,7 @@ export function HumanReviewPanel({ claim }: { claim: ClaimDetail }) {
             <ReviewHistory history={conclusion.review_history} />
             {!latest.reverted_at ? (
               <div className="grid gap-3 border-t border-slate-100 pt-4">
-                <TextField isRequired>
+                <TextField fullWidth isRequired>
                   <Label>{t("humanReview.revertNote")}</Label>
                   <Input
                     value={revertNote}
@@ -982,10 +1002,12 @@ export function HumanReviewPanel({ claim }: { claim: ClaimDetail }) {
               </div>
             ) : (
               <Alert status="warning">
-                <Alert.Title>{t("humanReview.reverted")}</Alert.Title>
-                <Alert.Description>
-                  {t("humanReview.rerunAfterRevert")}
-                </Alert.Description>
+                <Alert.Content>
+                  <Alert.Title>{t("humanReview.reverted")}</Alert.Title>
+                  <Alert.Description>
+                    {t("humanReview.rerunAfterRevert")}
+                  </Alert.Description>
+                </Alert.Content>
               </Alert>
             )}
           </div>

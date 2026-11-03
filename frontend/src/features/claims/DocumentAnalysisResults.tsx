@@ -176,26 +176,28 @@ export function DocumentAnalysisResults({
           {blockedReasons.length ? (
             <Alert status="warning">
               <WarningAlt size={17} />
-              <Alert.Title>{t("documents.saveAllBlocked")}</Alert.Title>
-              <Alert.Description>
-                <ul className="mt-1 list-disc space-y-1 pl-4">
-                  {blockedReasons.map((reason, index) => (
-                    <li key={`${reason.code}-${reason.field_id ?? index}`}>
-                      {t(`documents.blockReasons.${reason.code}`, {
-                        defaultValue: reason.message,
-                        field: reason.field_key
-                          ? t(`documents.fields.${reason.field_key}`, {
-                              defaultValue: reason.field_key,
-                            })
-                          : "",
-                        category: reason.category
-                          ? t(`evidence.categories.${reason.category}`)
-                          : "",
-                      })}
-                    </li>
-                  ))}
-                </ul>
-              </Alert.Description>
+              <Alert.Content>
+                <Alert.Title>{t("documents.saveAllBlocked")}</Alert.Title>
+                <Alert.Description>
+                  <ul className="mt-1 list-disc space-y-1 pl-4">
+                    {blockedReasons.map((reason, index) => (
+                      <li key={`${reason.code}-${reason.field_id ?? index}`}>
+                        {t(`documents.blockReasons.${reason.code}`, {
+                          defaultValue: reason.message,
+                          field: reason.field_key
+                            ? t(`documents.fields.${reason.field_key}`, {
+                                defaultValue: reason.field_key,
+                              })
+                            : "",
+                          category: reason.category
+                            ? t(`evidence.categories.${reason.category}`)
+                            : "",
+                        })}
+                      </li>
+                    ))}
+                  </ul>
+                </Alert.Description>
+              </Alert.Content>
             </Alert>
           ) : null}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -412,7 +414,9 @@ function DocumentImageResult({
         {result?.warning ? (
           <Alert status={result.status === "FAILED" ? "danger" : "warning"}>
             <WarningAlt size={17} />
-            <Alert.Description>{result.warning}</Alert.Description>
+            <Alert.Content>
+              <Alert.Description>{result.warning}</Alert.Description>
+            </Alert.Content>
           </Alert>
         ) : null}
         {result?.raw_text ? (
@@ -488,7 +492,9 @@ function ExtractionResult({
       {extraction.warning ? (
         <Alert status="danger">
           <WarningAlt size={17} />
-          <Alert.Description>{extraction.warning}</Alert.Description>
+          <Alert.Content>
+            <Alert.Description>{extraction.warning}</Alert.Description>
+          </Alert.Content>
         </Alert>
       ) : null}
       <p className="border-l-2 border-cyan-500 bg-cyan-50 px-3 py-2 text-xs text-cyan-950">

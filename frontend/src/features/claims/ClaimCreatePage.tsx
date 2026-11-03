@@ -98,7 +98,7 @@ export function ClaimCreatePage() {
   }
 
   return (
-    <div className="mx-auto grid max-w-[1440px] gap-6 py-2">
+    <div className="page-layout mx-auto grid max-w-[1440px] gap-6 py-2">
       <Link
         className="flex w-fit items-center gap-2 text-sm font-semibold text-blue-700"
         to={isCustomer ? "/my-claims" : "/claims"}
@@ -120,8 +120,8 @@ export function ClaimCreatePage() {
 
       <ClaimWorkflowStepper maxSteps={isCustomer ? 2 : 5} />
 
-      <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <Card.Header className="flex items-center gap-3 border-b border-slate-100 px-6 py-5">
+      <Card className="rounded-lg border border-slate-200 bg-surface shadow-sm">
+        <Card.Header className="panel-header flex items-center gap-3 border-b border-slate-100 px-6 py-5">
           <div className="flex size-10 items-center justify-center rounded-lg bg-blue-50 text-blue-700 ring-1 ring-blue-100">
             <CarFront size={20} />
           </div>
@@ -138,8 +138,10 @@ export function ClaimCreatePage() {
           <form className="grid gap-5" onSubmit={handleSubmit}>
             {error ? (
               <Alert status="danger">
-                <Alert.Title>{t("claim.unableToCreate")}</Alert.Title>
-                <Alert.Description>{error}</Alert.Description>
+                <Alert.Content>
+                  <Alert.Title>{t("claim.unableToCreate")}</Alert.Title>
+                  <Alert.Description>{error}</Alert.Description>
+                </Alert.Content>
               </Alert>
             ) : null}
             <TextField fullWidth isRequired name="claimant_name">

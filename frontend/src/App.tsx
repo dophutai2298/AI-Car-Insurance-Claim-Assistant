@@ -1,26 +1,12 @@
 import {
-  Activity,
-  ArrowUp,
-  CarFront,
   ChartColumn,
   CheckmarkOutline,
   CloudUpload,
   Document,
   ErrorOutline,
-  Logout,
-  SettingsAdjust,
-  User,
   WarningAlt,
 } from "@carbon/icons-react";
-import {
-  Button,
-  Card,
-  Chip,
-  EmptyState,
-  Skeleton,
-  Toast,
-  Tooltip,
-} from "@heroui/react";
+import { Button, Card, Chip, EmptyState, Skeleton, Toast } from "@heroui/react";
 import {
   Bar,
   BarChart,
@@ -31,23 +17,14 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import {
-  Link,
-  Navigate,
-  NavLink,
-  Outlet,
-  Route,
-  Routes,
-  useNavigate,
-} from "react-router";
+import { Link, Navigate, Route, Routes, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { useEffect, useRef, useState } from "react";
+import { AppShell } from "./components/AppShell";
 
 import { ClaimQueueTable } from "./features/dashboard/ClaimQueueTable";
 import { useDashboardOverview } from "./features/dashboard/useDashboardOverview";
 import { LoginPage } from "./features/auth/LoginPage";
 import { useAuth } from "./features/auth/AuthProvider";
-import { LanguageSwitcher } from "./features/auth/LanguageSwitcher";
 import { ProtectedRoute, RoleRoute } from "./features/auth/ProtectedRoute";
 import { ClaimCreatePage } from "./features/claims/ClaimCreatePage";
 import { ClaimDetailPage } from "./features/claims/ClaimDetailPage";
@@ -68,159 +45,6 @@ const claimStatusChartColor: Record<ClaimStatus, string> = {
   FAILED: "#dc2626",
 };
 
-function AppShell() {
-  const { logout, session } = useAuth();
-  const { t } = useTranslation();
-  const scrollContainerRef = useRef<HTMLElement | null>(null);
-  const [showBackToTop, setShowBackToTop] = useState(false);
-  const staffNavigation = [
-    { label: t("navigation.dashboard"), icon: Activity, path: "/dashboard" },
-    { label: t("navigation.claims"), icon: Document, path: "/claims" },
-    {
-      label: t("navigation.customerAccounts"),
-      icon: User,
-      path: "/customer-accounts",
-      adminOnly: true,
-    },
-    {
-      label: t("navigation.admin"),
-      icon: SettingsAdjust,
-      path: "/admin",
-      adminOnly: true,
-    },
-  ];
-  const visibleNavigation =
-    session?.user.role === "USER"
-      ? [
-          { label: t("myClaims.title"), icon: Document, path: "/my-claims" },
-          {
-            label: t("myClaims.newClaim"),
-            icon: CloudUpload,
-            path: "/claims/new",
-          },
-        ]
-      : staffNavigation.filter(
-          (item) => !item.adminOnly || session?.user.role === "ADMIN",
-        );
-
-  useEffect(() => {
-    const scrollContainer = scrollContainerRef.current;
-    if (!scrollContainer) return;
-
-    const updateBackToTopVisibility = () => {
-      setShowBackToTop(scrollContainer.scrollTop > 320);
-    };
-
-    updateBackToTopVisibility();
-    scrollContainer.addEventListener("scroll", updateBackToTopVisibility, {
-      passive: true,
-    });
-
-    return () => {
-      scrollContainer.removeEventListener("scroll", updateBackToTopVisibility);
-    };
-  }, []);
-
-  return (
-    <main className="h-dvh overflow-hidden bg-slate-100 text-slate-950">
-      <div className="grid h-full grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden lg:grid-cols-[272px_minmax(0,1fr)] lg:grid-rows-1">
-        <aside className="shrink-0 overflow-hidden border-b border-slate-800 bg-gradient-to-b from-slate-900 to-blue-950 px-5 py-5 text-white lg:h-full lg:border-b-0 lg:border-r lg:border-slate-800">
-          <div className="flex h-full flex-col gap-6">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 text-white shadow-lg shadow-blue-900/50">
-                <CarFront size={22} />
-              </div>
-              <div>
-                <div className="text-sm font-semibold">Claim Assistant</div>
-                <div className="text-xs text-slate-400">Insurance PoC</div>
-              </div>
-            </div>
-
-            <nav
-              className="grid grid-cols-3 gap-2 lg:grid-cols-1"
-              aria-label={t("navigation.primary")}
-            >
-              {visibleNavigation.map((item) => {
-                const Icon = item.icon;
-
-                return (
-                  <NavLink
-                    className={({ isActive }) =>
-                      [
-                        "flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors lg:justify-start",
-                        isActive
-                          ? "bg-blue-600 text-white shadow-md shadow-blue-950/50"
-                          : "text-slate-300 hover:bg-white/10 hover:text-white",
-                      ].join(" ")
-                    }
-                    key={item.label}
-                    to={item.path}
-                  >
-                    <Icon size={18} />
-                    <span>{item.label}</span>
-                  </NavLink>
-                );
-              })}
-            </nav>
-
-            <div className="mt-auto border-t border-white/10 pt-4">
-              <LanguageSwitcher />
-              <div className="mb-3 mt-4 hidden min-w-0 lg:block">
-                <div className="truncate text-sm font-semibold text-white">
-                  {session?.user.full_name}
-                </div>
-                <div className="truncate text-xs text-slate-400">
-                  {session?.user.email}
-                </div>
-              </div>
-              <Button
-                className="hidden w-full justify-start lg:flex"
-                onPress={logout}
-                size="sm"
-                variant="danger-soft"
-              >
-                <Logout size={17} />
-                {t("navigation.signOut")}
-              </Button>
-            </div>
-          </div>
-        </aside>
-
-        <section
-          className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6 lg:px-8"
-          ref={scrollContainerRef}
-        >
-          <Outlet />
-        </section>
-        {showBackToTop ? (
-          <div className="fixed bottom-5 right-5 z-30">
-            <Tooltip>
-              <Tooltip.Trigger>
-                <Button
-                  className="rounded-full p-5 shadow-lg"
-                  aria-label={t("common.backToTop")}
-                  isIconOnly
-                  onPress={() =>
-                    scrollContainerRef.current?.scrollTo({
-                      behavior: "smooth",
-                      top: 0,
-                    })
-                  }
-                  size="sm"
-                  variant="primary"
-                >
-                  <ArrowUp size={24} />
-                </Button>
-              </Tooltip.Trigger>
-              <Tooltip.Content>{t("common.backToTop")}</Tooltip.Content>
-            </Tooltip>
-          </div>
-        ) : null}
-      </div>
-    </main>
-  );
-}
-
 function DashboardPage() {
   const { data, error, isPending } = useDashboardOverview();
   const { session } = useAuth();
@@ -240,7 +64,7 @@ function DashboardPage() {
   const canCreateClaim = session?.user.role === "ADMIN";
 
   return (
-    <div className="mx-auto grid max-w-[1440px] gap-6">
+    <div className="page-layout mx-auto grid max-w-[1440px] gap-6">
       <header className="flex flex-col gap-4 border-b border-slate-200 pb-6 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <p className="mb-2 text-sm font-semibold text-slate-500">
@@ -265,7 +89,7 @@ function DashboardPage() {
         ) : null}
       </header>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="dashboard-metrics grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           icon={Document}
           label={t("dashboard.totalClaims")}
@@ -295,8 +119,8 @@ function DashboardPage() {
         />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="dashboard-overview grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <Card className="rounded-lg border border-slate-200 bg-surface shadow-sm">
           <Card.Header className="border-b border-slate-100 px-5 py-4">
             <Card.Title className="flex items-center gap-2 text-lg text-slate-950">
               <ChartColumn size={20} />
@@ -306,7 +130,7 @@ function DashboardPage() {
               {t("dashboard.statusOverviewDescription")}
             </Card.Description>
           </Card.Header>
-          <Card.Content className="h-72 p-5">
+          <Card.Content className="min-h-80 p-5">
             {isPending ? <Skeleton className="h-full rounded-lg" /> : null}
             {error ? <InlineError message={t("dashboard.loadError")} /> : null}
             {data && chartData.length > 0 ? (
@@ -316,24 +140,35 @@ function DashboardPage() {
                   layout="vertical"
                   margin={{ left: 0, right: 28, top: 4, bottom: 4 }}
                 >
-                  <CartesianGrid stroke="#e2e8f0" vertical={false} />
+                  <CartesianGrid stroke="var(--border)" vertical={false} />
                   <XAxis
                     allowDecimals={false}
                     fontSize={12}
-                    stroke="#64748b"
+                    stroke="var(--muted)"
                     tickLine={false}
                     type="number"
                   />
                   <YAxis
+                    interval={0}
+                    axisLine={false}
                     dataKey="name"
                     fontSize={12}
-                    stroke="#64748b"
+                    stroke="var(--muted)"
                     tickLine={false}
                     type="category"
                     width={132}
                   />
-                  <ChartTooltip cursor={{ fill: "#f1f5f9" }} />
+                  <ChartTooltip
+                    cursor={{ fill: "var(--surface-secondary)" }}
+                    contentStyle={{
+                      background: "var(--overlay)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      color: "var(--foreground)",
+                    }}
+                  />
                   <Bar
+                    isAnimationActive={false}
                     barSize={22}
                     dataKey="value"
                     radius={[0, 4, 4, 0]}
@@ -362,7 +197,7 @@ function DashboardPage() {
         </Card>
 
         <aside>
-          <Card className="h-full rounded-lg border border-slate-200 bg-white shadow-sm">
+          <Card className="h-full rounded-lg border border-slate-200 bg-surface shadow-sm">
             <Card.Header className="border-b border-slate-100 px-5 py-4">
               <Card.Title className="text-lg text-slate-950">
                 {t("dashboard.needsReview")}
@@ -371,7 +206,7 @@ function DashboardPage() {
                 {t("dashboard.needsReviewDescription")}
               </Card.Description>
             </Card.Header>
-            <Card.Content className="grid gap-2 p-3">
+            <Card.Content className="grid content-start gap-2 p-3">
               {isPending ? <QueueSkeleton /> : null}
               {data && reviewQueue.length
                 ? reviewQueue.slice(0, 5).map((claim) => (
@@ -411,7 +246,7 @@ function DashboardPage() {
         </aside>
       </div>
 
-      <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <Card className="rounded-lg border border-slate-200 bg-surface shadow-sm">
         <Card.Header className="border-b border-slate-100 px-5 py-4">
           <Card.Title className="text-lg text-slate-950">
             {t("dashboard.recentClaims")}
@@ -476,7 +311,7 @@ function ClaimsPage() {
   const canCreateClaim = session?.user.role === "ADMIN";
 
   return (
-    <div className="mx-auto grid max-w-[1440px] gap-6">
+    <div className="page-layout mx-auto grid max-w-[1440px] gap-6">
       <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-semibold text-slate-500">
@@ -501,7 +336,7 @@ function ClaimsPage() {
         ) : null}
       </header>
 
-      <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <Card className="rounded-lg border border-slate-200 bg-surface shadow-sm">
         <Card.Header className="border-b border-slate-100 px-5 py-4">
           <Card.Title className="text-lg text-slate-950">
             {t("claimsList.allClaims")}
@@ -539,7 +374,7 @@ function AccessRestricted() {
 
   return (
     <div className="flex min-h-full items-center justify-center px-5">
-      <Card className="w-full max-w-lg rounded-lg border border-slate-200 bg-white shadow-sm">
+      <Card className="w-full max-w-lg rounded-lg border border-slate-200 bg-surface shadow-sm">
         <Card.Content className="p-8">
           <h1 className="text-2xl font-semibold text-slate-950">
             {t("access.title")}
@@ -703,7 +538,9 @@ function MetricCard({
   };
 
   return (
-    <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
+    <Card
+      className={`metric-card metric-card--${tone} rounded-lg border border-slate-200 bg-surface shadow-sm`}
+    >
       <Card.Content className="p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -711,8 +548,8 @@ function MetricCard({
             {loading ? (
               <Skeleton className="mt-3 h-8 w-24 rounded-lg" />
             ) : (
-              <div className="mt-2 font-mono text-3xl font-semibold text-slate-950">
-                {value}
+              <div className="metric-value mt-2 text-3xl font-semibold text-slate-950">
+                {value ?? "-"}
               </div>
             )}
           </div>

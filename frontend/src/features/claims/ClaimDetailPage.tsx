@@ -49,7 +49,7 @@ export function ClaimDetailPage() {
 
   if (isPending)
     return (
-      <div className="mx-auto grid max-w-[1440px] gap-6 py-2">
+      <div className="page-layout mx-auto grid max-w-[1440px] gap-6 py-2">
         <Skeleton className="h-10 w-40 rounded-lg" />
         <Skeleton className="h-72 rounded-lg" />
       </div>
@@ -58,8 +58,10 @@ export function ClaimDetailPage() {
     return (
       <div className="mx-auto max-w-[1440px] py-2">
         <Alert status="danger">
-          <Alert.Title>{t("claim.unavailable")}</Alert.Title>
-          <Alert.Description>{t("claim.loadFailed")}</Alert.Description>
+          <Alert.Content>
+            <Alert.Title>{t("claim.unavailable")}</Alert.Title>
+            <Alert.Description>{t("claim.loadFailed")}</Alert.Description>
+          </Alert.Content>
         </Alert>
         <Link
           className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-blue-700"
@@ -147,7 +149,7 @@ export function ClaimDetailPage() {
   }
 
   return (
-    <div className="mx-auto grid max-w-[1440px] gap-6 py-2">
+    <div className="page-layout mx-auto grid max-w-[1440px] gap-6 py-2">
       <Link
         className="flex w-fit items-center gap-2 text-sm font-semibold text-blue-700"
         to="/claims"
@@ -185,14 +187,16 @@ export function ClaimDetailPage() {
       </header>
       {deleteError ? (
         <Alert status="danger">
-          <Alert.Title>{t("claim.deleteFailed")}</Alert.Title>
-          <Alert.Description>{deleteError}</Alert.Description>
+          <Alert.Content>
+            <Alert.Title>{t("claim.deleteFailed")}</Alert.Title>
+            <Alert.Description>{deleteError}</Alert.Description>
+          </Alert.Content>
         </Alert>
       ) : null}
       <div className="flex justify-end">
         <div
           aria-label={t("claim.layoutMode")}
-          className="inline-flex gap-1 rounded-lg border border-slate-200 bg-white p-1"
+          className="inline-flex gap-1 rounded-lg border border-slate-200 bg-surface p-1"
           role="group"
         >
           <Button
@@ -240,8 +244,10 @@ export function ClaimDetailPage() {
       ))}
       <Alert status="warning">
         <Document size={18} />
-        <Alert.Title>{t("claim.safetyTitle")}</Alert.Title>
-        <Alert.Description>{t("claim.safetyDescription")}</Alert.Description>
+        <Alert.Content>
+          <Alert.Title>{t("claim.safetyTitle")}</Alert.Title>
+          <Alert.Description>{t("claim.safetyDescription")}</Alert.Description>
+        </Alert.Content>
       </Alert>
       <Modal>
         <Modal.Backdrop

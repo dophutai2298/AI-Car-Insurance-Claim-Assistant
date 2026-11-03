@@ -8,6 +8,9 @@ import { AuthProvider } from "./features/auth/AuthProvider";
 import { queryClient } from "./lib/queryClient";
 import "./i18n";
 import "./styles.css";
+import { initializeTheme } from "./lib/theme";
+
+initializeTheme();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
