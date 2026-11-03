@@ -18,7 +18,7 @@ export function LanguageSwitcher() {
   return (
     <Switch
       aria-label={t("language.label")}
-      className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-white"
+      className="language-switch"
       isSelected={isVietnamese}
       onChange={(selected) => void changeLanguage(selected)}
       size="sm"

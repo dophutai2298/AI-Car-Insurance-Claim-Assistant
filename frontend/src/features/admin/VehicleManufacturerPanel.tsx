@@ -119,7 +119,7 @@ export function VehicleManufacturerPanel() {
   }
 
   return (
-    <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
+    <Card className="rounded-lg border border-slate-200 bg-surface shadow-sm">
       <Card.Header className="border-b border-slate-100 px-6 py-5">
         <Card.Title className="text-lg text-slate-950">
           {t("manufacturers.title")}
@@ -156,8 +156,10 @@ export function VehicleManufacturerPanel() {
         </form>
         {error ? (
           <Alert status="danger">
-            <Alert.Title>{t("manufacturers.saveError")}</Alert.Title>
-            <Alert.Description>{error}</Alert.Description>
+            <Alert.Content>
+              <Alert.Title>{t("manufacturers.saveError")}</Alert.Title>
+              <Alert.Description>{error}</Alert.Description>
+            </Alert.Content>
           </Alert>
         ) : null}
         {manufacturers.isPending ? (
@@ -165,10 +167,12 @@ export function VehicleManufacturerPanel() {
         ) : null}
         {manufacturers.error ? (
           <Alert status="danger">
-            <Alert.Title>{t("manufacturers.unavailable")}</Alert.Title>
-            <Alert.Description>
-              {t("manufacturers.loadError")}
-            </Alert.Description>
+            <Alert.Content>
+              <Alert.Title>{t("manufacturers.unavailable")}</Alert.Title>
+              <Alert.Description>
+                {t("manufacturers.loadError")}
+              </Alert.Description>
+            </Alert.Content>
           </Alert>
         ) : null}
         {manufacturers.data?.length === 0 ? (

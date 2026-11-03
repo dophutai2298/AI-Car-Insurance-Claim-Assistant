@@ -80,7 +80,7 @@ export function AdminConfigPage() {
   }
 
   return (
-    <div className="mx-auto grid max-w-[1440px] gap-6">
+    <div className="page-layout mx-auto grid max-w-[1440px] gap-6">
       <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-semibold text-slate-500">
@@ -98,8 +98,8 @@ export function AdminConfigPage() {
         </Chip>
       </header>
 
-      <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <Card.Header className="flex items-left gap-3 border-b border-slate-100 px-6 py-5">
+      <Card className="rounded-lg border border-slate-200 bg-surface shadow-sm">
+        <Card.Header className="panel-header flex items-left gap-3 border-b border-slate-100 px-6 py-5">
           {/* <div className="flex size-10 items-center justify-center rounded-lg bg-blue-50 text-blue-700 ring-1 ring-blue-100">
             <SettingsAdjust size={20} />
           </div> */}
@@ -116,18 +116,22 @@ export function AdminConfigPage() {
           {rules.isPending ? <RuleFormSkeleton /> : null}
           {rules.error ? (
             <Alert status="danger">
-              <Alert.Title>{t("admin.configurationUnavailable")}</Alert.Title>
-              <Alert.Description>
-                {t("admin.configurationLoadFailed")}
-              </Alert.Description>
+              <Alert.Content>
+                <Alert.Title>{t("admin.configurationUnavailable")}</Alert.Title>
+                <Alert.Description>
+                  {t("admin.configurationLoadFailed")}
+                </Alert.Description>
+              </Alert.Content>
             </Alert>
           ) : null}
           {rules.data ? (
             <form className="grid gap-5" onSubmit={submit}>
               {error ? (
                 <Alert status="danger">
-                  <Alert.Title>{t("admin.rulesNotSaved")}</Alert.Title>
-                  <Alert.Description>{error}</Alert.Description>
+                  <Alert.Content>
+                    <Alert.Title>{t("admin.rulesNotSaved")}</Alert.Title>
+                    <Alert.Description>{error}</Alert.Description>
+                  </Alert.Content>
                 </Alert>
               ) : null}
               <div className="grid gap-5 md:grid-cols-2">
@@ -176,8 +180,8 @@ export function AdminConfigPage() {
 
       <VehicleManufacturerPanel />
 
-      <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <Card.Header className="flex items-start gap-3 border-b border-slate-100 px-6 py-5">
+      <Card className="rounded-lg border border-slate-200 bg-surface shadow-sm">
+        <Card.Header className="panel-header flex items-start gap-3 border-b border-slate-100 px-6 py-5">
           {/* <Time className="text-slate-600" size={20} /> */}
           <div>
             <Card.Title className="text-lg text-slate-950">
@@ -192,10 +196,12 @@ export function AdminConfigPage() {
           {history.isPending ? <Skeleton className="h-20 rounded-lg" /> : null}
           {history.error ? (
             <Alert status="warning">
-              <Alert.Title>{t("admin.historyUnavailable")}</Alert.Title>
-              <Alert.Description>
-                {t("admin.activeRulesUnaffected")}
-              </Alert.Description>
+              <Alert.Content>
+                <Alert.Title>{t("admin.historyUnavailable")}</Alert.Title>
+                <Alert.Description>
+                  {t("admin.activeRulesUnaffected")}
+                </Alert.Description>
+              </Alert.Content>
             </Alert>
           ) : null}
           {history.data?.length ? (

@@ -75,7 +75,7 @@ export function ClaimWorkflowStepper({
       : ["w-1/5", "w-2/5", "w-3/5", "w-4/5", "w-full"];
 
   return (
-    <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+    <section className="workflow-stepper overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
       <header className="flex items-center justify-between gap-4 border-b border-slate-100 px-4 py-3 sm:px-5">
         <h2 className="text-sm font-semibold text-slate-950">
           {t("claim.workflow")}

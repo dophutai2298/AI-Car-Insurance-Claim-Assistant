@@ -1,8 +1,12 @@
 import { useState, type FormEvent } from "react";
-import { ArrowRight, CarFront, Locked, Security } from "@carbon/icons-react";
-import { Alert, Button, Card, Input, Label, TextField } from "@heroui/react";
+import { ArrowRight, Locked } from "@carbon/icons-react";
+import { Alert, Button, Input, Label, TextField } from "@heroui/react";
 import { Navigate, useLocation, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
+
+import { Brand } from "../../components/Brand";
+import { ThemeToggle } from "../../components/ThemeToggle";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 
 import { AuthApiError } from "./authApi";
 import { useAuth } from "./AuthProvider";
@@ -58,101 +62,72 @@ export function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-dvh bg-slate-100 text-slate-950 lg:grid-cols-[minmax(320px,0.82fr)_minmax(480px,1.18fr)]">
-      <section className="hidden bg-slate-950 px-10 py-12 text-white lg:flex lg:flex-col lg:justify-between xl:px-16">
-        <div className="flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-lg bg-blue-500">
-            <CarFront size={22} />
-          </div>
-          <div>
-            <div className="text-sm font-semibold">Claim Assistant</div>
-            <div className="text-xs text-slate-400">Insurance PoC</div>
-          </div>
+    <main className="login-page">
+      <section className="login-visual">
+        <img
+          className="login-visual__image"
+          src="/images/claims-vehicle.jpg"
+          alt=""
+        />
+        <Brand />
+        <div className="login-visual__copy">
+          <p>{t("auth.workspace")}</p>
+          <h2>{t("auth.headline")}</h2>
+          <p>{t("auth.description")}</p>
         </div>
-
-        <div className="max-w-lg">
-          <div className="mb-6 flex size-12 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-blue-300">
-            <Security size={24} />
-          </div>
-          <p className="text-sm font-semibold text-blue-300">
-            {t("auth.workspace")}
-          </p>
-          <h2 className="mt-3 text-3xl font-semibold leading-tight tracking-normal xl:text-4xl">
-            {t("auth.headline")}
-          </h2>
-          <p className="mt-5 max-w-md text-sm leading-6 text-slate-400">
-            {t("auth.description")}
-          </p>
-        </div>
-
-        <p className="text-xs text-slate-500">{t("auth.authorizedOnly")}</p>
       </section>
-
-      <section className="flex min-h-dvh items-center justify-center px-5 py-10 sm:px-8 lg:min-h-0">
-        <div className="w-full max-w-md">
-          <div className="mb-8 flex items-center gap-3 lg:hidden">
-            <div className="flex size-10 items-center justify-center rounded-lg bg-blue-600 text-white">
-              <CarFront size={22} />
-            </div>
-            <div>
-              <div className="text-sm font-semibold">Claim Assistant</div>
-              <div className="text-xs text-slate-500">Insurance PoC</div>
-            </div>
-          </div>
-
-          <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
-            <Card.Header className="border-b border-slate-100 px-6 py-5">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-blue-50 text-blue-700 ring-1 ring-blue-100">
-                <Locked size={20} />
-              </div>
-              <div className="mt-4">
-                <Card.Title className="text-2xl text-slate-950">
-                  {t("auth.signInTitle")}
-                </Card.Title>
-                <Card.Description className="mt-2 text-sm text-slate-500">
-                  {t("auth.signInDescription")}
-                </Card.Description>
-              </div>
-            </Card.Header>
-            <Card.Content className="p-6">
-              <form className="grid gap-5" onSubmit={handleSubmit}>
-                {error ? (
-                  <Alert status="danger">
-                    <Alert.Title>{t("auth.signInFailed")}</Alert.Title>
-                    <Alert.Description>{error}</Alert.Description>
-                  </Alert>
-                ) : null}
-
-                <TextField fullWidth isRequired name="email" type="email">
-                  <Label>{t("auth.email")}</Label>
-                  <Input
-                    autoComplete="email"
-                    onChange={(event) => setEmail(event.target.value)}
-                    placeholder={t("auth.emailPlaceholder")}
-                    value={email}
-                  />
-                </TextField>
-                <TextField fullWidth isRequired name="password" type="password">
-                  <Label>{t("auth.password")}</Label>
-                  <Input
-                    autoComplete="current-password"
-                    onChange={(event) => setPassword(event.target.value)}
-                    value={password}
-                  />
-                </TextField>
-                <Button
-                  className="mt-1 w-full"
-                  isPending={isPending}
-                  type="submit"
-                  variant="primary"
-                >
-                  {t("auth.signIn")}
-                  <ArrowRight size={18} />
-                </Button>
-              </form>
-            </Card.Content>
-          </Card>
+      <section className="login-workspace">
+        <div className="login-controls">
+          <LanguageSwitcher />
+          <ThemeToggle />
         </div>
+        <div className="login-form">
+          <div className="lg:hidden">
+            <Brand />
+          </div>
+          <div className="mb-5 flex size-11 items-center justify-center rounded-lg border border-slate-200 bg-white text-blue-700">
+            <Locked size={21} aria-hidden="true" />
+          </div>
+          <h1>{t("auth.signInTitle")}</h1>
+          <p>{t("auth.signInDescription")}</p>
+          <form className="grid gap-5" onSubmit={handleSubmit}>
+            {error ? (
+              <Alert status="danger">
+                <Alert.Content>
+                  <Alert.Title>{t("auth.signInFailed")}</Alert.Title>
+                  <Alert.Description>{error}</Alert.Description>
+                </Alert.Content>
+              </Alert>
+            ) : null}
+            <TextField fullWidth isRequired name="email" type="email">
+              <Label>{t("auth.email")}</Label>
+              <Input
+                autoComplete="email"
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder={t("auth.emailPlaceholder")}
+                value={email}
+              />
+            </TextField>
+            <TextField fullWidth isRequired name="password" type="password">
+              <Label>{t("auth.password")}</Label>
+              <Input
+                autoComplete="current-password"
+                onChange={(event) => setPassword(event.target.value)}
+                value={password}
+              />
+            </TextField>
+            <Button
+              className="mt-2 w-full"
+              isPending={isPending}
+              type="submit"
+              variant="primary"
+            >
+              {t("auth.signIn")}
+              <ArrowRight size={18} />
+            </Button>
+          </form>
+        </div>
+        <p className="login-footnote">{t("auth.authorizedOnly")}</p>
       </section>
     </main>
   );

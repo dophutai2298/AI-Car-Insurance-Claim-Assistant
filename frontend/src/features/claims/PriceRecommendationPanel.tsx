@@ -1,6 +1,7 @@
 import { CheckmarkOutline, WarningAlt } from "@carbon/icons-react";
 import { Chip } from "@heroui/react";
 import { useTranslation } from "react-i18next";
+import { localizeReviewText } from "./damagePresentation";
 import type { PriceRecommendation } from "./types";
 
 export function PriceRecommendationPanel({
@@ -39,7 +40,7 @@ export function PriceRecommendationPanel({
         </p>
       ) : null}
       <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-800">
-        {value.rationale}
+        {localizeReviewText(value.rationale, t)}
       </p>
       <p className="mt-2 text-xs leading-5 text-slate-600">
         {t("pricing.recommendationDisclaimer")}

@@ -53,8 +53,8 @@ export function UserAccountPanel({ onCreated }: UserAccountPanelProps) {
   }
 
   return (
-    <Card className="rounded-lg border border-slate-200 bg-white shadow-sm">
-      <Card.Header className="flex items-start gap-3 border-b border-slate-100 px-6 py-5">
+    <Card className="rounded-lg border border-slate-200 bg-surface shadow-sm">
+      <Card.Header className="panel-header flex items-start gap-3 border-b border-slate-100 px-6 py-5">
         {/* <User size={20} className="text-slate-600" /> */}
         <div>
           <Card.Title className="text-lg text-slate-950">
@@ -69,8 +69,12 @@ export function UserAccountPanel({ onCreated }: UserAccountPanelProps) {
         <form className="grid gap-5 md:grid-cols-3" onSubmit={submit}>
           {error ? (
             <Alert className="md:col-span-3" status="danger">
-              <Alert.Title>{t("customerAccount.userCreateFailed")}</Alert.Title>
-              <Alert.Description>{error}</Alert.Description>
+              <Alert.Content>
+                <Alert.Title>
+                  {t("customerAccount.userCreateFailed")}
+                </Alert.Title>
+                <Alert.Description>{error}</Alert.Description>
+              </Alert.Content>
             </Alert>
           ) : null}
           <TextField isRequired name="customer-name">

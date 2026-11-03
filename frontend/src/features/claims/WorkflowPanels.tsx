@@ -47,6 +47,12 @@ import { DocumentAnalysisResults } from "./DocumentAnalysisResults";
 import { PricingOverview } from "./PricingOverview";
 import { PriceRecommendationPanel } from "./PriceRecommendationPanel";
 import {
+  damageTypeLabel,
+  localizeReviewText,
+  normalizeDamageType,
+  vehiclePartLabel,
+} from "./damagePresentation";
+import {
   useAiReviewTranslation,
   useRevertCopilotReview,
   useReviewCopilotConclusion,
@@ -113,7 +119,7 @@ export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
 
   return (
     <Card
-      className="rounded-lg border border-slate-200 bg-white shadow-sm"
+      className="rounded-lg border border-slate-200 bg-surface shadow-sm"
       id="analysis"
     >
       <Card.Header className="flex flex-col gap-4 border-b border-slate-100 px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
@@ -170,25 +176,29 @@ export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
       <Card.Content className="grid gap-6 p-6">
         {start.error ? (
           <Alert status="danger">
-            <Alert.Title>{t("analysis.startFailed")}</Alert.Title>
-            <Alert.Description>
-              {start.error instanceof ClaimsApiError
-                ? start.error.message
-                : t("common.tryAgain")}
-            </Alert.Description>
+            <Alert.Content>
+              <Alert.Title>{t("analysis.startFailed")}</Alert.Title>
+              <Alert.Description>
+                {start.error instanceof ClaimsApiError
+                  ? start.error.message
+                  : t("common.tryAgain")}
+              </Alert.Description>
+            </Alert.Content>
           </Alert>
         ) : null}
         {!claim.incident || missingEvidence.length ? (
           <Alert status="warning">
             <WarningAlt size={18} />
-            <Alert.Title>{t("analysis.notReady")}</Alert.Title>
-            <Alert.Description>
-              {!claim.incident
-                ? t("analysis.incidentMissing")
-                : t("analysis.evidenceMissing", {
-                    count: missingEvidence.length,
-                  })}
-            </Alert.Description>
+            <Alert.Content>
+              <Alert.Title>{t("analysis.notReady")}</Alert.Title>
+              <Alert.Description>
+                {!claim.incident
+                  ? t("analysis.incidentMissing")
+                  : t("analysis.evidenceMissing", {
+                      count: missingEvidence.length,
+                    })}
+              </Alert.Description>
+            </Alert.Content>
           </Alert>
         ) : null}
         {analysisRunning ? (
@@ -204,27 +214,33 @@ export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
         {run?.inputs_changed ? (
           <Alert status="warning">
             <WarningAlt size={18} />
-            <Alert.Title>{t("analysis.inputsChanged")}</Alert.Title>
-            <Alert.Description>
-              {t("analysis.inputsChangedDescription")}
-            </Alert.Description>
+            <Alert.Content>
+              <Alert.Title>{t("analysis.inputsChanged")}</Alert.Title>
+              <Alert.Description>
+                {t("analysis.inputsChangedDescription")}
+              </Alert.Description>
+            </Alert.Content>
           </Alert>
         ) : null}
         {run?.status === "PARTIAL" ? (
           <Alert status="warning">
             <WarningAlt size={18} />
-            <Alert.Title>{t("analysis.partial")}</Alert.Title>
-            <Alert.Description>
-              {t("analysis.partialDescription")}
-            </Alert.Description>
+            <Alert.Content>
+              <Alert.Title>{t("analysis.partial")}</Alert.Title>
+              <Alert.Description>
+                {t("analysis.partialDescription")}
+              </Alert.Description>
+            </Alert.Content>
           </Alert>
         ) : null}
         {run?.status === "FAILED" ? (
           <Alert status="danger">
-            <Alert.Title>{t("analysis.failed")}</Alert.Title>
-            <Alert.Description>
-              {run.failure_reason ?? t("common.tryAgain")}
-            </Alert.Description>
+            <Alert.Content>
+              <Alert.Title>{t("analysis.failed")}</Alert.Title>
+              <Alert.Description>
+                {run.failure_reason ?? t("common.tryAgain")}
+              </Alert.Description>
+            </Alert.Content>
           </Alert>
         ) : null}
         {run?.damage_analysis ? (
@@ -240,7 +256,7 @@ export function AnalysisPanel({ claim }: { claim: ClaimDetail }) {
 }
 
 function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [globalFilter, setGlobalFilter] = useState("");
   const [damageTypeFilter, setDamageTypeFilter] = useState("ALL");
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -259,27 +275,39 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
     if (modelParts.length) {
       return modelParts.map((part, index) => ({
         id: `${part.part}-${index}`,
-        part: formatLabel(part.part) ?? part.part,
-        damageType: formatLabel(part.main_damage) ?? part.main_damage,
+        part: vehiclePartLabel(part.part, i18n.language),
+        damageTypeKey: normalizeDamageType(part.main_damage),
+        damageType:
+          damageTypeLabel(part.main_damage, i18n.language) ||
+          t("analysis.damageUnknown"),
         damagePercentage: part.damage_percent,
       }));
     }
 
     return analysis.detections.map((detection, index) => ({
       id: `${detection.annotated_evidence.id}-${index}`,
-      part: formatLabel(detection.vehicle_part) || t("analysis.areaUnknown"),
+      part:
+        vehiclePartLabel(detection.vehicle_part, i18n.language) ||
+        t("analysis.areaUnknown"),
+      damageTypeKey: normalizeDamageType(detection.damage_type),
       damageType:
-        formatLabel(detection.damage_type) || t("analysis.damageUnknown"),
+        damageTypeLabel(detection.damage_type, i18n.language) ||
+        t("analysis.damageUnknown"),
       damagePercentage: detection.damage_percentage,
     }));
-  }, [analysis.detections, analysis.model_output?.record.parts, t]);
+  }, [
+    analysis.detections,
+    analysis.model_output?.record.parts,
+    i18n.language,
+    t,
+  ]);
   const columns = useMemo<LegacyColumnDef<DamageFindingRow>[]>(
     () => [
       { accessorKey: "part" },
       {
         accessorKey: "damageType",
-        filterFn: (row, columnId, value) =>
-          value === "ALL" || row.getValue(columnId) === value,
+        filterFn: (row, _columnId, value) =>
+          value === "ALL" || row.original.damageTypeKey === value,
       },
       { accessorKey: "damagePercentage" },
     ],
@@ -306,7 +334,7 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
   });
   const rows = table.getRowModel().rows;
   const damageTypes = Array.from(
-    new Set(damageRows.map((row) => row.damageType).filter(Boolean)),
+    new Set(damageRows.map((row) => row.damageTypeKey).filter(Boolean)),
   );
   const isFiltered = Boolean(globalFilter) || damageTypeFilter !== "ALL";
 
@@ -338,8 +366,12 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
       {analysis.warning ? (
         <Alert status="warning">
           <WarningAlt size={18} />
-          <Alert.Title>{t("analysis.reviewNote")}</Alert.Title>
-          <Alert.Description>{analysis.warning}</Alert.Description>
+          <Alert.Content>
+            <Alert.Title>{t("analysis.reviewNote")}</Alert.Title>
+            <Alert.Description>
+              {localizeReviewText(analysis.warning, t)}
+            </Alert.Description>
+          </Alert.Content>
         </Alert>
       ) : null}
       {damageRows.length || annotatedEvidence.length ? (
@@ -361,7 +393,7 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
                     className="aspect-[4/3] w-full object-contain"
                     item={item}
                   />
-                  <figcaption className="truncate border-t border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                  <figcaption className="truncate border-t border-slate-200 bg-surface px-3 py-2 text-xs text-slate-600">
                     {item.original_filename}
                   </figcaption>
                 </figure>
@@ -393,7 +425,7 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
                 options={[
                   { label: t("analysis.allDamageTypes"), value: "ALL" },
                   ...damageTypes.map((damageType) => ({
-                    label: damageType,
+                    label: damageTypeLabel(damageType, i18n.language),
                     value: damageType,
                   })),
                 ]}
@@ -428,7 +460,7 @@ function DamageResults({ analysis }: { analysis: DamageAnalysis }) {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 bg-white">
+                <tbody className="divide-y divide-slate-200 bg-surface">
                   {rows.map((row) => (
                     <tr key={row.id}>
                       <td className="px-4 py-3 font-semibold text-slate-950">
@@ -505,6 +537,7 @@ function DamageSortHeader({
 type DamageFindingRow = {
   id: string;
   part: string;
+  damageTypeKey: string;
   damageType: string;
   damagePercentage: number;
 };
@@ -540,10 +573,10 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
 
   return (
     <Card
-      className="rounded-lg border border-slate-200 bg-white shadow-sm"
+      className="rounded-lg border border-slate-200 bg-surface shadow-sm"
       id="aiReview"
     >
-      <Card.Header className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
+      <Card.Header className="panel-header flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
         <div className="flex items-center gap-3">
           <div className="flex size-10 items-center justify-center rounded-lg bg-teal-50 text-teal-700 ring-1 ring-teal-100">
             <DataStructured size={20} />
@@ -584,12 +617,14 @@ export function AiReviewPanel({ claim }: { claim: ClaimDetail }) {
         ) : null}
         {review.error ? (
           <Alert status="danger">
-            <Alert.Title>{t("aiReview.failed")}</Alert.Title>
-            <Alert.Description>
-              {review.error instanceof ClaimsApiError
-                ? review.error.message
-                : t("common.tryAgain")}
-            </Alert.Description>
+            <Alert.Content>
+              <Alert.Title>{t("aiReview.failed")}</Alert.Title>
+              <Alert.Description>
+                {review.error instanceof ClaimsApiError
+                  ? review.error.message
+                  : t("common.tryAgain")}
+              </Alert.Description>
+            </Alert.Content>
           </Alert>
         ) : null}
         {run?.damage_analysis?.pricing ? (
@@ -691,7 +726,10 @@ function AiReviewResult({
             <Chip color="warning" variant="soft">
               {conclusion.review_status
                 ? t(`claim.status.${conclusion.review_status}`, {
-                    defaultValue: conclusion.review_status,
+                    defaultValue: localizeReviewText(
+                      conclusion.review_status,
+                      t,
+                    ),
                   })
                 : t("aiReview.reviewRequired")}
             </Chip>
@@ -713,7 +751,10 @@ function AiReviewResult({
             </Chip>
           </div>
           <p className="mt-4 text-sm leading-6 text-slate-700">
-            {structuredReview?.summary ?? conclusion.summary}
+            {localizeReviewText(
+              structuredReview?.summary ?? conclusion.summary,
+              t,
+            )}
           </p>
         </div>
       </div>
@@ -729,18 +770,25 @@ function AiReviewResult({
       ) : null}
       {locale && translation.error ? (
         <Alert status="warning">
-          <Alert.Title>{t("aiReview.translationUnavailable")}</Alert.Title>
-          <Alert.Description>
-            {t("aiReview.translationFallback")}
-          </Alert.Description>
+          <Alert.Content>
+            <Alert.Title>{t("aiReview.translationUnavailable")}</Alert.Title>
+            <Alert.Description>
+              {t("aiReview.translationFallback")}
+            </Alert.Description>
+          </Alert.Content>
         </Alert>
       ) : null}
       {conclusion.status === "LLM_UNAVAILABLE" ? (
         <Alert status="danger">
-          <Alert.Title>{t("aiReview.unavailable")}</Alert.Title>
-          <Alert.Description>
-            {conclusion.failure_reason ?? t("aiReview.failed")}
-          </Alert.Description>
+          <Alert.Content>
+            <Alert.Title>{t("aiReview.unavailable")}</Alert.Title>
+            <Alert.Description>
+              {localizeReviewText(
+                conclusion.failure_reason ?? t("aiReview.failed"),
+                t,
+              )}
+            </Alert.Description>
+          </Alert.Content>
         </Alert>
       ) : null}
       {structuredReview ? (
@@ -771,7 +819,9 @@ function AiReviewResult({
                 <dt className="text-xs font-semibold text-slate-600">
                   {label}
                 </dt>
-                <dd className="text-sm leading-6 text-slate-800">{value}</dd>
+                <dd className="text-sm leading-6 text-slate-800">
+                  {localizeReviewText(value, t)}
+                </dd>
               </div>
             ))}
           </dl>
@@ -787,8 +837,12 @@ function AiReviewResult({
           <Alert.Indicator className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-700">
             <WarningAlt aria-hidden="true" size={20} />
           </Alert.Indicator>
-          <Alert.Title>{t("aiReview.warnings")}</Alert.Title>
-          <Alert.Description>{warnings.join(" ")}</Alert.Description>
+          <Alert.Content>
+            <Alert.Title>{t("aiReview.warnings")}</Alert.Title>
+            <Alert.Description>
+              {localizeReviewText(warnings.join(" "), t)}
+            </Alert.Description>
+          </Alert.Content>
         </Alert>
       ) : null}
       <div>
@@ -881,10 +935,10 @@ export function HumanReviewPanel({ claim }: { claim: ClaimDetail }) {
 
   return (
     <Card
-      className="rounded-lg border border-slate-200 bg-white shadow-sm"
+      className="rounded-lg border border-slate-200 bg-surface shadow-sm"
       id="humanReview"
     >
-      <Card.Header className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
+      <Card.Header className="panel-header flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
         <div className="flex items-center gap-3">
           <div className="flex size-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
             <CheckmarkOutline size={20} />
@@ -905,7 +959,7 @@ export function HumanReviewPanel({ claim }: { claim: ClaimDetail }) {
         ) : null}
         {canReview ? (
           <form className="grid gap-4" onSubmit={save}>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button
                 onPress={() => setMode("APPROVED")}
                 variant={mode === "APPROVED" ? "primary" : "outline"}
@@ -924,7 +978,7 @@ export function HumanReviewPanel({ claim }: { claim: ClaimDetail }) {
                 {t("humanReview.reason")}
                 <select
                   aria-label={t("humanReview.reason")}
-                  className="min-h-10 border border-slate-300 bg-white px-3"
+                  className="min-h-10 border border-slate-300 bg-surface px-3"
                   onChange={(event) =>
                     setReason(
                       event.target.value as CopilotConclusionRejectionCategory,
@@ -941,7 +995,7 @@ export function HumanReviewPanel({ claim }: { claim: ClaimDetail }) {
                 </select>
               </label>
             ) : null}
-            <TextField isRequired>
+            <TextField fullWidth isRequired>
               <Label>{t("humanReview.note")}</Label>
               <Input
                 value={note}
@@ -963,7 +1017,7 @@ export function HumanReviewPanel({ claim }: { claim: ClaimDetail }) {
             <ReviewHistory history={conclusion.review_history} />
             {!latest.reverted_at ? (
               <div className="grid gap-3 border-t border-slate-100 pt-4">
-                <TextField isRequired>
+                <TextField fullWidth isRequired>
                   <Label>{t("humanReview.revertNote")}</Label>
                   <Input
                     value={revertNote}
@@ -982,10 +1036,12 @@ export function HumanReviewPanel({ claim }: { claim: ClaimDetail }) {
               </div>
             ) : (
               <Alert status="warning">
-                <Alert.Title>{t("humanReview.reverted")}</Alert.Title>
-                <Alert.Description>
-                  {t("humanReview.rerunAfterRevert")}
-                </Alert.Description>
+                <Alert.Content>
+                  <Alert.Title>{t("humanReview.reverted")}</Alert.Title>
+                  <Alert.Description>
+                    {t("humanReview.rerunAfterRevert")}
+                  </Alert.Description>
+                </Alert.Content>
               </Alert>
             )}
           </div>
@@ -1064,11 +1120,6 @@ function ReviewHistory({ history }: { history: CopilotConclusionReview[] }) {
   );
 }
 
-function formatLabel(value: string | null) {
-  return value
-    ?.replaceAll("_", " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
 function formatPercent(value: number) {
   return `${Number.isInteger(value) ? value : value.toFixed(1)}%`;
 }

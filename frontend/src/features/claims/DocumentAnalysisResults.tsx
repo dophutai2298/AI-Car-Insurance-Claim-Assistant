@@ -1,11 +1,20 @@
 import {
   CheckmarkOutline,
+  ChevronDown,
   Document,
   InProgress,
   Save,
   WarningAlt,
 } from "@carbon/icons-react";
-import { Alert, Button, Chip, Input, Label, toast } from "@heroui/react";
+import {
+  Accordion,
+  Alert,
+  Button,
+  Chip,
+  Input,
+  Label,
+  toast,
+} from "@heroui/react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -139,7 +148,12 @@ export function DocumentAnalysisResults({
         </div>
       ) : null}
 
-      <div className="grid gap-6">
+      <Accordion
+        allowsMultipleExpanded
+        className="grid gap-6"
+        defaultExpandedKeys={documentCategories}
+        hideSeparator
+      >
         {documentCategories.map((category) => {
           const categoryEvidence = claim.evidence.filter(
             (item) => item.category === category,
@@ -169,33 +183,35 @@ export function DocumentAnalysisResults({
             />
           );
         })}
-      </div>
+      </Accordion>
 
       {extractedFields.length ? (
         <div className="grid gap-3 border-t border-slate-200 pt-4">
           {blockedReasons.length ? (
             <Alert status="warning">
               <WarningAlt size={17} />
-              <Alert.Title>{t("documents.saveAllBlocked")}</Alert.Title>
-              <Alert.Description>
-                <ul className="mt-1 list-disc space-y-1 pl-4">
-                  {blockedReasons.map((reason, index) => (
-                    <li key={`${reason.code}-${reason.field_id ?? index}`}>
-                      {t(`documents.blockReasons.${reason.code}`, {
-                        defaultValue: reason.message,
-                        field: reason.field_key
-                          ? t(`documents.fields.${reason.field_key}`, {
-                              defaultValue: reason.field_key,
-                            })
-                          : "",
-                        category: reason.category
-                          ? t(`evidence.categories.${reason.category}`)
-                          : "",
-                      })}
-                    </li>
-                  ))}
-                </ul>
-              </Alert.Description>
+              <Alert.Content>
+                <Alert.Title>{t("documents.saveAllBlocked")}</Alert.Title>
+                <Alert.Description>
+                  <ul className="mt-1 list-disc space-y-1 pl-4">
+                    {blockedReasons.map((reason, index) => (
+                      <li key={`${reason.code}-${reason.field_id ?? index}`}>
+                        {t(`documents.blockReasons.${reason.code}`, {
+                          defaultValue: reason.message,
+                          field: reason.field_key
+                            ? t(`documents.fields.${reason.field_key}`, {
+                                defaultValue: reason.field_key,
+                              })
+                            : "",
+                          category: reason.category
+                            ? t(`evidence.categories.${reason.category}`)
+                            : "",
+                        })}
+                      </li>
+                    ))}
+                  </ul>
+                </Alert.Description>
+              </Alert.Content>
             </Alert>
           ) : null}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -270,57 +286,73 @@ function DocumentCategoryResults({
 
   return (
     <section aria-label={t(`evidence.categories.${category}`)}>
-      <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
-        <div className="flex items-center gap-2">
-          <Document className="text-slate-500" size={17} />
-          <h4 className="text-sm font-semibold text-slate-900">
-            {t(`evidence.categories.${category}`)}
-          </h4>
-        </div>
-        <span className="text-xs text-slate-500">
-          {t("documents.imageCount", { count: evidence.length })}
-        </span>
-      </div>
-      {evidence.length || orphanResults.length ? (
-        <div className="grid gap-4 border-b border-slate-100 pb-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {evidence.map((item) => (
-              <DocumentImageResult
-                checks={checks}
-                claimId={claimId}
-                editable={editable}
-                evidence={item}
-                isRunActive={isRunActive}
-                key={item.id}
-                result={resultsByEvidence.get(item.id)}
-              />
-            ))}
-            {orphanResults.map((result) => (
-              <DocumentImageResult
-                checks={checks}
-                claimId={claimId}
-                editable={editable}
-                isRunActive={isRunActive}
-                key={result.id}
-                result={result}
-              />
-            ))}
+      <Accordion.Item id={category} isDisabled={!extraction}>
+        <Accordion.Heading>
+          <Accordion.Trigger
+            aria-label={t(`evidence.categories.${category}`)}
+            className="group mb-3 min-w-0 gap-3 rounded-md border-b border-slate-100 px-0 py-3 text-slate-900"
+          >
+            <Document className="shrink-0 text-slate-500" size={17} />
+            <span className="min-w-0 flex-1 text-sm font-semibold">
+              {t(`evidence.categories.${category}`)}
+            </span>
+            <span className="shrink-0 text-xs font-normal text-slate-500">
+              {t("documents.imageCount", { count: evidence.length })}
+            </span>
+            {extraction ? (
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-100 transition-colors duration-200 group-hover:bg-blue-100 motion-reduce:transition-none">
+                <Accordion.Indicator className="m-0 size-6 text-blue-700">
+                  <ChevronDown aria-hidden="true" size={24} />
+                </Accordion.Indicator>
+              </span>
+            ) : null}
+          </Accordion.Trigger>
+        </Accordion.Heading>
+        {evidence.length || orphanResults.length ? (
+          <div className="grid gap-4 border-b border-slate-100 pb-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {evidence.map((item) => (
+                <DocumentImageResult
+                  checks={checks}
+                  claimId={claimId}
+                  editable={editable}
+                  evidence={item}
+                  isRunActive={isRunActive}
+                  key={item.id}
+                  result={resultsByEvidence.get(item.id)}
+                />
+              ))}
+              {orphanResults.map((result) => (
+                <DocumentImageResult
+                  checks={checks}
+                  claimId={claimId}
+                  editable={editable}
+                  isRunActive={isRunActive}
+                  key={result.id}
+                  result={result}
+                />
+              ))}
+            </div>
           </div>
-          {extraction ? (
-            <ExtractionResult
-              draftValues={draftValues}
-              editable={editable}
-              extraction={extraction}
-              blockedByField={blockedByField}
-              onDraftChange={onDraftChange}
-            />
-          ) : null}
-        </div>
-      ) : (
-        <div className="border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-          {t("documents.noEvidence")}
-        </div>
-      )}
+        ) : (
+          <div className="border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+            {t("documents.noEvidence")}
+          </div>
+        )}
+        {extraction ? (
+          <Accordion.Panel>
+            <Accordion.Body className="px-0 pb-0">
+              <ExtractionResult
+                draftValues={draftValues}
+                editable={editable}
+                extraction={extraction}
+                blockedByField={blockedByField}
+                onDraftChange={onDraftChange}
+              />
+            </Accordion.Body>
+          </Accordion.Panel>
+        ) : null}
+      </Accordion.Item>
     </section>
   );
 }
@@ -412,7 +444,9 @@ function DocumentImageResult({
         {result?.warning ? (
           <Alert status={result.status === "FAILED" ? "danger" : "warning"}>
             <WarningAlt size={17} />
-            <Alert.Description>{result.warning}</Alert.Description>
+            <Alert.Content>
+              <Alert.Description>{result.warning}</Alert.Description>
+            </Alert.Content>
           </Alert>
         ) : null}
         {result?.raw_text ? (
@@ -488,7 +522,9 @@ function ExtractionResult({
       {extraction.warning ? (
         <Alert status="danger">
           <WarningAlt size={17} />
-          <Alert.Description>{extraction.warning}</Alert.Description>
+          <Alert.Content>
+            <Alert.Description>{extraction.warning}</Alert.Description>
+          </Alert.Content>
         </Alert>
       ) : null}
       <p className="border-l-2 border-cyan-500 bg-cyan-50 px-3 py-2 text-xs text-cyan-950">

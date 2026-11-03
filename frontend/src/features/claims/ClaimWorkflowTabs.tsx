@@ -74,7 +74,7 @@ export function ClaimWorkflowTabs({
 
   return (
     <div
-      className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm"
+      className="workflow-tabs overflow-x-auto rounded-lg border border-slate-200 bg-surface shadow-sm"
       ref={viewportRef}
     >
       <div

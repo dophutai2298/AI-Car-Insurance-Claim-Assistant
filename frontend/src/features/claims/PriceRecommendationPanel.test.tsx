@@ -47,10 +47,12 @@ describe("Price recommendation", () => {
       rationale: "Chưa có giá thay thế phù hợp cho nắp capo.",
     };
     render(<PriceRecommendationPanel value={value} />);
-    expect(screen.getByText("Cần thẩm định giá thủ công")).toBeVisible();
+    expect(
+      screen.getByText(i18n.t("pricing.recommendation.MANUAL_REVIEW")),
+    ).toBeVisible();
     expect(screen.getByText(value.rationale)).toBeVisible();
     expect(
-      screen.getByText(/chuyên viên thẩm định quyết định cuối cùng/),
+      screen.getByText(i18n.t("pricing.recommendationDisclaimer")),
     ).toBeVisible();
   });
 });

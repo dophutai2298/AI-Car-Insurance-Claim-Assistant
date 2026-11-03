@@ -79,10 +79,10 @@ export function ClaimInformationPanel({ claim }: { claim: ClaimDetail }) {
 
   return (
     <Card
-      className="rounded-lg border border-slate-200 bg-white shadow-sm"
+      className="rounded-lg border border-slate-200 bg-surface shadow-sm"
       id="information"
     >
-      <Card.Header className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
+      <Card.Header className="panel-header flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
         <div className="flex items-center gap-3">
           <div className="flex size-10 items-center justify-center rounded-lg bg-blue-50 text-blue-700 ring-1 ring-blue-100">
             <CarFront size={20} />
@@ -112,12 +112,14 @@ export function ClaimInformationPanel({ claim }: { claim: ClaimDetail }) {
           <form className="grid gap-5" onSubmit={submit}>
             {update.error ? (
               <Alert status="danger">
-                <Alert.Title>{t("claim.updateFailed")}</Alert.Title>
-                <Alert.Description>
-                  {update.error instanceof ClaimsApiError
-                    ? update.error.message
-                    : t("common.tryAgain")}
-                </Alert.Description>
+                <Alert.Content>
+                  <Alert.Title>{t("claim.updateFailed")}</Alert.Title>
+                  <Alert.Description>
+                    {update.error instanceof ClaimsApiError
+                      ? update.error.message
+                      : t("common.tryAgain")}
+                  </Alert.Description>
+                </Alert.Content>
               </Alert>
             ) : null}
             <TextField isRequired>

@@ -8,6 +8,20 @@ const initialLanguage =
     : null;
 
 const en = {
+  chrome: {
+    insuranceWorkspace: "Insurance workspace",
+    workspace: "Workspace",
+    skipToContent: "Skip to content",
+    openNavigation: "Open navigation",
+    closeNavigation: "Close navigation",
+    lightTheme: "Switch to light theme",
+    darkTheme: "Switch to dark theme",
+    roles: {
+      ADMIN: "Administrator",
+      ADJUSTER: "Claims adjuster",
+      USER: "Customer",
+    },
+  },
   pricing: {
     staleRecommendation: "Earlier snapshot",
     staleDescription:
@@ -612,118 +626,132 @@ const en = {
 };
 
 const vi = {
-  pricing: {
-    staleRecommendation: "Snapshot trước đó",
-    staleDescription:
-      "Khuyến nghị này không còn hiện hành. Hoàn tất và lưu Analysis đã cập nhật, sau đó chạy lại AI Review.",
-    recommendationTitle: "Khuyến nghị AI về giá",
-    recommendationDisclaimer:
-      "Thông tin hỗ trợ dựa trên giá minh họa. Đánh giá tổn thất giữ nguyên; chuyên viên thẩm định quyết định cuối cùng.",
-    recommendation: {
-      SUPPORTS_REPAIR: "Hỗ trợ phương án sửa chữa",
-      SUPPORTS_REPLACEMENT: "Hỗ trợ phương án thay thế",
-      MANUAL_REVIEW: "Cần thẩm định giá thủ công",
+  chrome: {
+    insuranceWorkspace: "Trợ lý AI hỗ trợ giám định bảo hiểm ô tô",
+    workspace: "Khu vực làm việc",
+    skipToContent: "Chuyển đến nội dung",
+    openNavigation: "Mở menu điều hướng",
+    closeNavigation: "Đóng menu điều hướng",
+    lightTheme: "Chuyển sang giao diện sáng",
+    darkTheme: "Chuyển sang giao diện tối",
+    roles: {
+      ADMIN: "Quản trị viên",
+      ADJUSTER: "Giám định viên",
+      USER: "Khách hàng",
     },
-    lookupFailed: "Không thể lấy giá lúc này. Vui lòng thử lại sau.",
-    title: "Ước tính sửa chữa và thay thế",
+  },
+  pricing: {
+    staleRecommendation: "Khuyến nghị từ lần phân tích trước",
+    staleDescription:
+      "Khuyến nghị này dựa trên dữ liệu cũ. Hãy cập nhật và lưu kết quả phân tích, sau đó chạy lại bước Đánh giá AI.",
+    recommendationTitle: "Đề xuất phương án từ AI dựa trên giá",
+    recommendationDisclaimer:
+      "Đề xuất dựa trên giá tham khảo giả lập, không làm thay đổi kết quả đánh giá hư hỏng. Giám định viên là người quyết định phương án cuối cùng.",
+    recommendation: {
+      SUPPORTS_REPAIR: "Phù hợp với phương án sửa chữa",
+      SUPPORTS_REPLACEMENT: "Phù hợp với phương án thay thế",
+      MANUAL_REVIEW: "Cần kiểm tra giá thủ công",
+    },
+    lookupFailed: "Chưa tra cứu được giá. Vui lòng thử lại sau.",
+    title: "Tham khảo chi phí sửa chữa và thay thế",
     mockNotice:
-      "Danh mục giá Việt Nam minh họa · VNĐ. Giá tham khảo, không phải báo giá xưởng hay khoản bồi thường.",
-    assessment: "Đánh giá tổn thất",
-    independent: "Theo hư hại đã xác nhận; độc lập với giá",
-    repair_estimate: "Ước tính sửa chữa",
-    replacement_part_price: "Giá thay thế phụ tùng",
-    COMPLETE: "Ước tính đầy đủ",
-    INCOMPLETE: "Cộng các giá đã biết; chưa đủ để tính tổng",
-    UNAVAILABLE: "Chưa có giá khớp",
-    unavailable: "Chưa có giá",
-    missing: "Chưa có giá khớp chính xác",
-    parts: "phụ tùng có giá",
-    source: "Nguồn giá",
-    effective: "Hiệu lực",
-    retrieved: "Ngày lấy giá",
-    breakdown: "Bảng so sánh giá từng phụ tùng",
+      "Bảng giá minh họa tại Việt Nam (VNĐ). Chỉ để tham khảo, không phải báo giá của xưởng sửa chữa hay mức bồi thường.",
+    assessment: "Đánh giá mức độ hư hỏng",
+    independent: "Dựa trên hư hỏng đã xác nhận, không phụ thuộc vào giá.",
+    repair_estimate: "Chi phí sửa chữa ước tính",
+    replacement_part_price: "Giá phụ tùng thay thế",
+    COMPLETE: "Đã đủ giá để tính tổng",
+    INCOMPLETE: "Mới tính được phần đã có giá, chưa đủ để xác định tổng chi phí",
+    UNAVAILABLE: "Chưa có dữ liệu giá phù hợp",
+    unavailable: "Chưa có dữ liệu giá",
+    missing: "Không tìm thấy giá khớp chính xác",
+    parts: "bộ phận đã có giá",
+    source: "Nguồn tham khảo",
+    effective: "Ngày hiệu lực",
+    retrieved: "Thời điểm lấy giá",
+    breakdown: "So sánh giá theo từng bộ phận",
     humanDecision:
-      "Giá chỉ mang tính tham khảo. Chuyên viên thẩm định quyết định phương án cuối cùng.",
+      "Giá chỉ mang tính tham khảo. Giám định viên là người quyết định phương án cuối cùng.",
   },
   myClaims: {
-    eyebrow: "Tiếp nhận hồ sơ",
+    eyebrow: "Quản lý hồ sơ",
     title: "Hồ sơ của tôi",
     description:
-      "Theo dõi trạng thái hồ sơ và hoàn thiện bản nháp trước khi gửi.",
+      "Theo dõi tình trạng xử lý và hoàn thiện hồ sơ nháp trước khi gửi.",
     newClaim: "Tạo hồ sơ mới",
     claim: "Hồ sơ",
     created: "Ngày tạo",
     status: "Trạng thái",
     action: "Thao tác",
-    continue: "Tiếp tục bản nháp",
-    submitted: "Đang theo dõi",
-    empty: "Bạn chưa có hồ sơ nào.",
-    loadFailed: "Không thể tải hồ sơ của bạn.",
-    evidenceCount: "Đã tải {{count}}/{{total}} loại bằng chứng bắt buộc",
+    continue: "Tiếp tục hoàn thiện",
+    submitted: "Đã gửi hồ sơ",
+    empty: "Bạn chưa tạo hồ sơ nào.",
+    loadFailed: "Chưa tải được danh sách hồ sơ của bạn.",
+    evidenceCount: "Đã tải lên {{count}}/{{total}} loại giấy tờ và hình ảnh bắt buộc",
     submit: "Gửi hồ sơ",
-    submitSuccess: "Đã gửi hồ sơ",
-    submitFailed: "Không thể gửi hồ sơ",
+    submitSuccess: "Gửi hồ sơ thành công",
+    submitFailed: "Gửi hồ sơ không thành công",
   },
   customerAccount: {
     eyebrow: "Quản lý khách hàng",
     pageTitle: "Tài khoản khách hàng",
     pageDescription:
-      "Tạo tài khoản đăng nhập để khách hàng chuẩn bị và nộp hồ sơ của họ.",
+      "Tạo tài khoản để khách hàng tự chuẩn bị, gửi và theo dõi hồ sơ bồi thường.",
     userAccounts: "Tài khoản khách hàng",
-    userAccountsDescription: "Tạo tài khoản đăng nhập cho người gửi hồ sơ.",
+    userAccountsDescription: "Cấp tài khoản cho khách hàng nộp hồ sơ trực tuyến.",
     createAccount: "Tạo tài khoản khách hàng",
     userFullName: "Họ và tên",
-    createUser: "Tạo tài khoản User",
-    userCreated: "Đã tạo tài khoản User",
-    userCreateFailed: "Không thể tạo tài khoản User",
+    createUser: "Tạo tài khoản khách hàng",
+    userCreated: "Đã tạo tài khoản khách hàng",
+    userCreateFailed: "Không thể tạo tài khoản khách hàng",
     listTitle: "Danh sách tài khoản khách hàng",
-    listDescription: "Các tài khoản có thể tạo và theo dõi hồ sơ của mình.",
+    listDescription: "Danh sách khách hàng có tài khoản để tạo và theo dõi hồ sơ.",
     status: "Trạng thái",
     active: "Đang hoạt động",
     inactive: "Ngừng hoạt động",
-    empty: "Chưa có tài khoản khách hàng nào.",
-    loadFailed: "Không thể tải danh sách tài khoản khách hàng",
+    empty: "Chưa có tài khoản khách hàng.",
+    loadFailed: "Không thể tải danh sách tài khoản khách hàng.",
   },
   toast: {
-    claimInformationSaved: "Đã lưu thông tin hồ sơ",
-    claimInformationSaveFailed: "Chưa thể lưu thông tin hồ sơ",
-    evidenceUploaded: "Đã tải lên {{count}} tệp bằng chứng",
-    evidenceUploadFailed: "Chưa thể tải lên bằng chứng",
-    evidenceDeleted: "Đã xóa bằng chứng",
-    evidenceDeleteFailed: "Chưa thể xóa bằng chứng",
-    analysisStarted: "Đã bắt đầu phân tích",
+    claimInformationSaved: "Lưu thông tin hồ sơ thành công",
+    claimInformationSaveFailed: "Không thể lưu thông tin hồ sơ",
+    evidenceUploaded: "Đã tải lên {{count}} tệp",
+    evidenceUploadFailed: "Không thể tải tệp lên",
+    evidenceDeleted: "Đã xóa tệp khỏi hồ sơ",
+    evidenceDeleteFailed: "Không thể xóa tệp",
+    analysisStarted: "Đã bắt đầu phân tích hồ sơ",
     analysisStartedDescription:
-      "Quá trình xử lý tiếp diễn ở nền. Bạn có thể rời khỏi trang này.",
-    analysisStartFailed: "Chưa thể bắt đầu phân tích",
-    analysisCompleted: "Đã hoàn tất phân tích",
-    analysisPartial: "Phân tích hoàn tất, cần xem xét một số mục",
-    analysisFailed: "Phân tích thất bại",
-    documentFieldsSaved: "Đã lưu các trường giấy tờ",
-    documentFieldsSaveFailed: "Chưa thể lưu các trường giấy tờ",
-    documentFieldSaved: "Đã lưu {{field}}",
-    documentFieldSaveFailed: "Chưa thể lưu {{field}}",
-    aiReviewGenerated: "Đã tạo đánh giá AI",
-    aiReviewFailed: "Chưa thể tạo đánh giá AI",
-    humanReviewApproved: "Đã chấp thuận đánh giá AI",
-    humanReviewRejected: "Đã từ chối đánh giá AI",
-    humanReviewFailed: "Chưa thể lưu đánh giá thủ công",
-    humanReviewReverted: "Đã hoàn tác đánh giá thủ công",
-    humanReviewRevertFailed: "Chưa thể hoàn tác đánh giá thủ công",
+      "Hệ thống tiếp tục xử lý ngay cả khi bạn rời khỏi trang này.",
+    analysisStartFailed: "Không thể bắt đầu phân tích",
+    analysisCompleted: "Phân tích đã hoàn tất",
+    analysisPartial: "Đã có kết quả phân tích, nhưng một số mục cần kiểm tra thêm",
+    analysisFailed: "Không thể hoàn tất phân tích",
+    documentFieldsSaved: "Đã lưu thông tin giấy tờ",
+    documentFieldsSaveFailed: "Không thể lưu thông tin giấy tờ",
+    documentFieldSaved: "Đã lưu thông tin {{field}}",
+    documentFieldSaveFailed: "Không thể lưu thông tin {{field}}",
+    aiReviewGenerated: "Đã tạo bản đánh giá từ AI",
+    aiReviewFailed: "Không thể tạo bản đánh giá từ AI",
+    humanReviewApproved: "Đã chấp thuận kết quả đánh giá của AI",
+    humanReviewRejected: "Đã từ chối kết quả đánh giá của AI",
+    humanReviewFailed: "Không thể lưu kết quả đánh giá của giám định viên",
+    humanReviewReverted: "Đã hoàn tác đánh giá của giám định viên",
+    humanReviewRevertFailed: "Không thể hoàn tác đánh giá của giám định viên",
     claimDeleted: "Đã xóa hồ sơ",
-    claimDeleteFailed: "Chưa thể xóa hồ sơ",
-    claimCreated: "Đã tạo hồ sơ",
-    claimCreateFailed: "Chưa thể tạo hồ sơ",
+    claimDeleteFailed: "Không thể xóa hồ sơ",
+    claimCreated: "Tạo hồ sơ thành công",
+    claimCreateFailed: "Không thể tạo hồ sơ",
   },
   common: {
     backToTop: "Lên đầu trang",
     edit: "Chỉnh sửa",
     save: "Lưu",
-    cancel: "Hủy",
-    tryAgain: "Thử lại.",
+    cancel: "Hủy",
+    tryAgain: "Thử lại",
     notProvided: "Chưa cung cấp",
     clearFilters: "Xóa bộ lọc",
-    sortAscending: "Sắp xếp {{column}} tăng dần",
-    sortDescending: "Sắp xếp {{column}} giảm dần",
+    sortAscending: "Sắp xếp {{column}} theo thứ tự tăng dần",
+    sortDescending: "Sắp xếp {{column}} theo thứ tự giảm dần",
   },
 
   navigation: {
@@ -731,7 +759,7 @@ const vi = {
     dashboard: "Tổng quan",
     claims: "Hồ sơ bồi thường",
     customerAccounts: "Tài khoản khách hàng",
-    admin: "Cấu hình quản trị",
+    admin: "Quản trị hệ thống",
     signOut: "Đăng xuất",
   },
 
@@ -744,87 +772,87 @@ const vi = {
   },
 
   dashboard: {
-    eyebrow: "Vận hành hồ sơ bồi thường",
-    title: "Không gian đánh giá hồ sơ",
+    eyebrow: "Quản lý hồ sơ bồi thường",
+    title: "Tổng quan xử lý hồ sơ",
     description:
-      "Theo dõi hồ sơ mới, tập trung vào hàng đợi cần xem xét và mở bộ bằng chứng cần xử lý.",
+      "Theo dõi tình trạng hồ sơ, nắm các trường hợp cần xem xét và truy cập nhanh tài liệu liên quan.",
     newClaim: "Tạo hồ sơ",
     totalClaims: "Tổng số hồ sơ",
-    pendingReviews: "Đang chờ xem xét",
+    pendingReviews: "Chờ giám định viên xem xét",
     aiApproved: "Đánh giá AI được chấp thuận",
     aiRejected: "Đánh giá AI bị từ chối",
-    statusOverview: "Tổng quan trạng thái hồ sơ",
+    statusOverview: "Tình trạng xử lý hồ sơ",
     statusOverviewDescription:
-      "Số lượng hiện tại theo trạng thái quy trình. Kết quả AI không phải quyết định cuối cùng của đơn vị bảo hiểm.",
-    loadError: "Không thể tải dữ liệu tổng quan.",
-    noActivity: "Chưa có hoạt động hồ sơ",
+      "Số lượng hồ sơ theo từng trạng thái. Đánh giá từ AI chỉ mang tính hỗ trợ, không phải quyết định bồi thường.",
+    loadError: "Chưa tải được dữ liệu tổng quan.",
+    noActivity: "Chưa có dữ liệu hồ sơ",
     noActivityDescription:
-      "Số lượng trạng thái sẽ xuất hiện sau khi tạo hồ sơ.",
-    needsReview: "Cần xem xét",
-    needsReviewDescription: "Các hồ sơ đang chờ chuyên viên đưa ra quyết định.",
-    noReviewQueue: "Hiện không có hồ sơ nào cần chuyên viên xem xét.",
-    recentClaims: "Hồ sơ gần đây",
+      "Biểu đồ trạng thái sẽ hiển thị khi có hồ sơ trong hệ thống.",
+    needsReview: "Hồ sơ cần xem xét",
+    needsReviewDescription: "Những hồ sơ đang chờ giám định viên xem xét và đưa ra quyết định.",
+    noReviewQueue: "Hiện không có hồ sơ nào đang chờ giám định viên xem xét.",
+    recentClaims: "Hồ sơ mới cập nhật",
     recentDescription:
-      "Hoạt động mới nhất hiển thị trước. Tìm theo thông tin hồ sơ, sau đó lọc theo trạng thái hoặc ngày cập nhật.",
-    noClaims: "Chưa có hồ sơ",
-    noClaimsDescription: "Tạo hồ sơ để bắt đầu tiếp nhận bằng chứng.",
+      "Hồ sơ cập nhật gần nhất được hiển thị trước. Có thể tìm kiếm và lọc theo trạng thái hoặc thời gian cập nhật.",
+    noClaims: "Chưa có hồ sơ nào",
+    noClaimsDescription: "Tạo hồ sơ mới để bắt đầu bổ sung giấy tờ và hình ảnh.",
   },
 
   claimsList: {
     eyebrow: "Hồ sơ bồi thường",
     title: "Danh sách hồ sơ",
-    description: "Xem các hồ sơ đang xử lý và mở bộ bằng chứng tương ứng.",
+    description: "Theo dõi các hồ sơ đang xử lý và xem giấy tờ, hình ảnh của từng hồ sơ.",
     allClaims: "Tất cả hồ sơ",
-    allClaimsDescription: "Các hồ sơ được sắp xếp theo lần cập nhật gần nhất.",
-    loadError: "Không thể tải danh sách hồ sơ.",
+    allClaimsDescription: "Hiển thị hồ sơ theo thứ tự cập nhật mới nhất.",
+    loadError: "Chưa tải được danh sách hồ sơ.",
   },
 
   queue: {
-    loadFailed: "Không thể tải danh sách",
+    loadFailed: "Chưa tải được danh sách hồ sơ",
     claim: "Hồ sơ",
     vehicle: "Phương tiện",
     reviewStatus: "Trạng thái đánh giá",
-    lastUpdated: "Cập nhật gần nhất",
-    empty: "Không có hồ sơ phù hợp với bộ lọc.",
+    lastUpdated: "Cập nhật lần cuối",
+    empty: "Không tìm thấy hồ sơ phù hợp với điều kiện lọc.",
     clearFilters: "Xóa bộ lọc",
     claimShown: "hồ sơ hiển thị",
     claimsShown: "hồ sơ hiển thị",
     searchLabel: "Tìm hồ sơ",
-    searchPlaceholder: "Mã hồ sơ, người yêu cầu hoặc phương tiện",
+    searchPlaceholder: "Mã hồ sơ, tên người yêu cầu hoặc thông tin xe",
     status: "Trạng thái",
     allStatuses: "Tất cả trạng thái",
-    updated: "Thời gian cập nhật",
-    allDates: "Tất cả ngày",
+    updated: "Ngày cập nhật",
+    allDates: "Mọi thời điểm",
     today: "Hôm nay",
     last7Days: "7 ngày gần đây",
     last30Days: "30 ngày gần đây",
-    showing: "Hiển thị {{first}}-{{last}} trong {{total}} hồ sơ",
-    none: "Không có hồ sơ để hiển thị",
-    rowsPerPage: "Số dòng mỗi trang",
+    showing: "Đang hiển thị {{first}}–{{last}} trên tổng số {{total}} hồ sơ",
+    none: "Chưa có hồ sơ để hiển thị",
+    rowsPerPage: "Số hồ sơ mỗi trang",
     page: "Trang {{current}} / {{total}}",
     previousPage: "Trang trước",
     nextPage: "Trang sau",
-    sortAscending: "Sắp xếp {{column}} tăng dần",
-    sortDescending: "Sắp xếp {{column}} giảm dần",
+    sortAscending: "Sắp xếp {{column}} theo thứ tự tăng dần",
+    sortDescending: "Sắp xếp {{column}} theo thứ tự giảm dần",
   },
 
   access: {
-    title: "Quyền truy cập bị giới hạn",
-    description: "Chỉ tài khoản có vai trò Admin mới được cấu hình hệ thống.",
-    returnToDashboard: "Quay lại tổng quan",
+    title: "Bạn không có quyền truy cập",
+    description: "Chỉ quản trị viên mới có quyền thay đổi cấu hình hệ thống.",
+    returnToDashboard: "Về trang tổng quan",
   },
 
   auth: {
-    workspace: "Không gian làm việc an toàn cho chuyên viên",
-    headline: "Xem xét bằng chứng với quyền kiểm soát rõ ràng của con người.",
+    workspace: "AI hỗ trợ giám định bảo hiểm ô tô",
+    headline: "AI hỗ trợ phân tích hồ sơ. Giám định viên giữ quyền quyết định.",
     description:
-      "Kết quả hư hỏng xe, giấy tờ hỗ trợ và kết luận AI được tổ chức trong một không gian vận hành thống nhất.",
+      "Thông tin hồ sơ, hình ảnh hư hỏng, giấy tờ và nhận định từ AI được tập trung tại một nơi để bạn dễ dàng xem xét.",
     authorizedOnly:
-      "Chỉ dành cho người dùng được cấp quyền trong bản demo nội bộ",
-    signInTitle: "Đăng nhập Claim Assistant",
-    signInDescription: "Sử dụng tài khoản Admin hoặc Adjuster để tiếp tục.",
-    signInFailed: "Đăng nhập thất bại",
-    unableToSignIn: "Không thể đăng nhập",
+      "Bản demo nội bộ chỉ dành cho người dùng được cấp quyền truy cập.",
+    signInTitle: "Đăng nhập hệ thống Claim Assistant",
+    signInDescription: "Đăng nhập bằng tài khoản quản trị viên hoặc giám định viên để tiếp tục.",
+    signInFailed: "Đăng nhập không thành công",
+    unableToSignIn: "Chưa thể đăng nhập",
     email: "Email",
     password: "Mật khẩu",
     emailPlaceholder: "ten@congty.com",
@@ -835,77 +863,77 @@ const vi = {
     eyebrow: "Quản trị",
     title: "Quy tắc đánh giá",
     description:
-      "Các quy tắc PoC dùng chung cho những lần phân tích hư hỏng mới.",
-    globalConfiguration: "Cấu hình dùng chung",
-    activeThresholds: "Ngưỡng đang áp dụng",
+      "Thiết lập các quy tắc chung áp dụng cho những lần phân tích hư hỏng tiếp theo.",
+    globalConfiguration: "Thiết lập chung",
+    activeThresholds: "Ngưỡng đánh giá hiện tại",
     thresholdDescription:
-      "Thay đổi chỉ áp dụng cho các lần phân tích bắt đầu sau khi cập nhật.",
-    configurationUnavailable: "Cấu hình không khả dụng",
-    configurationLoadFailed: "Không thể tải quy tắc đánh giá.",
-    rulesNotSaved: "Chưa lưu quy tắc",
-    thresholdRangeError: "Ngưỡng hư hỏng phải nằm trong khoảng từ 0 đến 100.",
+      "Các thay đổi chỉ có hiệu lực với những lần phân tích bắt đầu sau khi lưu.",
+    configurationUnavailable: "Hiện không thể truy cập cấu hình",
+    configurationLoadFailed: "Không thể tải cấu hình đánh giá.",
+    rulesNotSaved: "Các thay đổi chưa được lưu",
+    thresholdRangeError: "Tỷ lệ hư hỏng phải nằm trong khoảng 0–100%.",
     thresholdOrderError:
-      "Ngưỡng sửa chữa tối đa phải nhỏ hơn ngưỡng thay thế tối thiểu.",
-    updateFailed: "Không thể cập nhật quy tắc đánh giá.",
+      "Ngưỡng sửa chữa tối đa phải thấp hơn ngưỡng thay thế tối thiểu.",
+    updateFailed: "Không thể lưu thay đổi quy tắc đánh giá.",
     repairMaximum: "Ngưỡng sửa chữa tối đa",
     replacementMinimum: "Ngưỡng thay thế tối thiểu",
-    damagePercentage: "Tỷ lệ hư hỏng",
-    lastChanged: "Cập nhật gần nhất bởi {{user}} vào {{date}}",
-    systemDefaults: "giá trị mặc định hệ thống",
+    damagePercentage: "Tỷ lệ diện tích hư hỏng",
+    lastChanged: "{{user}} cập nhật lần cuối vào {{date}}",
+    systemDefaults: "Thiết lập mặc định của hệ thống",
     saveRules: "Lưu quy tắc",
     changeHistory: "Lịch sử thay đổi",
     historyDescription:
-      "Nhật ký được lưu cho các lần cập nhật quy tắc đánh giá.",
-    historyUnavailable: "Không thể tải lịch sử",
-    activeRulesUnaffected: "Các quy tắc đang áp dụng không bị ảnh hưởng.",
-    noHistory: "Chưa ghi nhận thay đổi nào từ quản trị viên.",
+      "Theo dõi những lần quản trị viên thay đổi quy tắc đánh giá.",
+    historyUnavailable: "Không thể tải lịch sử thay đổi",
+    activeRulesUnaffected: "Các quy tắc hiện tại vẫn được giữ nguyên.",
+    noHistory: "Chưa có thay đổi quy tắc nào được ghi nhận.",
     historyChange:
-      "Sửa chữa từ {{oldRepair}}% thành {{newRepair}}%; thay thế từ {{oldReplacement}}% thành {{newReplacement}}%.",
+      "Ngưỡng sửa chữa: {{oldRepair}}% → {{newRepair}}%; ngưỡng thay thế: {{oldReplacement}}% → {{newReplacement}}%.",
   },
 
   claim: {
     intake: "Tiếp nhận hồ sơ",
     createTitle: "Tạo hồ sơ bồi thường",
     createDescription:
-      "Bắt đầu quy trình xem xét bằng chứng. Thao tác này không đồng nghĩa với việc chấp thuận hoặc từ chối yêu cầu bồi thường.",
+      "Tạo hồ sơ để ghi nhận thông tin, giấy tờ và hình ảnh phục vụ việc xem xét yêu cầu bồi thường. Đây chưa phải bước chấp thuận hay từ chối bồi thường.",
 
     information: "Thông tin hồ sơ",
     informationDescription:
-      "Thông tin người yêu cầu, phương tiện và sự cố được sử dụng xuyên suốt quá trình xem xét.",
+      "Thông tin người yêu cầu bồi thường, xe và sự cố sẽ được dùng trong các bước xử lý tiếp theo.",
 
     workflow: "Quy trình xử lý hồ sơ",
-    layoutMode: "Bố cục quy trình",
-    singlePage: "Một trang",
-    tabLayout: "Các tab",
+    layoutMode: "Cách hiển thị quy trình",
+    singlePage: "Một trang",
+    tabLayout: "Tabs",
 
     current: "Hiện tại",
     available: "Khả dụng",
-    blocked: "Bị chặn",
+    blocked: "Chưa thể truy cập",
     completed: "Hoàn tất",
     warning: "Cảnh báo",
     error: "Lỗi",
 
-    stepEvidence: "Bằng chứng & giấy tờ",
+    stepEvidence: "Hình ảnh và giấy tờ",
     stepAnalysis: "Phân tích",
-    stepAiReview: "Đánh giá AI",
-    stepHumanReview: "Đánh giá thủ công",
+    stepAiReview: "Đánh giá từ AI",
+    stepHumanReview: "Giám định viên đánh giá",
 
-    vehicleAndClaimant: "Phương tiện và người yêu cầu",
+    vehicleAndClaimant: "Thông tin xe và người yêu cầu bồi thường",
     vehicleDescription:
-      "Thông tin cơ bản của hồ sơ phục vụ cho quy trình xử lý bằng chứng.",
+      "Cung cấp thông tin xe và người yêu cầu bồi thường để xử lý hồ sơ.",
 
-    claimantName: "Tên người yêu cầu",
+    claimantName: "Họ tên người yêu cầu bồi thường",
     vehicleMake: "Hãng xe",
-    vehicleModel: "Dòng xe",
+    vehicleModel: "Mẫu xe",
     vehicleYear: "Năm sản xuất",
     licensePlate: "Biển số xe",
     vin: "Số VIN",
 
-    searchMakes: "Tìm kiếm hãng xe",
+    searchMakes: "Tìm hãng xe",
     selectMake: "Chọn hãng xe",
     selectMakeRequired: "Vui lòng chọn hãng xe trước khi tạo hồ sơ.",
     loadingMakes: "Đang tải danh sách hãng xe...",
-    noMakes: "Không có hãng xe nào khả dụng.",
+    noMakes: "Hiện chưa có hãng xe nào để lựa chọn.",
     unableToLoadMakes: "Không thể tải danh sách hãng xe.",
 
     unableToCreate: "Không thể tạo hồ sơ",
@@ -916,54 +944,54 @@ const vi = {
     backToClaims: "Quay lại danh sách hồ sơ",
 
     incidentInformation: "Thông tin sự cố",
-    incidentDescription: "Ghi nhận thời gian và địa điểm xảy ra sự cố.",
-    incidentAt: "Ngày và giờ xảy ra sự cố",
-    incidentAtMustBePast: "Ngày và giờ xảy ra sự cố phải sớm hơn hiện tại.",
+    incidentDescription: "Cung cấp thời gian, địa điểm và diễn biến sự cố.",
+    incidentAt: "Thời điểm xảy ra sự cố",
+    incidentAtMustBePast: "Thời điểm xảy ra sự cố phải trước thời điểm hiện tại.",
     incidentLocation: "Địa điểm xảy ra sự cố",
-    incidentDetails: "Mô tả sự cố",
+    incidentDetails: "Diễn biến sự cố",
 
-    unavailable: "Hồ sơ không khả dụng",
+    unavailable: "Không thể truy cập hồ sơ",
     loadFailed: "Không thể tải hồ sơ.",
 
     case: "Hồ sơ bồi thường",
     claimNumber: "Hồ sơ {{id}}",
-    createdFor: "Được tạo cho {{name}}",
+    createdFor: "Người yêu cầu bồi thường: {{name}}",
     deleteClaim: "Xóa hồ sơ",
     deleteClaimTitle: "Xóa hồ sơ này?",
     deleteClaimDescription:
-      "Xóa vĩnh viễn hồ sơ {{id}}, tệp đã tải lên, dữ liệu phân tích và lịch sử đánh giá? Không thể hoàn tác.",
+      "Bạn có chắc muốn xóa vĩnh viễn hồ sơ {{id}} cùng các tệp đính kèm, kết quả phân tích và lịch sử đánh giá? Thao tác này không thể hoàn tác.",
     deleteFailed: "Không thể xóa hồ sơ",
 
-    safetyTitle: "Giới hạn hỗ trợ ra quyết định",
+    safetyTitle: "Thông tin hỗ trợ giám định",
     safetyDescription:
-      "Trạng thái đánh giá của AI và người xử lý chỉ mô tả quá trình xem xét bằng chứng. Đây không phải là quyết định cuối cùng đối với yêu cầu bồi thường.",
+      "Kết quả đánh giá từ AI và giám định viên chỉ phản ánh quá trình rà soát hồ sơ, không thay thế quyết định bồi thường chính thức.",
 
     status: {
       DRAFT: "Bản nháp",
-      SUBMITTED: "Đã gửi",
+      SUBMITTED: "Đã nộp",
       ANALYZING: "Đang phân tích",
-      REVIEW_REQUIRED: "Cần xem xét",
-      AI_APPROVED: "Đánh giá AI đã được chấp thuận",
-      AI_REJECTED: "Đánh giá AI đã bị từ chối",
-      FAILED: "Thất bại",
+      REVIEW_REQUIRED: "Chờ giám định viên xem xét",
+      AI_APPROVED: "Đã chấp thuận đánh giá của AI",
+      AI_REJECTED: "Đã từ chối đánh giá của AI",
+      FAILED: "Xử lý không thành công",
     },
   },
 
   evidence: {
     description:
-      "Tải từng loại bằng chứng bắt buộc lên đúng khu vực tương ứng.",
+      "Tải lên đầy đủ giấy tờ và hình ảnh theo từng nhóm yêu cầu.",
 
-    uploadFailed: "Tải bằng chứng lên thất bại",
+    uploadFailed: "Không thể tải tệp lên",
 
     otherDocuments: "Giấy tờ khác",
     otherDescription:
-      "Thêm các giấy tờ hỗ trợ tùy chọn và đặt tên nhóm rõ ràng.",
+      "Bạn có thể bổ sung giấy tờ khác và đặt tên nhóm để dễ theo dõi.",
 
     documentName: "Tên giấy tờ",
-    files: "Tệp",
-    otherFiles: "Tệp giấy tờ khác",
+    files: "Tệp đính kèm",
+    otherFiles: "Tệp đính kèm khác",
 
-    addOther: "Thêm giấy tờ khác",
+    addOther: "Bổ sung giấy tờ",
 
     uploaded: "Đã tải lên",
     analysisRequired: "Cần phân tích",
@@ -971,18 +999,18 @@ const vi = {
 
     addMore: "Thêm tệp",
     selectFiles: "Chọn tệp",
-    selectFor: "Chọn tệp cho {{category}}",
+    selectFor: "Chọn tệp thuộc nhóm {{category}}",
     removeFile: "Xóa {{filename}}",
     openImage: "Xem {{filename}}",
     closeImage: "Đóng ảnh",
     deleteAction: "Xóa",
-    deleteFailed: "Không thể xóa bằng chứng",
-    confirmDeleteTitle: "Xóa bằng chứng?",
+    deleteFailed: "Không thể xóa tệp",
+    confirmDeleteTitle: "Xóa tệp khỏi hồ sơ?",
     confirmDeleteDescription:
-      "Xóa {{filename}} khỏi bằng chứng hiện tại? Lịch sử phân tích trước đó vẫn được giữ lại.",
+      "Bạn có muốn xóa {{filename}} khỏi hồ sơ? Kết quả của các lần phân tích trước vẫn được lưu.",
 
     categories: {
-      VEHICLE_DAMAGE_IMAGE: "Hình ảnh hư hỏng xe",
+      VEHICLE_DAMAGE_IMAGE: "Ảnh chụp hư hỏng xe",
       ID_CARD: "Giấy tờ tùy thân",
       INSURANCE_POLICY: "Hợp đồng bảo hiểm",
       VEHICLE_REGISTRATION: "Giấy đăng ký xe",
@@ -992,176 +1020,176 @@ const vi = {
 
     hints: {
       VEHICLE_DAMAGE_IMAGE:
-        "Một hoặc nhiều hình ảnh rõ nét về các khu vực bị hư hỏng.",
+        "Tải lên một hoặc nhiều ảnh rõ nét, thể hiện các vị trí hư hỏng trên xe.",
 
-      ID_CARD: "Giấy tờ xác minh danh tính của người yêu cầu bồi thường.",
+      ID_CARD: "Ảnh giấy tờ tùy thân của người yêu cầu bồi thường.",
 
       INSURANCE_POLICY:
-        "Các trang hợp đồng bảo hiểm còn hiệu lực liên quan đến hồ sơ này.",
+        "Các trang hợp đồng bảo hiểm liên quan đến hồ sơ và còn hiệu lực.",
 
-      VEHICLE_REGISTRATION: "Thông tin đăng ký và chủ sở hữu phương tiện.",
+      VEHICLE_REGISTRATION: "Giấy đăng ký xe thể hiện thông tin phương tiện và chủ sở hữu.",
 
-      DRIVER_LICENSE: "Hình ảnh giấy phép lái xe còn hiệu lực.",
+      DRIVER_LICENSE: "Ảnh giấy phép lái xe còn hiệu lực.",
 
-      OTHER_DOCUMENT: "Các bằng chứng hoặc giấy tờ hỗ trợ bổ sung.",
+      OTHER_DOCUMENT: "Giấy tờ hoặc hình ảnh bổ sung phục vụ việc xem xét hồ sơ.",
     },
   },
 
   analysis: {
     description:
-      "Phân tích hư hỏng và xử lý giấy tờ được thực hiện độc lập trong nền.",
+      "Hệ thống xử lý hình ảnh hư hỏng và giấy tờ theo hai luồng riêng biệt.",
 
-    analyze: "Phân tích",
+    analyze: "Bắt đầu phân tích",
     runAgain: "Phân tích lại",
     runAllAgain: "Phân tích lại toàn bộ",
 
     startFailed: "Không thể bắt đầu phân tích",
-    notReady: "Phân tích chưa sẵn sàng",
+    notReady: "Chưa thể thực hiện phân tích",
 
-    incidentMissing: "Vui lòng hoàn tất thông tin sự cố trước.",
+    incidentMissing: "Hãy bổ sung đầy đủ thông tin sự cố trước khi phân tích.",
 
-    evidenceMissing: "Vẫn còn thiếu {{count}} loại bằng chứng bắt buộc.",
+    evidenceMissing: "Hồ sơ còn thiếu {{count}} loại giấy tờ hoặc hình ảnh bắt buộc.",
 
-    processing: "Phân tích đang được xử lý trong nền",
+    processing: "Đang phân tích hồ sơ",
     processingDescription:
-      "Bạn có thể rời khỏi trang này và quay lại sau. Trạng thái sẽ được tự động cập nhật.",
+      "Hệ thống vẫn tiếp tục xử lý nếu bạn rời khỏi trang. Trạng thái sẽ được cập nhật tự động.",
 
-    inputsChanged: "Dữ liệu hồ sơ đã thay đổi",
+    inputsChanged: "Thông tin hồ sơ đã được cập nhật",
     inputsChangedDescription:
-      "Thông tin hoặc bằng chứng đã thay đổi sau lần phân tích này. Vui lòng phân tích lại trước khi thực hiện đánh giá AI.",
+      "Thông tin hoặc tệp đính kèm đã thay đổi sau lần phân tích gần nhất. Hãy phân tích lại trước khi chuyển sang bước Đánh giá AI.",
 
-    partial: "Có kết quả phân tích một phần",
+    partial: "Một phần kết quả đã sẵn sàng",
     partialDescription:
-      "Một số hạng mục xử lý thất bại, nhưng các kết quả thành công vẫn có thể được xem xét.",
+      "Một số mục chưa xử lý thành công. Bạn vẫn có thể xem những kết quả đã hoàn tất.",
 
-    failed: "Phân tích thất bại",
-    empty: "Chưa thực hiện phân tích.",
+    failed: "Không thể hoàn tất phân tích",
+    empty: "Chưa có kết quả phân tích.",
 
-    vehicleDamage: "Hư hỏng phương tiện",
+    vehicleDamage: "Phân tích hư hỏng xe",
     damageDescription:
-      "Các kết quả đã được chuẩn hóa từ mô hình phân tích hư hỏng được cấu hình.",
+      "Kết quả nhận diện hư hỏng được tổng hợp và chuẩn hóa từ mô hình AI đang sử dụng.",
 
     reviewNote: "Ghi chú đánh giá",
 
-    areaUnknown: "Không xác định được khu vực trên xe",
-    damageUnknown: "Không xác định được loại hư hỏng",
+    areaUnknown: "Chưa xác định được bộ phận trên xe",
+    damageUnknown: "Chưa xác định được loại hư hỏng",
 
     damage: "Hư hỏng",
     confidence: "Độ tin cậy",
-    damageTable: "Các hạng mục hư hỏng của xe",
-    annotatedEvidence: "Hình ảnh hư hỏng đã đánh dấu",
+    damageTable: "Danh sách bộ phận bị hư hỏng",
+    annotatedEvidence: "Ảnh đã đánh dấu vùng hư hỏng",
     part: "Bộ phận",
     damageType: "Loại hư hỏng",
-    areaPercent: "Diện tích %",
+    areaPercent: "Tỷ lệ diện tích hư hỏng (%)",
 
-    noDamage: "Không phát hiện hư hỏng đáng kể",
-    noDamageMatches: "Không có hư hỏng nào phù hợp với bộ lọc.",
-    findingShown: "hư hỏng hiển thị",
-    findingsShown: "hư hỏng hiển thị",
-    searchFindings: "Tìm hư hỏng",
-    searchFindingsPlaceholder: "Bộ phận hoặc loại hư hỏng",
+    noDamage: "Chưa phát hiện hư hỏng đáng kể",
+    noDamageMatches: "Không tìm thấy hư hỏng phù hợp với bộ lọc.",
+    findingShown: "hạng mục hư hỏng được hiển thị",
+    findingsShown: "hạng mục hư hỏng được hiển thị",
+    searchFindings: "Tìm theo hư hỏng",
+    searchFindingsPlaceholder: "Nhập tên bộ phận hoặc loại hư hỏng",
     allDamageTypes: "Tất cả loại hư hỏng",
 
     status: {
       PENDING: "Đang chờ",
       PROCESSING: "Đang xử lý",
       COMPLETED: "Hoàn tất",
-      PARTIAL: "Một phần",
-      FAILED: "Thất bại",
+      PARTIAL: "Hoàn tất một phần",
+      FAILED: "Không thành công",
     },
 
     assessment: {
       NO_DAMAGE: "Không có hư hỏng đáng kể",
-      REPAIR_LIKELY: "Có khả năng cần sửa chữa",
-      REPLACEMENT_LIKELY: "Có khả năng cần thay thế",
-      MANUAL_INSPECTION_REQUIRED: "Cần kiểm tra thủ công",
+      REPAIR_LIKELY: "Có thể sửa chữa",
+      REPLACEMENT_LIKELY: "Có thể cần thay thế",
+      MANUAL_INSPECTION_REQUIRED: "Cần giám định viên kiểm tra",
     },
   },
 
   documents: {
-    title: "Phân tích giấy tờ",
+    title: "Kiểm tra và đối chiếu giấy tờ",
 
     description:
-      "Đối chiếu kết quả OCR và xác thực từng trường với đúng ảnh nguồn.",
-    runContext: "Lần phân tích #{{id}}",
+      "Kiểm tra nội dung trích xuất bằng OCR và đối chiếu với thông tin trên giấy tờ gốc.",
+    runContext: "Kết quả phân tích lần #{{id}}",
     imageCount: "{{count}} ảnh",
-    processedBy: "Xử lý bởi {{adapter}}",
-    processingState: "Đang chờ xử lý OCR",
-    processing: "OCR và xác thực trường dữ liệu đang được xử lý.",
-    reusing: "Đang sử dụng lại kết quả phân tích trước đó.",
-    reused: "Đã sử dụng lại",
-    unavailable: "Không khả dụng",
-    noEvidence: "Không có ảnh bằng chứng trong nhóm này.",
+    processedBy: "Công cụ xử lý: {{adapter}}",
+    processingState: "Đang chờ nhận dạng văn bản",
+    processing: "Hệ thống đang nhận dạng văn bản và kiểm tra các trường thông tin.",
+    reusing: "Đang dùng lại kết quả từ lần phân tích trước.",
+    reused: "Đã dùng lại kết quả trước",
+    unavailable: "Tạm thời không khả dụng",
+    noEvidence: "Chưa có ảnh nào trong nhóm giấy tờ này.",
     resultUnavailable:
-      "Chưa có kết quả OCR cho ảnh này. Vui lòng chạy lại phân tích.",
-    noFields: "OCR đã hoàn tất nhưng không trả về trường dữ liệu đã xác thực.",
+      "Ảnh này chưa có kết quả nhận dạng văn bản. Hãy phân tích lại để thử lần nữa.",
+    noFields: "OCR đã hoàn tất nhưng chưa xác thực được trường thông tin nào.",
     noExtractedFields:
-      "Trích xuất đã hoàn tất nhưng không trả về trường dữ liệu tài liệu.",
-    rerunHint: "Chạy lại phân tích để thử xử lý lại ảnh này.",
+      "Đã trích xuất văn bản nhưng chưa nhận diện được trường thông tin nào.",
+    rerunHint: "Hãy phân tích lại để hệ thống xử lý lại ảnh này.",
     fieldsLocked:
-      "Giá trị các trường đã bị khóa vì lần phân tích này đã có đánh giá AI.",
-    saveFailed: "Không thể lưu giá trị trường đã xem xét.",
-    saveAll: "Lưu tất cả trường",
-    saveAllSuccess: "Đã lưu tất cả giá trị giấy tờ.",
-    saveAllFailed: "Không thể lưu các giá trị giấy tờ.",
-    saveAllBlocked: "Khắc phục các vấn đề sau trước khi lưu phân tích",
+      "Không thể chỉnh sửa vì kết quả phân tích này đã được sử dụng để tạo đánh giá AI.",
+    saveFailed: "Không thể lưu thông tin đã kiểm tra.",
+    saveAll: "Lưu tất cả thông tin",
+    saveAllSuccess: "Đã lưu toàn bộ thông tin giấy tờ.",
+    saveAllFailed: "Không thể lưu toàn bộ thông tin giấy tờ.",
+    saveAllBlocked: "Bạn cần xử lý các vấn đề sau trước khi lưu kết quả phân tích:",
     blockReasons: {
       SNAPSHOT_MISSING:
-        "Hãy lưu tất cả giá trị tài liệu đã xác nhận trước khi đánh giá AI.",
-      SNAPSHOT_STALE: "Kết quả xác nhận đã cũ. Hãy lưu lại tất cả trường.",
+        "Hãy lưu các thông tin giấy tờ đã xác nhận trước khi chuyển sang Đánh giá AI.",
+      SNAPSHOT_STALE: "Thông tin đã xác nhận không còn khớp với dữ liệu mới. Hãy kiểm tra và lưu lại.",
       INPUTS_CHANGED:
-        "Thông tin hồ sơ hoặc bằng chứng đã thay đổi. Hãy chạy lại phân tích.",
+        "Thông tin hồ sơ hoặc tệp đính kèm đã thay đổi. Hãy phân tích lại.",
       DAMAGE_ANALYSIS_UNAVAILABLE:
-        "Kết quả phân tích hư hỏng xe chưa khả dụng.",
-      DOCUMENT_CATEGORY_MISSING: "Thiếu {{category}}.",
-      DOCUMENT_CATEGORY_FAILED: "{{category}} chưa được xử lý thành công.",
-      REQUIRED_VALUE_MISSING: "{{field}} cần có giá trị xác nhận.",
-      COMPARISON_MISMATCH: "{{field}} không khớp với Thông tin hồ sơ.",
+        "Chưa có kết quả phân tích hư hỏng xe.",
+      DOCUMENT_CATEGORY_MISSING: "Chưa có kết quả phân tích cho {{category}}.",
+      DOCUMENT_CATEGORY_FAILED: "Xử lý {{category}} không thành công.",
+      REQUIRED_VALUE_MISSING: "Bạn cần xác nhận thông tin {{field}}.",
+      COMPARISON_MISMATCH: "{{field}} không khớp với thông tin hồ sơ.",
       COMPARISON_UNAVAILABLE:
-        "Không thể đối chiếu {{field}} với Thông tin hồ sơ.",
+        "Chưa thể đối chiếu {{field}} với thông tin hồ sơ.",
       EXPIRY_DATE_INVALID:
-        "{{field}} phải theo định dạng DD/MM/YYYY hoặc YYYY-MM-DD.",
-      EXPIRY_DATE_NOT_FUTURE: "{{field}} phải sau ngày hôm nay.",
+        "{{field}} cần có định dạng DD/MM/YYYY hoặc YYYY-MM-DD.",
+      EXPIRY_DATE_NOT_FUTURE: "{{field}} phải là ngày sau hôm nay.",
     },
-    rawOcr: "Văn bản OCR gốc",
-    structuredExtraction: "Dữ liệu trích xuất có cấu trúc",
+    rawOcr: "Nội dung nhận dạng từ OCR",
+    structuredExtraction: "Thông tin được trích xuất",
     reviewNotice:
-      "Thông tin được trích xuất tự động. Hãy kiểm tra và chỉnh sửa trước khi thực hiện đánh giá AI.",
+      "Đây là dữ liệu trích xuất tự động. Hãy đối chiếu với giấy tờ gốc và chỉnh sửa nếu cần trước khi thực hiện Đánh giá AI.",
     extractionProvenance: "Prompt {{prompt}} · Schema {{schema}}",
-    aiExtractedValue: "Giá trị AI trích xuất",
-    confirmedValue: "Giá trị đã xác nhận",
-    confirmedValueLabel: "Giá trị đã xác nhận của {{field}}",
-    ocrValue: "Giá trị OCR",
-    normalizedValue: "Giá trị chuẩn hóa",
-    normalizedValueLabel: "Giá trị chuẩn hóa của {{field}}",
+    aiExtractedValue: "Thông tin AI trích xuất",
+    confirmedValue: "Thông tin đã xác nhận",
+    confirmedValueLabel: "Thông tin đã xác nhận: {{field}}",
+    ocrValue: "Nội dung OCR",
+    normalizedValue: "Thông tin đã chuẩn hóa",
+    normalizedValueLabel: "Thông tin đã chuẩn hóa: {{field}}",
     comparedValues: "Hồ sơ: {{claim}} · Giấy tờ: {{document}}",
     decisionBoundary:
-      "Kết quả xác thực giấy tờ chỉ hỗ trợ chuyên viên xem xét và không phải quyết định bảo hiểm cuối cùng.",
+      "Kết quả đối chiếu giấy tờ chỉ hỗ trợ giám định viên rà soát hồ sơ, không thay thế quyết định bồi thường chính thức.",
     consistency: {
       MATCH: "Khớp",
       MISMATCH: "Không khớp",
       UNAVAILABLE: "Không thể đối chiếu",
     },
     consistencyExplanation: {
-      MATCH: "Giá trị giấy tờ đã xác nhận khớp với Thông tin hồ sơ.",
+      MATCH: "Thông tin đã xác nhận trên giấy tờ trùng khớp với hồ sơ.",
       MISMATCH:
-        "Giá trị giấy tờ đã xác nhận khác với Thông tin hồ sơ và cần được xem xét thủ công.",
+        "Thông tin đã xác nhận trên giấy tờ khác với hồ sơ. Cần kiểm tra và điều chỉnh nếu có sai sót.",
       UNAVAILABLE:
-        "Thiếu giá trị trong hồ sơ hoặc giấy tờ đã xác nhận nên chưa thể đối chiếu.",
+        "Chưa đủ dữ liệu trong hồ sơ hoặc giấy tờ đã xác nhận để thực hiện đối chiếu.",
     },
     consistencyUnavailable:
-      "Thiếu giá trị trong hồ sơ hoặc giấy tờ nên chưa thể đối chiếu trường này.",
+      "Chưa đủ thông tin từ hồ sơ hoặc giấy tờ để đối chiếu mục này.",
     validationStatus: {
       VALID: "Hợp lệ",
       INVALID: "Không hợp lệ",
-      UNCERTAIN: "Chưa chắc chắn",
+      UNCERTAIN: "Cần kiểm tra thêm",
       MISSING: "Thiếu dữ liệu",
-      LLM_UNAVAILABLE: "AI không khả dụng",
+      LLM_UNAVAILABLE: "Hiện không thể sử dụng AI",
     },
 
     saveField: "Lưu {{field}}",
 
-    originalValue: "Giá trị AI ban đầu: {{value}}",
+    originalValue: "Thông tin AI trích xuất ban đầu: {{value}}",
 
     fields: {
       full_name: "Họ và tên",
@@ -1183,89 +1211,89 @@ const vi = {
       vehicle_make: "Hãng xe",
 
       license_number: "Số giấy phép lái xe",
-      holder_name: "Tên người được cấp",
+      holder_name: "Họ tên người được cấp",
       license_class: "Hạng giấy phép lái xe",
     },
   },
 
   aiReview: {
     description:
-      "Tạo kết quả đánh giá có cấu trúc từ thông tin hồ sơ, bằng chứng, kết quả phân tích hư hỏng và giấy tờ.",
+      "AI tổng hợp thông tin hồ sơ, kết quả phân tích hư hỏng và đối chiếu giấy tờ để đưa ra nhận định hỗ trợ giám định viên.",
 
-    run: "Thực hiện đánh giá AI",
+    run: "Tạo đánh giá bằng AI",
 
-    rerun: "Thực hiện lại đánh giá AI",
+    rerun: "Tạo lại đánh giá bằng AI",
 
-    generating: "AI review đang xử lý",
+    generating: "AI đang tổng hợp kết quả đánh giá",
 
     generatingDescription:
-      "Trợ lý đang tạo bản đánh giá có cấu trúc. Vui lòng giữ trang này mở cho đến khi hoàn tất.",
+      "Hệ thống đang tạo bản đánh giá. Vui lòng giữ trang này mở cho đến khi hoàn tất.",
 
     waitingForAnalysis:
-      "Analysis vẫn đang xử lý. AI review sẽ khả dụng sau khi Analysis hoàn tất.",
+      "Bước phân tích vẫn đang xử lý. Bạn có thể đánh giá bằng AI sau khi bước này hoàn tất.",
 
-    revision: "Phiên bản AI review {{revision}}",
+    revision: "Bản đánh giá AI số {{revision}}",
 
-    failed: "Không thể tạo kết quả đánh giá AI",
+    failed: "Không thể tạo bản đánh giá từ AI",
 
     ready:
-      "Phân tích đã sẵn sàng. Hãy thực hiện đánh giá AI sau khi hoàn tất việc chỉnh sửa thông tin giấy tờ.",
+      "Kết quả phân tích đã sẵn sàng. Hãy kiểm tra, xác nhận và lưu thông tin giấy tờ trước khi chạy Đánh giá AI.",
 
-    blocked: "Vui lòng hoàn tất phân tích trước khi thực hiện đánh giá AI.",
+    blocked: "Bạn cần hoàn tất bước phân tích trước khi sử dụng Đánh giá AI.",
 
     validity: "Điểm hoàn thiện phân tích",
 
     validityDisclaimer:
-      "Phản ánh các cảnh báo xử lý không chặn quy trình. Điểm không do LLM tạo, không xác định tính hợp lệ hay khả năng được duyệt của hồ sơ và không thay thế việc adjuster xem xét.",
+      "Điểm phản ánh số cảnh báo còn lại sau khi phân tích và được tính theo quy tắc cố định, không phải do AI tự chấm. Điểm không thể hiện xác suất hồ sơ hợp lệ hay được chấp thuận; giám định viên vẫn phải xem xét kết quả.",
 
-    reviewRequired: "Cần xem xét",
+    reviewRequired: "Chờ giám định viên xem xét",
     generated: "Đã tạo",
-    fallback: "Dữ liệu dự phòng cho demo",
-    unavailable: "AI không khả dụng",
-    translationLoading: "Đang chuẩn bị bản tiếng Việt",
-    translationUnavailable: "Không thể tạo bản tiếng Việt",
+    fallback: "Kết quả mô phỏng dùng cho bản demo",
+    unavailable: "Hiện không thể sử dụng AI",
+    translationLoading: "Đang tạo bản dịch tiếng Việt",
+    translationUnavailable: "Không thể chuyển kết quả sang tiếng Việt",
     translationFallback:
-      "Đang hiển thị bản đánh giá AI tiếng Anh gốc. Trạng thái và lịch sử đánh giá không thay đổi.",
+      "Hiện đang hiển thị bản đánh giá tiếng Anh gốc. Trạng thái và lịch sử đánh giá vẫn được giữ nguyên.",
 
     warnings: "Cảnh báo",
-    evidenceReferences: "Bằng chứng tham chiếu",
-    assessmentInterpretation: "Diễn giải đánh giá",
-    damagedPartsSummary: "Tóm tắt bộ phận hư hỏng",
-    documentConsistency: "Tính nhất quán của giấy tờ",
-    recommendedNextStep: "Bước tiếp theo được đề xuất",
-    humanReviewRequired: "Bắt buộc có chuyên viên thẩm định",
+    evidenceReferences: "Giấy tờ và hình ảnh tham chiếu",
+    assessmentInterpretation: "Nhận định về mức độ hư hỏng",
+    damagedPartsSummary: "Tổng hợp các bộ phận bị hư hỏng",
+    documentConsistency: "Kết quả đối chiếu giấy tờ",
+    recommendedNextStep: "Hướng xử lý đề xuất",
+    humanReviewRequired: "Bắt buộc có giám định viên xem xét",
   },
 
   humanReview: {
     description:
-      "Chấp thuận hoặc từ chối kết quả đánh giá của AI. Ghi chú đánh giá luôn là bắt buộc.",
+      "Giám định viên xem xét và chấp thuận hoặc từ chối đánh giá của AI. Mỗi lần đánh giá đều phải có ghi chú.",
 
     blocked:
-      "Vui lòng thực hiện đánh giá AI trước khi gửi quyết định của người xử lý.",
+      "Hãy hoàn tất bước Đánh giá AI trước khi ghi nhận ý kiến của giám định viên.",
 
-    approve: "Chấp thuận đánh giá AI",
-    reject: "Từ chối đánh giá AI",
+    approve: "Chấp thuận đánh giá của AI",
+    reject: "Từ chối đánh giá của AI",
 
     note: "Ghi chú đánh giá",
 
-    reason: "Nhóm lý do",
-    selectReason: "Chọn lý do",
+    reason: "Nhóm lý do từ chối",
+    selectReason: "Chọn nhóm lý do",
 
-    submit: "Gửi đánh giá",
+    submit: "Lưu kết quả đánh giá",
 
-    revertNote: "Lý do hoàn tác",
+    revertNote: "Ghi chú lý do hoàn tác",
     revert: "Hoàn tác đánh giá",
     reverted: "Đã hoàn tác",
 
     rerunAfterRevert:
-      "Thông tin hồ sơ và bằng chứng có thể được chỉnh sửa. Vui lòng chạy lại phân tích và đánh giá AI trước khi đưa ra quyết định mới.",
+      "Bạn có thể cập nhật thông tin hồ sơ và tệp đính kèm. Sau đó hãy phân tích lại và tạo đánh giá AI mới trước khi tiếp tục xem xét.",
 
-    history: "Lịch sử quyết định đánh giá AI",
+    history: "Lịch sử đánh giá của giám định viên",
 
-    approved: "Đánh giá AI đã được chấp thuận",
-    rejected: "Đánh giá AI đã bị từ chối",
+    approved: "Giám định viên đã chấp thuận đánh giá của AI",
+    rejected: "Giám định viên đã từ chối đánh giá của AI",
 
-    reviewedBy: "Được đánh giá bởi {{reviewer}} vào {{date}}",
+    reviewedBy: "{{reviewer}} đã đánh giá vào {{date}}",
 
     reasonValue: "Lý do: {{reason}}",
     revertValue: "Ghi chú hoàn tác: {{note}}",
@@ -1275,13 +1303,13 @@ const vi = {
 
       DOCUMENT_INFORMATION_INCORRECT: "Thông tin giấy tờ không chính xác",
 
-      DAMAGE_ASSESSMENT_ISSUE: "Có vấn đề với kết quả đánh giá hư hỏng",
+      DAMAGE_ASSESSMENT_ISSUE: "Kết quả đánh giá hư hỏng cần kiểm tra lại",
 
-      DAMAGE_EVIDENCE_ISSUE: "Có vấn đề với bằng chứng hư hỏng",
+      DAMAGE_EVIDENCE_ISSUE: "Hình ảnh hoặc tài liệu về hư hỏng chưa phù hợp",
 
-      MISSING_EVIDENCE: "Thiếu bằng chứng",
+      MISSING_EVIDENCE: "Thiếu giấy tờ hoặc hình ảnh cần thiết",
 
-      INCORRECT_AI_CONCLUSION: "Kết luận của AI không chính xác",
+      INCORRECT_AI_CONCLUSION: "Nhận định của AI chưa chính xác",
 
       OTHER: "Khác",
     },
@@ -1291,44 +1319,45 @@ const vi = {
     title: "Hãng xe",
 
     description:
-      "Quản lý danh sách hãng xe có thể sử dụng khi tạo hồ sơ bồi thường mới.",
+      "Quản lý các hãng xe được phép chọn khi tạo hồ sơ bồi thường.",
 
     manufacturer: "Hãng xe",
     name: "Tên hãng xe",
-    editName: "Chỉnh sửa hãng xe {{name}}",
+    editName: "Sửa thông tin hãng {{name}}",
     status: "Trạng thái",
     actions: "Thao tác",
 
-    active: "Đang hoạt động",
-    disabled: "Đã vô hiệu hóa",
+    active: "Đang sử dụng",
+    disabled: "Ngừng sử dụng",
 
     add: "Thêm hãng xe",
     save: "Lưu hãng xe",
 
     enable: "Kích hoạt",
-    disable: "Vô hiệu hóa",
+    disable: "Ngừng sử dụng",
 
-    empty: "Không tìm thấy hãng xe nào.",
-    noMatches: "Không có hãng xe nào phù hợp với bộ lọc.",
-    shownOne: "hãng xe hiển thị",
-    shownMany: "hãng xe hiển thị",
+    empty: "Chưa có hãng xe nào trong hệ thống.",
+    noMatches: "Không tìm thấy hãng xe phù hợp với bộ lọc.",
+    shownOne: "hãng xe được hiển thị",
+    shownMany: "hãng xe được hiển thị",
     search: "Tìm hãng xe",
     searchPlaceholder: "Tìm theo tên",
     allStatuses: "Tất cả trạng thái",
-    showing: "Hiển thị {{first}}-{{last}} trong {{total}} hãng xe",
-    none: "Không có hãng xe để hiển thị",
-    rowsPerPage: "Số dòng mỗi trang",
+    showing: "Đang hiển thị {{first}}–{{last}} trên tổng số {{total}} hãng xe",
+    none: "Chưa có hãng xe để hiển thị",
+    rowsPerPage: "Số hãng xe mỗi trang",
     page: "Trang {{current}} / {{total}}",
     previousPage: "Trang trước",
     nextPage: "Trang sau",
 
-    unavailable: "Danh sách hãng xe không khả dụng.",
+    unavailable: "Chưa có dữ liệu danh sách hãng xe.",
 
     loadError: "Không thể tải danh sách hãng xe.",
 
     saveError: "Không thể lưu hãng xe.",
   },
 };
+
 void i18n.use(initReactI18next).init({
   resources: { en: { translation: en }, vi: { translation: vi } },
   lng:

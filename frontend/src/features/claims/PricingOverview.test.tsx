@@ -1,6 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { PricingOverview } from "./PricingOverview";
+import { vehiclePartLabels } from "./damagePresentation";
 import type { AnalysisPricing, ReferencePartPrice } from "./types";
 import i18n from "../../i18n";
 
@@ -110,10 +111,38 @@ describe("Pricing overview", () => {
         assessment="REPAIR_LIKELY"
       />,
     );
-    expect(screen.getByText("Chưa có giá")).toBeVisible();
+    expect(screen.getByText(i18n.t("pricing.unavailable"))).toBeVisible();
     expect(
-      screen.getByRole("table", { name: "Bảng so sánh giá từng phụ tùng" }),
+      screen.getByRole("table", { name: i18n.t("pricing.breakdown") }),
     ).toBeVisible();
     expect(screen.getByText(/Giá chỉ mang tính tham khảo/)).toBeVisible();
+  });
+
+  it("switches normalized pricing part identities between English and Vietnamese", async () => {
+    render(
+      <PricingOverview
+        pricing={{
+          ...pricing,
+          line_items: ["fender", "front_bumper", "hood", "windshield"].map(
+            (part_identity) => ({ ...pricing.line_items[0], part_identity }),
+          ),
+        }}
+        assessment="REPAIR_LIKELY"
+      />,
+    );
+    expect(screen.getByRole("rowheader", { name: "Fender" })).toBeVisible();
+    await act(() => i18n.changeLanguage("vi"));
+    for (const part of [
+      vehiclePartLabels.fender.vi,
+      "Cản trước",
+      "Nắp ca-pô",
+      "Kính chắn gió",
+    ]) {
+      expect(screen.getByRole("rowheader", { name: part })).toBeVisible();
+    }
+    await act(() => i18n.changeLanguage("en"));
+    expect(
+      screen.getByRole("rowheader", { name: "Front Bumper" }),
+    ).toBeVisible();
   });
 });

@@ -23,7 +23,9 @@ export function CustomerDraftPage() {
   if (error || !claim || claim.status !== "DRAFT")
     return (
       <Alert status="danger">
-        <Alert.Title>{t("claim.unavailable")}</Alert.Title>
+        <Alert.Content>
+          <Alert.Title>{t("claim.unavailable")}</Alert.Title>
+        </Alert.Content>
       </Alert>
     );
 
@@ -52,7 +54,7 @@ export function CustomerDraftPage() {
   }
 
   return (
-    <div className="mx-auto grid max-w-[1440px] gap-6 py-2">
+    <div className="page-layout mx-auto grid max-w-[1440px] gap-6 py-2">
       <Link
         className="flex w-fit items-center gap-2 text-sm font-semibold text-blue-700"
         to="/my-claims"
@@ -104,8 +106,10 @@ export function CustomerDraftPage() {
       </div>
       {submitError ? (
         <Alert status="danger">
-          <Alert.Title>{t("myClaims.submitFailed")}</Alert.Title>
-          <Alert.Description>{submitError}</Alert.Description>
+          <Alert.Content>
+            <Alert.Title>{t("myClaims.submitFailed")}</Alert.Title>
+            <Alert.Description>{submitError}</Alert.Description>
+          </Alert.Content>
         </Alert>
       ) : null}
     </div>
