@@ -1,80 +1,43 @@
 # AI Car Insurance Claim Assistant
 
-A full-stack proof of concept for managing auto insurance claims. Adjusters can review claim information, evidence, OCR and structured document extraction, vehicle damage findings, AI recommendations, and human review decisions.
+A full-stack proof of concept for managing auto insurance claims, from claim intake and evidence upload to document extraction, vehicle damage analysis, AI assistance, and human review.
 
 **Languages:** English | [Tiếng Việt](README.vi.md)
 
-## What it does
+## Project at a glance
 
-- Provides role-based access for `ADMIN`, `ADJUSTER`, and customer `USER` accounts.
-- Manages claims, vehicle and incident details, and evidence files.
-- Runs document OCR and LLM-based extraction for identity cards, insurance policies, vehicle registrations, and driver licenses.
-- Runs vehicle damage analysis and presents normalized damage findings by vehicle part.
-- Supports AI review, human review, and configurable assessment rules.
-- Stores application data in PostgreSQL and uploaded files under the configured local upload directory.
+- Role-based workflows for `ADMIN`, `ADJUSTER`, and customer `USER` accounts.
+- React, TypeScript, Vite, HeroUI, and Tailwind CSS frontend.
+- FastAPI backend with PostgreSQL and local evidence storage.
+- DeepDoc-based document OCR, vehicle damage detection, and optional LangChain/OpenAI integration.
+- AI output supports decisions; an authorized human adjuster makes the final claim decision.
 
-This is a decision-support PoC. AI findings and recommendations require review by an authorized human adjuster.
+## Requirements
 
-## Technology
+- Python 3.10 or 3.11
+- Node.js 20.19+ or 22.12+
+- Docker Desktop or another Docker Compose-compatible runtime
+- The private `deepdoc_vietocr` wheel and car damage model weights for the local AI integrations
 
-- Frontend: React, TypeScript, Vite, HeroUI, Tailwind CSS, TanStack Query/Table, and Recharts.
-- Backend: Python, FastAPI, SQLAlchemy, and Pydantic.
-- Database: PostgreSQL.
-- Document OCR: private `deepdoc_vietocr` package (DeepDoc, VietOCR, and ONNX).
-- LLM: mock mode by default; optional OpenAI-compatible integration through LangChain.
+## Start locally on one port
 
-## Prerequisites
+Run commands from the repository root unless a `cd` command changes directory.
 
-- Python 3.10 or 3.11.
-- Node.js 20.19+ or 22.12+.
-- Docker Desktop or another Docker-compatible runtime with Compose.
-- Access to the private `deepdoc_vietocr` wheel for real document OCR.
-- An OpenAI API key only if using `LLM_MODE=openai`.
-
-## Quick start
-
-Commands below are run from the repository root unless a `cd` command changes directory.
-
-### 1. Configure environment
+Build the frontend once. FastAPI then serves the built UI and `/api` from the same origin, so normal local use only needs the backend server. Start PostgreSQL. Before installing backend requirements, download the private wheel from the [package download link](https://drive.google.com/file/d/1LBGigUwhSzncbh4uMpkq5kZzU1JETlQz/view?usp=sharing) and place it at `backend/package/deepdoc_vietocr-0.1.0-py3-none-any.whl`. Add the car damage model weights under `AI/models/` when using damage analysis.
 
 ```powershell
 Copy-Item .env.example .env
-```
-
-The example config uses the local car-damage detector, while part search and the LLM remain in mock mode. Document OCR defaults to DeepDoc. For a deterministic document demo or tests, set `DOCUMENT_OCR_MODE=mock` in `.env`.
-
-For real LLM calls, configure these values in `.env`:
-
-```dotenv
-LLM_MODE=openai
-OPENAI_API_KEY=your-api-key
-OPENAI_MODEL=your-supported-model
-LLM_REQUEST_TIMEOUT_SECONDS=60
-LLM_MAX_RETRIES=0
-```
-
-The default OpenAI endpoint is used when `LLM_BASE_URL` is unset. Set `LLM_BASE_URL` only when using an OpenAI-compatible endpoint. Never commit API keys or other secrets.
-
-To print provider-reported token usage for document extraction, field validation, and AI Review, set `LLM_TOKEN_USAGE_LOG_ENABLED=true`. Logs include operation, model, token counts, and the relevant document type or claim number; they do not include OCR text, prompts, or model output. If the provider supplies no token metadata, the log reports it as unavailable.
-
-For local AI Review debugging, set `LLM_RAW_OUTPUT_LOG_ENABLED=true` to print the raw JSON returned by the model before parsing and persistence. This output can contain claim and personal information, so keep it disabled outside controlled local development.
-
-### 2. Start PostgreSQL
-
-```powershell
 docker compose up -d postgres
-```
 
-PostgreSQL is exposed on port `5432`. The default local connection and container credentials are in `.env.example`; change them in `.env` before starting the application when needed.
+# Download the private wheel and place it at:
+# backend/package/deepdoc_vietocr-0.1.0-py3-none-any.whl
 
-### 3. Install and start the backend
+Push-Location frontend
+npm ci
+npm run build
+Pop-Location
 
-The DeepDoc wheel is private and is not stored in Git. Download `deepdoc_vietocr-0.1.0-py3-none-any.whl` from [Google Drive](https://drive.google.com/file/d/1LBGigUwhSzncbh4uMpkq5kZzU1JETlQz/view?usp=sharing) and place it at `backend/package/deepdoc_vietocr-0.1.0-py3-none-any.whl` before installing requirements.
-
-The backend requirements also install the detector dependencies from `AI/requirements.txt`. Keep the model weights at `AI/models/car_part.pt` and `AI/models/car_damage.pt` or configure their paths in `.env`.
-
-```powershell
-cd backend
+Push-Location backend
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
@@ -82,161 +45,26 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --reload-dir app
 ```
 
-If PowerShell blocks virtual environment activation, use the activation command appropriate for your shell or invoke `.venv\Scripts\python.exe` directly.
+Open `http://localhost:8000` for the UI and API. Swagger is at `http://localhost:8000/docs`. Uvicorn uses port `8000` by default; pass `--port <port>` to use another port. In Docker Compose, `APP_PORT` (default `8000`) selects the host port. Use `npm run dev` only when actively developing the frontend and needing Vite hot reload.
 
-The API creates missing tables and seeds the configured demo users and vehicle manufacturers on startup. Existing users are not overwritten when environment credentials change. Configure credentials before the first startup. To change an existing account's password, use an approved database or account-administration procedure.
+### Docker deployment
 
-The example demo accounts are:
-
-| Role | Email | Password |
-| --- | --- | --- |
-| Admin | `admin@example.com` | `Admin123!` |
-| Adjuster | `adjuster@example.com` | `Adjuster123!` |
-
-Set `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADJUSTER_EMAIL`, and `ADJUSTER_PASSWORD` in `.env` before first startup to use different demo credentials.
-
-The backend is available at `http://localhost:8000`:
-
-- Health check: `GET /api/health`
-- Swagger UI: `/docs`
-- ReDoc: `/redoc`
-- OpenAPI schema: `/openapi.json`
-
-### 4. Install and start the frontend
-
-Open another terminal at the repository root:
+The Docker image builds the frontend and serves it through FastAPI. Before building, place the private DeepDoc wheel at `backend/package/deepdoc_vietocr-0.1.0-py3-none-any.whl` using the [package download link](https://drive.google.com/file/d/1LBGigUwhSzncbh4uMpkq5kZzU1JETlQz/view?usp=sharing).
 
 ```powershell
-cd frontend
-npm install
-npm run dev
+Copy-Item .env.example .env
+docker compose up --build -d
 ```
 
-Open `http://localhost:5173`.
+Open `http://localhost:8000`. Set `APP_PORT` in `.env` to publish a different host port. PostgreSQL is also available on port `5432` for database tools. Run `docker compose down` to stop services while preserving database and upload data.
 
-## Runtime modes
+### Frontend development with Vite
 
-| Setting | Supported values | Default | Purpose |
-| --- | --- | --- | --- |
-| `DAMAGE_MODEL_MODE` | `local` | `local` | Runs the local `AI/CarDamageDetector` with the bundled model weights. |
-| `PART_SEARCH_MODE` | `mock`, `unavailable` | `mock` | PostgreSQL mock VND catalog or unavailable pricing. |
+For frontend hot reload, run `npm run dev` in `frontend/` while the backend runs separately. Vite is available at `http://localhost:5173` and uses `FRONTEND_ORIGIN` from `.env` for API access.
 
-### Vehicle pricing catalog
+Configure demo account credentials in `.env` before the first backend startup. See [Project guide](backend/package/PROJECT_GUIDE.md) for runtime modes, environment settings, workflows, data, and maintenance commands. See [Third-party notices](backend/package/THIRD_PARTY_NOTICES.md) for package download and license information.
 
-Startup creates the additive catalog/snapshot tables and seeds demo prices for Toyota Camry 2022, Toyota Vios 2023, and BMW M3 2024. Repair and replacement prices are separate records, matched exactly by make, model, year, part, and category. Part identifiers normalize case, spaces, and hyphens only. Missing matches stay unavailable.
+## Documentation
 
-Run `python scripts/seed_price_catalog.py` from `backend` to populate a broader mock catalog for 19 makes and the models listed in the script, across 2015 through the current year. Every model/year combination gets separate repair and replacement prices for all 21 detector part labels and four historical part identifiers. These are generated demo combinations, not verified production years or market prices.
-
-Edit `VEHICLES` (models and percentage multipliers), `PART_PRICES_VND` (base repair/replacement amounts), and `PRICE_OVERRIDES` (exact make/model/year/part amounts) in the script. Generated prices use the model multiplier and a 3% annual adjustment relative to 2024, capped at 60%-120%; overrides bypass both factors. `--dry-run` previews coverage without a database connection. Use `--make Toyota --start-year 2020 --end-year 2026` to limit coverage. Existing prices are preserved unless you explicitly pass `--update-existing`, which also replaces their source metadata with the mock source. The script uses `DATABASE_URL` from the project `.env` and commits all changes in one transaction.
-
-Each Analysis stores an immutable price snapshot; catalog updates apply to later runs. Existing historical USD snapshots remain readable. New VND amounts use whole-dong integers.
-
-Step 4 shows assessment first, repair/replacement summaries, then a per-part provenance table. A partial sum is labeled as a known subtotal, never a complete estimate. These mock prices are informational and exclude unmodeled labor, materials, taxes, and workshop fees. They do not determine payouts or replace the adjuster's decision.
-
-AI Review receives that saved pricing snapshot in its existing LLM request. Its `price_recommendation` contains only `recommendation` (`SUPPORTS_REPAIR`, `SUPPORTS_REPLACEMENT`, or `MANUAL_REVIEW`) and a concise `rationale`. Missing prices in either category force manual pricing review without discarding the overall review. Advice that conflicts with the deterministic damage assessment also requires manual review. Amounts displayed by the UI always come from Analysis; the AI does not calculate new prices. Mock or unavailable AI pricing advice remains manual.
-
-The Vietnamese translation includes the rationale and preserves the recommendation code. Historical reviews without pricing advice remain readable; rerun AI Review to create a new revision using the saved Analysis snapshot. Review prompt/schema versions are `ai-review-v3-pricing` / `ai-review-schema-v3-pricing`; translation versions are `ai-review-translation-vi-v2-pricing` / `ai-review-translation-schema-v2-pricing`.
-
-AI Review receives that saved pricing snapshot in its existing LLM request. Its `price_recommendation` contains only `recommendation` (`SUPPORTS_REPAIR`, `SUPPORTS_REPLACEMENT`, or `MANUAL_REVIEW`) and a concise `rationale`. Missing prices in either category force manual pricing review without discarding the overall review. Advice that conflicts with the deterministic damage assessment also requires manual review. Amounts displayed by the UI always come from Analysis; the AI does not calculate new prices. Mock or unavailable AI pricing advice remains manual.
-
-The Vietnamese translation includes the rationale and preserves the recommendation code. Historical reviews without pricing advice remain readable; rerun AI Review to create a new revision using the saved Analysis snapshot. Review prompt/schema versions are `ai-review-v3-pricing` / `ai-review-schema-v3-pricing`; translation versions are `ai-review-translation-vi-v2-pricing` / `ai-review-translation-schema-v2-pricing`.
-| `DOCUMENT_OCR_MODE` | `deepdoc`, `mock` | `deepdoc` | DeepDoc OCR or deterministic demo OCR. |
-| `LLM_MODE` | `mock`, `openai` | `mock` | Demo responses or LangChain calls to an OpenAI-compatible chat model. |
-
-For the `openai` mode, set `OPENAI_API_KEY` and `OPENAI_MODEL`. The selected model must support the structured output expected by the application. Provider/model availability and response behavior may vary.
-
-The detector reads each uploaded vehicle image and stores its annotated result under `UPLOAD_ROOT/<claim>/annotations/`. Configure `DAMAGE_PART_MODEL_PATH`, `DAMAGE_MODEL_PATH`, `DAMAGE_OUTPUT_DIR`, `DAMAGE_PART_CONF`, `DAMAGE_DAMAGE_CONF`, `DAMAGE_MIN_PERCENT`, `DAMAGE_IMAGE_SIZE`, and `DAMAGE_DEVICE` in `.env` as needed. The default paths resolve from the repository root. The standalone smoke test is `python backend/scripts/test_car_damage_detector.py`.
-
-## Damage assessment thresholds
-
-The Admin **Assessment rules** page controls how model detections are interpreted. These thresholds apply to each detected vehicle part; they do not describe the percentage of the whole vehicle that is damaged. Defaults are `40%` repair maximum, and `60%` replacement minimum.
-- **Repair maximum (`40%`)**: if every detected part has damage at or below this percentage, the result is **Repair likely**.
-- **Replacement minimum (`60%`)**: if any detected part reaches or exceeds this percentage, the result is **Replacement likely**. Damage types `broken_component` and `severe_deformation` also trigger this result regardless of percentage.
-
-Damage between the repair maximum and replacement minimum results in **Manual inspection required**. For example, with the defaults, a part at `35%` can support **Repair likely**, a part at `50%` needs manual inspection, and a part at `65%` supports **Replacement likely**. Admins can change these global values; each analysis stores the values used at the time it was run. These are decision-support rules, not a final insurance decision.
-
-## Step 4 analysis completeness score
-
-Step 4 can run only after Step 3 has saved a ready analysis snapshot. Step 3 blocks **Save All** when a required document analysis failed, a required value is missing, or a comparable document value is `MISMATCH` or cannot be checked. Correct the data and pass Step 3 again before running AI Review. A mismatch is therefore a gate, not a score deduction: it should prevent Step 4 from running.
-
-The Step 4 **Analysis completeness score** is a deterministic processing indicator. It is not generated by the LLM and is not the probability that a claim is valid or will be approved. Each eligible review starts at 100 points and subtracts 5 points for each warning in the saved analysis snapshot. The result cannot fall below 0:
-
-```text
-score = max(0, 100 - (warnings × 5))
-```
-
-Examples: no warnings = 100; one warning = 95; two warnings = 90; twenty or more warnings = 0. A required document with status `FAILED` does not receive a point deduction because Step 3 blocks the workflow before a score can be created.
-
-Warnings that remain in an otherwise ready snapshot reduce the score, so treat any warning as a reason to inspect the relevant analysis. The score does not directly evaluate document field matches, damage severity, the LLM's review text, or an adjuster's decision. The LLM review is generated separately, and an LLM fallback does not itself change this score. Existing historical reviews retain their persisted scores. Treat the score as a limited processing signal that still requires human review; it does not replace the Step 3 match requirement.
-
-## Access rules
-
-- `ADMIN` can use all protected APIs, manage claims and configuration, and create customer `USER` accounts in Admin Config.
-- `USER` can create and edit only their own Draft claims through Claim Information and Evidence & documents. They can submit a complete Draft and then see only its identifier, creation date, and status in My Claims. Users cannot delete claims or access staff workflows and configuration.
-- `ADJUSTER` can see submitted customer claims in the work queue and run Analysis, AI Review, and Human Review. Adjusters cannot open an unsubmitted customer Draft, change evidence, create claims or accounts, or manage configuration.
-
-## DeepDoc package
-
-The private `deepdoc_vietocr` package provides CPU-oriented text recognition, document layout detection, and table extraction, with VietOCR and ONNX support for Vietnamese OCR. The wheel is excluded from Git. Download it from the [project package link](https://drive.google.com/file/d/1LBGigUwhSzncbh4uMpkq5kZzU1JETlQz/view?usp=sharing) and put it in `backend/package/` before installing backend requirements.
-
-Example API:
-
-```python
-from deepdoc_vietocr import DocumentReader
-
-reader = DocumentReader()
-result = reader.extract("sample.pdf")
-
-print(result.text)
-print(result.markdown)
-
-layouts = reader.detect_layout("sample.pdf")
-tables = reader.extract_tables("sample.pdf")
-```
-
-See [`backend/package/THIRD_PARTY_NOTICES.md`](backend/package/THIRD_PARTY_NOTICES.md) for package download details and third-party notices.
-
-## Automated checks
-
-Backend checks:
-
-```powershell
-cd backend
-pytest
-python scripts/check_health.py
-python scripts/check_database.py
-```
-
-Frontend checks:
-
-```powershell
-cd frontend
-npm test
-npm run build
-```
-
-`check_database.py` requires a reachable PostgreSQL instance configured by `DATABASE_URL`.
-
-## Legacy document field migration
-
-Stop all backend processes, deploy the updated code, then retire the old mock document field table before starting the new backend. Check the row count in each database and replace `0` below with the count reported by `--check`:
-
-```powershell
-cd backend
-python scripts/migrate_legacy_document_analysis_fields.py --check
-python scripts/migrate_legacy_document_analysis_fields.py --apply --expected-legacy-rows 0
-python scripts/migrate_legacy_document_analysis_fields.py --check
-```
-
-The migration checks the expected row count and drops `document_analysis_fields` in one PostgreSQL transaction. When rows exist, it first copies them into `legacy_document_analysis_fields_archive` and verifies the copy; an empty table needs no archive. The archive is not read by the application and its rows are deleted automatically with the parent document analysis when a claim is deleted. To restore the old schema and the remaining archived rows, run `python scripts/migrate_legacy_document_analysis_fields.py --rollback`. Claims deleted after migration cannot be restored by this rollback. Application startup and `create_all` do not drop the old table automatically.
-
-## Local files and data
-
-- Uploaded evidence is stored under `UPLOAD_ROOT` (default: `uploads` at the repository root).
-- PostgreSQL data is stored in the Docker Compose volume `postgres-data`.
-- The DeepDoc wheel is private and must be downloaded separately; do not commit it.
-- Keep `.env`, uploaded evidence, and other sensitive data out of source control.
-
-## License notices
-
-See [`backend/package/THIRD_PARTY_NOTICES.md`](backend/package/THIRD_PARTY_NOTICES.md) for attribution and license information related to DeepDoc/RAGFlow, VietOCR, and the private package.
+- [Project guide: configuration, workflows, pricing, permissions, migrations, and checks](backend/package/PROJECT_GUIDE.md)
+- [Third-party notices and private package download](backend/package/THIRD_PARTY_NOTICES.md)
