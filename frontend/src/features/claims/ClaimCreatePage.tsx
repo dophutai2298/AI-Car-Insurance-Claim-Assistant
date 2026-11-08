@@ -269,6 +269,7 @@ export function ClaimCreatePage() {
                   <Label>{t("claim.incidentAt")}</Label>
                   <Input
                     max={localDateTimeValue(new Date())}
+                    onClick={(event) => event.currentTarget.showPicker?.()}
                     onChange={(event) => {
                       setIncidentAtError("");
                       setIncidentAt(event.target.value);

@@ -880,7 +880,7 @@ const vi = {
     damagePercentage: "Tỷ lệ diện tích hư hỏng",
     lastChanged: "{{user}} cập nhật lần cuối vào {{date}}",
     systemDefaults: "Thiết lập mặc định của hệ thống",
-    saveRules: "Lưu quy tắc",
+    saveRules: "Lưu",
     changeHistory: "Lịch sử thay đổi",
     historyDescription:
       "Theo dõi những lần quản trị viên thay đổi quy tắc đánh giá.",

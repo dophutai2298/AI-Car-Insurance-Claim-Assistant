@@ -2,12 +2,13 @@ from contextlib import asynccontextmanager
 import logging
 
 from fastapi import Depends, FastAPI, Request
-from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.routes import admin, auth, claims, vehicle_makes
 from app.api.dependencies import require_admin
 from app.core.config import get_settings
+from app.web import SpaStaticFiles
 from app.db import (
     Base,
     create_database_engine,
@@ -101,6 +102,14 @@ def create_app() -> FastAPI:
     @app.get("/api/runtime-config", tags=["system"], dependencies=[Depends(require_admin)])
     def runtime_config() -> dict[str, str]:
         return settings.public_runtime()
+
+    frontend_dist = settings.project_path("frontend/dist")
+    if frontend_dist.is_dir():
+        app.mount(
+            "/",
+            SpaStaticFiles(directory=str(frontend_dist), html=True),
+            name="frontend",
+        )
 
     return app
 
