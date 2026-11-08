@@ -50,7 +50,7 @@
   --field-foreground: var(--foreground);
   --field-border: #d5d9e2;
   --field-border-width: 1px;
-  --field-shadow: none;
+  --field-shadow: 0 0 0 0 transparent inset;
   --surface-shadow: 0 1px 3px #16191f05;
   --neutral-50: #f8f9fb;
   --neutral-100: #f3f4f6;
@@ -174,9 +174,11 @@ textarea {
     color 180ms ease,
     box-shadow 180ms ease;
 }
-:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 3px;
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 3px;
+  }
 }
 [hidden] {
   display: none !important;
@@ -501,12 +503,6 @@ textarea {
   flex-shrink: 0;
   margin-top: 2px;
   color: var(--muted);
-}
-.input,
-.textarea,
-.select__trigger,
-.autocomplete__trigger {
-  box-shadow: none;
 }
 .workspace table {
   font-variant-numeric: tabular-nums;

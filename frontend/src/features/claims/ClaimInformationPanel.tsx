@@ -167,7 +167,11 @@ export function ClaimInformationPanel({ claim }: { claim: ClaimDetail }) {
                       )}
                     >
                       {(vehicleMakes.data ?? []).map((item) => (
-                        <ListBox.Item id={item.name} key={item.id}>
+                        <ListBox.Item
+                          id={item.name}
+                          key={item.id}
+                          textValue={item.name}
+                        >
                           {item.name}
                           <ListBox.ItemIndicator />
                         </ListBox.Item>
@@ -217,6 +221,7 @@ export function ClaimInformationPanel({ claim }: { claim: ClaimDetail }) {
                   <Label>{t("claim.incidentAt")}</Label>
                   <Input
                     max={localDateTimeValue(new Date())}
+                    onClick={(event) => event.currentTarget.showPicker?.()}
                     value={values.incidentAt}
                     onChange={(event) => {
                       setIncidentAtError("");
